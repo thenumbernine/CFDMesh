@@ -179,7 +179,7 @@ real polyVol(const std::vector<vecnr>& vs) {
 		vecnr pj = vs[(i+1)%n];
 		v += .5 * (pi(0) * pj(1) - pi(1) * pj(0));
 	}
-	return v;
+	return fabs(v);
 }
 
 struct Mesh {
@@ -268,12 +268,6 @@ struct Mesh {
 					j+1 + m * (i+1),
 					j+1 + m * i
 				});
-
-				Prim W;
-				W.rho() = 1.;
-				W.v() = vecnr(.1);
-				W.P() = 1.;
-				c->U = Cons(W);
 			}
 		}
 	
@@ -311,6 +305,14 @@ struct Mesh {
 					return v->pos;
 				}));
 		}
+	
+		resetState();
+	}
+
+	void resetState() {
+		for (auto& c : cells) {	
+			c->U = Cons(Prim(1., vecnr(.1), 1.));
+		}
 	}
 };
 
@@ -347,6 +349,17 @@ StateVec matmul(const real* A, const StateVec& x) {
 	return y;
 }
 
+enum DisplayMethod {
+	STATE,
+	VOLUME,
+	COUNT
+};
+
+static const char* displayMethodNames[DisplayMethod::COUNT] = {
+	"state",
+	"volume",
+};
+
 struct CFDMeshApp : public GLApp::GLApp {
 	using Super = ::GLApp::GLApp;
 	
@@ -381,9 +394,13 @@ struct CFDMeshApp : public GLApp::GLApp {
 	}
 	
 	bool running = false;
+	bool singleStep = false;
 	bool showVtxs = true;
 	bool showCellCenters = false;
 	bool showEdges = true;
+
+	int displayMethod = 0;
+	float displayScalar = 1.;
 
 	void draw() {
 		glMatrixMode(GL_MODELVIEW);
@@ -394,11 +411,13 @@ struct CFDMeshApp : public GLApp::GLApp {
 		glBegin(GL_QUADS);
 		for (const auto& c : m->cells) {
 			Prim W(c->U);
-			glColor3f(
-				W.rho(),
-				vecnr::length(W.v()),
-				W.P()
-			);
+			
+			if (displayMethod == DisplayMethod::STATE) {
+				glColor3f(displayScalar * W.rho(), displayScalar * vecnr::length(W.v()), displayScalar * W.P());
+			} else if (displayMethod == DisplayMethod::VOLUME) {
+				glColor3f(displayScalar * c->volume, .5, 1. - displayScalar * c->volume);
+			}
+			
 			for (const auto& v : c->vtxs) {
 				glVertex2v(v->pos.v);
 			}
@@ -591,15 +610,35 @@ struct CFDMeshApp : public GLApp::GLApp {
 		
 		gui->update([this](){
 			igCheckbox("running", &running);
+			
+			if (igSmallButton("step")) singleStep = true;
+			
 			igCheckbox("showVtxs", &showVtxs);
 			igCheckbox("showCellCenters", &showCellCenters);
 			igCheckbox("showEdges", &showEdges);
 			//igCheckbox("ortho", &ortho);
+		
+			if (igSmallButton("reset state")) {
+				m->resetState();
+			}
+	
+			igCombo("display method", &displayMethod, displayMethodNames, DisplayMethod::COUNT, -1);
+			
+			igInputFloat("display scalar", &displayScalar, .1, 1., "%f", 0);
 		});
 		
-		if (running) {
+		if (running || singleStep) {
 			step();
+			if (singleStep) {
+				running = false;
+				singleStep = false;
+			}
 		}
+	}
+
+	virtual void sdlEvent(SDL_Event& event) {
+		Super::sdlEvent(event);
+		gui->sdlEvent(event);
 	}
 };
 
