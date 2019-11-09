@@ -1,4 +1,5 @@
 #include "GLApp/gl.h"
+#include "ImGuiCommon/ImGuiCommon.h"
 #include "GLApp/GLApp.h"
 
 #include "Tensor/Tensor.h"
@@ -56,6 +57,7 @@ To map(const From& from, std::function<typename To::value_type(typename From::va
 }
 
 using real = double;
+//constexpr int vecdim = 2;
 constexpr int vecdim = 3;
 using vecnr = Tensor::Vector<real, vecdim>;
 constexpr int statedim = vecdim + 2;
@@ -269,7 +271,7 @@ struct Mesh {
 
 				Prim W;
 				W.rho() = 1.;
-				W.v() = vecnr(.1, 0., 0.);
+				W.v() = vecnr(.1);
 				W.P() = 1.;
 				c->U = Cons(W);
 			}
@@ -346,21 +348,30 @@ StateVec matmul(const real* A, const StateVec& x) {
 }
 
 struct CFDMeshApp : public GLApp::GLApp {
+	using Super = ::GLApp::GLApp;
+	
 	std::shared_ptr<Mesh> m;
+	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui;
 
 	virtual const char* getTitle() {
 		return "CFD Mesh";
 	}
 	
 	virtual void init() {
-		GLApp::init();
+		Super::init();
 		glClearColor(.5, .75, .75, 1.);
 
+		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 		m = std::make_shared<Mesh>("grids/n0012_113-33.p2dfmt");
 	}
-	
+
+	virtual void shutdown() {
+		gui = nullptr;
+		Super::shutdown();
+	}
+
 	virtual void resize(int width, int height) {
-		GLApp::resize(width, height);
+		Super::resize(width, height);
 		float aspectRatio = (float)width / (float)height;
 		float zNear = .1f;
 		float zFar = 100.f;
@@ -575,11 +586,20 @@ struct CFDMeshApp : public GLApp::GLApp {
 	}
 
 	virtual void update() {
+		Super::update();
 		draw();
+		
+		gui->update([this](){
+			igCheckbox("running", &running);
+			igCheckbox("showVtxs", &showVtxs);
+			igCheckbox("showCellCenters", &showCellCenters);
+			igCheckbox("showEdges", &showEdges);
+			//igCheckbox("ortho", &ortho);
+		});
+		
 		if (running) {
 			step();
 		}
-		GLApp::update();
 	}
 };
 

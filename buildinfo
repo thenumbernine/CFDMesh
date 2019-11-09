@@ -1,3 +1,8 @@
 distName='CFDMesh'
 distType='app'
-depends:append{'../Common', '../GLApp', '../Tensor'}
+depends:append{
+	'../Common',
+	'../Tensor',
+	'../GLApp',
+	'../ImGuiCommon',
+}
