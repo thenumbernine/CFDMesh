@@ -399,7 +399,10 @@ struct CFDMeshApp : public GLApp::GLApp {
 	bool showCellCenters = false;
 
 	int displayMethod = 0;
-	float displayScalar = 1.;
+	float displayScalar = 1;
+
+	//1 = mirror boundary, -1 = freeflow boundary
+	float restitution = -1;
 
 	Parallel::Parallel parallel;
 
@@ -409,17 +412,13 @@ struct CFDMeshApp : public GLApp::GLApp {
 	
 	virtual void init() {
 		Super::init();
-		glClearColor(.5, .75, .75, 1.);
+		glClearColor(.5, .75, .75, 1);
 
 		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 		
 		//m = std::make_shared<Mesh>("grids/n0012_113-33.p2dfmt");
-		m = std::make_shared<Mesh>(
-			int2(101, 101),
-			real2(-1),
-			real2(1),
-			[](real2 v) { return v; }
-		);
+		
+		m = std::make_shared<Mesh>(int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; });
 	
 #if 0	//constant velocity
 		initcond = [](vec) -> Cons {
@@ -446,6 +445,9 @@ struct CFDMeshApp : public GLApp::GLApp {
 	}
 
 	void resetState() {
+		running = false;
+		singleStep = false;
+
 		//for (auto& c : m->cells) {
 		parallel.foreach(
 			m->cells.begin(),
@@ -456,7 +458,7 @@ struct CFDMeshApp : public GLApp::GLApp {
 			
 				Prim W(c->U);
 				assert(W.rho() > 0);
-				assert(vec::length(W.v()) > 0);
+				assert(vec::length(W.v()) >= 0);
 				assert(W.P() > 0);
 				real hTotal = calc_hTotal(W.rho(), W.P(), c->U.ETotal());
 				assert(hTotal > 0);
@@ -539,18 +541,16 @@ struct CFDMeshApp : public GLApp::GLApp {
 			UR = cR->U;
 			return std::pair<Cons, Cons>{UL, UR};
 		} else if (cL) {
-assert(false);			
 			Cons UL, UR;
 			UL = UR = cL->U;
 			vec m = UR.m();
-			UR.m() = m - e->normal * (2 * vec::dot(e->normal, m));
+			UR.m() = m - e->normal * ((1 + restitution) * vec::dot(e->normal, m));
 			return std::pair<Cons, Cons>{UL, UR};
 		} else if (cR) {
-assert(false);			
 			Cons UL, UR;
 			UL = UR = cR->U;
 			vec m = UL.m();
-			UL.m() = m - e->normal * (2 * vec::dot(e->normal, m));
+			UL.m() = m - e->normal * ((1 + restitution) * vec::dot(e->normal, m));
 			return std::pair<Cons, Cons>{UL, UR};
 		} 
 		throw Common::Exception() << "here";
@@ -610,13 +610,11 @@ for (auto& c : e->cells) {
 			m->edges.begin(),
 			m->edges.end(),
 			[this, dt](std::shared_ptr<Edge> e) {
-//if (e->cells.size() != 2) continue;
-
 				std::pair<Cons, Cons> ULR = getEdgeStates(e);
 				Cons UL = ULR.first;
 				Cons UR = ULR.second;
-assert(UL == e->cells[0]->U);
-assert(UR == e->cells[1]->U);
+assert(e->cells.size() <= 0 || UL == e->cells[0]->U);
+assert(e->cells.size() <= 1 || UR == e->cells[1]->U);
 assert(UL(3) == 0);
 assert(UR(3) == 0);
 
@@ -754,7 +752,7 @@ assert(e->flux(3) == 0);
 	
 Prim W(c->U);
 assert(W.rho() > 0);
-assert(vec::length(W.v()) > 0);
+assert(vec::length(W.v()) >= 0);
 assert(W.P() > 0);
 real hTotal = calc_hTotal(W.rho(), W.P(), c->U.ETotal());
 assert(hTotal > 0);
@@ -788,6 +786,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 			igCombo("display method", &displayMethod, displayMethodNames, DisplayMethod::COUNT, -1);
 			
 			igInputFloat("display scalar", &displayScalar, .1, 1., "%f", 0);
+			igInputFloat("restitution", &restitution, .1, 1., "%f", 0);
 		});
 		
 		if (running || singleStep) {
