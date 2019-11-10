@@ -3,6 +3,7 @@ distType='app'
 depends:append{
 	'../Common',
 	'../Tensor',
+	'../Parallel',
 	'../GLApp',
 	'../ImGuiCommon',
 }

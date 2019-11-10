@@ -2,6 +2,7 @@
 #include "ImGuiCommon/ImGuiCommon.h"
 #include "GLApp/GLApp.h"
 
+#include "Parallel/Parallel.h"
 #include "Tensor/Tensor.h"
 #include "Common/File.h"
 
@@ -57,6 +58,10 @@ To map(const From& from, std::function<typename To::value_type(typename From::va
 }
 
 using real = double;
+
+using int2 = Tensor::Vector<int, 2>;
+using real2 = Tensor::Vector<real, 2>;
+
 //constexpr int vecdim = 2;
 constexpr int vecdim = 3;
 using vec = Tensor::Vector<real, vecdim>;	//n-dimensional vector of reals
@@ -185,45 +190,31 @@ struct Mesh {
 	std::vector<std::shared_ptr<Edge>> edges;
 	std::vector<std::shared_ptr<Cell>> cells;
 
-	void addVtx(vec x) {
-		vtxs.push_back(std::make_shared<Vertex>(x));
-	}
-
-	std::shared_ptr<Edge> addEdge(int i, int j) {
-		std::shared_ptr<Vertex> a = vtxs[i];
-		std::shared_ptr<Vertex> b = vtxs[j];
-		for (const auto& e : edges) {
-			if ((e->vtxs[0] == a && e->vtxs[1] == b) ||
-				(e->vtxs[0] == b && e->vtxs[1] == a)) 
-			{
-				return e;
+	Mesh(int2 size, real2 mins, real2 maxs, std::function<real2(real2)> grid) {
+		int m = size(0);
+		int n = size(1);
+		for (int j = 0; j < n; ++j) {
+			for (int i = 0; i < m; ++i) {
+				real2 x = real2(
+					((real)i + .5) / (real)size(0),
+					((real)j + .5) / (real)size(1)) * (maxs - mins) + mins;
+				
+				//addVtx(vec(grid(u)));
+				
+				real2 u = grid(x);
+				std::function<real(int)> f = [&u](int i) -> real { return i < vecdim ? u(i) : 0.; };
+				addVtx(vec(f));
 			}
 		}
-		std::shared_ptr<Edge> e = std::make_shared<Edge>(std::vector<std::shared_ptr<Vertex>>{a,b});
-		edges.push_back(e);
-		a->edges.push_back(e);
-		b->edges.push_back(e);
-		return e;
-	}
-
-	std::shared_ptr<Cell> addCell(std::vector<int> indexes) {
-		std::shared_ptr<Cell> c = std::make_shared<Cell>();
-		size_t n = indexes.size();
-		for (size_t i = 0; i < n; ++i) {
-			c->vtxs.push_back(vtxs[indexes[i]]);
+		
+		for (int i = 0; i < n-1; ++i) {
+			for (int j = 0; j < m-1; ++j) {
+				addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1), j+1 + m * i});
+			}
 		}
-		for (size_t i = 0; i < n; ++i) {
-			c->edges.push_back(addEdge(indexes[i], indexes[(i+1)%n]));
-		}
-		cells.push_back(c);
-		c->pos = sum(map<
-			std::vector<std::shared_ptr<Vertex>>,
-			std::vector<vec>
-		>(c->vtxs, [](std::shared_ptr<Vertex> v) { return v->pos; })) * (1. / (real)n);
-		for (auto& e : c->edges) {
-			e->cells.push_back(c);
-		}
-		return c;
+	
+		calcAux();
+		setInitState();
 	}
 
 	Mesh(const std::string& fn) {
@@ -260,15 +251,57 @@ struct Mesh {
 	
 		for (int i = 0; i < n-1; ++i) {
 			for (int j = 0; j < m-1; ++j) {
-				std::shared_ptr<Cell> c = addCell(std::vector<int>{
-					j + m * i,
-					j + m * (i+1),
-					j+1 + m * (i+1),
-					j+1 + m * i
-				});
+				addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1), j+1 + m * i});
 			}
 		}
-	
+
+		calcAux();
+		setInitState();
+	}
+
+	void addVtx(vec x) {
+		vtxs.push_back(std::make_shared<Vertex>(x));
+	}
+
+	std::shared_ptr<Edge> addEdge(int i, int j) {
+		std::shared_ptr<Vertex> a = vtxs[i];
+		std::shared_ptr<Vertex> b = vtxs[j];
+		for (const auto& e : edges) {
+			if ((e->vtxs[0] == a && e->vtxs[1] == b) ||
+				(e->vtxs[0] == b && e->vtxs[1] == a)) 
+			{
+				return e;
+			}
+		}
+		std::shared_ptr<Edge> e = std::make_shared<Edge>(std::vector<std::shared_ptr<Vertex>>{a,b});
+		edges.push_back(e);
+		a->edges.push_back(e);
+		b->edges.push_back(e);
+		return e;
+	}
+
+	void addCell(std::vector<int> indexes) {
+		std::shared_ptr<Cell> c = std::make_shared<Cell>();
+		size_t n = indexes.size();
+		for (size_t i = 0; i < n; ++i) {
+			c->vtxs.push_back(vtxs[indexes[i]]);
+		}
+		for (size_t i = 0; i < n; ++i) {
+			c->edges.push_back(addEdge(indexes[i], indexes[(i+1)%n]));
+		}
+		cells.push_back(c);
+		c->pos = sum(map<
+			std::vector<std::shared_ptr<Vertex>>,
+			std::vector<vec>
+		>(c->vtxs, [](std::shared_ptr<Vertex> v) { return v->pos; })) * (1. / (real)n);
+		for (auto& e : c->edges) {
+			e->cells.push_back(c);
+		}
+	}
+
+	//calculate edge info
+	//calculate cell volume info
+	void calcAux() {
 		for (auto& e : edges) {
 			{
 				auto a = e->vtxs[0];
@@ -304,27 +337,9 @@ struct Mesh {
 					return v->pos;
 				}));
 		}
-
-		resetState();
 	}
 
-	void resetState() {
-		for (auto& c : cells) {	
-			Prim W(1.,
-				//behavior inconsistency:
-				// vec(x) produces [x, x, ..., x]
-				// vec(x, 0) produces [x, 0, ..., 0]
-				vec(.1, 0.),
-				1.);
-			c->U = Cons(W);
-			
-			Prim W2(c->U);
-			assert(W2.rho() > 0);
-			assert(vec::length(W2.v()) > 0);
-			assert(W2.P() > 0);
-			real hTotal = calc_hTotal(W.rho(), W.P(), c->U.ETotal());
-			assert(hTotal > 0);
-		}
+	void setInitState() {
 	}
 };
 
@@ -377,6 +392,18 @@ struct CFDMeshApp : public GLApp::GLApp {
 	
 	std::shared_ptr<Mesh> m;
 	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui;
+	std::function<Cons(vec)> initcond;
+
+	bool running = false;
+	bool singleStep = false;
+	bool showVtxs = true;
+	bool showCellCenters = false;
+	bool showEdges = true;
+
+	int displayMethod = 0;
+	float displayScalar = 1.;
+
+	Parallel::Parallel parallel;
 
 	virtual const char* getTitle() {
 		return "CFD Mesh";
@@ -387,7 +414,56 @@ struct CFDMeshApp : public GLApp::GLApp {
 		glClearColor(.5, .75, .75, 1.);
 
 		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
-		m = std::make_shared<Mesh>("grids/n0012_113-33.p2dfmt");
+		
+		//m = std::make_shared<Mesh>("grids/n0012_113-33.p2dfmt");
+		m = std::make_shared<Mesh>(
+			int2(128, 128),
+			real2(-1),
+			real2(1),
+			[](real2 v) { return v; }
+		);
+	
+#if 0	//constant velocity
+		initcond = [](vec) -> Cons {
+			return Cons(Prim(1.,
+				//behavior inconsistency:
+				// vec(x) produces [x, x, ..., x]
+				// vec(x, 0) produces [x, 0, ..., 0]
+				vec(.1, 0.),
+				1.));
+		};
+#endif
+#if 1	//Sod
+		initcond = [](vec x) -> Cons {
+			bool lhs = x(0) < 0 && x(1) < 0;
+			return Cons(Prim(
+				lhs ? 1. : .125,
+				vec(),
+				lhs ? 1. : .1
+			));
+		};
+#endif
+
+		resetState();
+	}
+
+	void resetState() {
+		//for (auto& c : m->cells) {
+		parallel.foreach(
+			m->cells.begin(),
+			m->cells.end(),
+			[this](std::shared_ptr<Cell> c) {
+				c->U = initcond(c->pos);
+//std::cout << c->U << std::endl;
+			
+				Prim W(c->U);
+				assert(W.rho() > 0);
+				assert(vec::length(W.v()) > 0);
+				assert(W.P() > 0);
+				real hTotal = calc_hTotal(W.rho(), W.P(), c->U.ETotal());
+				assert(hTotal > 0);
+			}
+		);
 	}
 
 	virtual void shutdown() {
@@ -405,15 +481,6 @@ struct CFDMeshApp : public GLApp::GLApp {
 		glFrustum(-aspectRatio * zNear, aspectRatio * zNear, -zNear, zNear, zNear, zFar);
 	}
 	
-	bool running = false;
-	bool singleStep = false;
-	bool showVtxs = true;
-	bool showCellCenters = false;
-	bool showEdges = true;
-
-	int displayMethod = 0;
-	float displayScalar = 1.;
-
 	void draw() {
 		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
@@ -492,45 +559,64 @@ assert(false);
 	}
 
 	void step() {
+		//for (auto& c : m->cells) {
+		real result = parallel.reduce(
+			m->cells.begin(), 
+			m->cells.end(), 
+			[this](std::shared_ptr<Cell> c) -> real {
+				Prim W(c->U);
+				real rho = W.rho();
+				real P = W.P();
+				real Cs = sqrt(heatCapacityRatio * P / rho);
+				real result = std::numeric_limits<real>::infinity();
+				for (int j = 0; j < vec::size; ++j) {
+					real v = W.v()(j);
+					//local vx, vy = rotateTo(vx,vy, e->normal)
+					//assert(vy == 0)
+					real lambdaMin = v - Cs;
+					real lambdaMax = v + Cs;
+					lambdaMin = std::min<real>(0, lambdaMin);
+					lambdaMax = std::max<real>(0, lambdaMax);
+					// TODO a better way to do this.  maybe use edges' lambdas?  maybe do this after calculating the eigenbasis?
+					real dx = sqrt(c->volume);
+					real dum = dx / (abs(lambdaMax - lambdaMin) + 1e-9);
+					result = std::min(result, dum);
+				}
+				return result;
+			}, 
+			std::numeric_limits<real>::infinity(), 
+			[](real a, real b) -> real { return std::min(a,b); }
+		);
 		// calculate dt
-		real result = std::numeric_limits<real>::infinity();
 		real cfl = .5;
-		for (auto& c : m->cells) {
-			Prim W(c->U);
-			real rho = W.rho();
-			real P = W.P();
-			real Cs = sqrt(heatCapacityRatio * P / rho);
-			for (int j = 0; j < vec::size; ++j) {
-				real v = W.v()(j);
-				//local vx, vy = rotateTo(vx,vy, e->normal)
-				//assert(vy == 0)
-				real lambdaMin = v - Cs;
-				real lambdaMax = v + Cs;
-				lambdaMin = std::min<real>(0, lambdaMin);
-				lambdaMax = std::max<real>(0, lambdaMax);
-				// TODO a better way to do this.  maybe use edges' lambdas?  maybe do this after calculating the eigenbasis?
-				real dx = sqrt(c->volume);
-				real dum = dx / (abs(lambdaMax - lambdaMin) + 1e-9);
-				result = std::min(result, dum);
-			}
-		}
 		real dt = result * cfl;
 
-		for (auto& e : m->edges) {
-			e->flux = StateVec();
-			for (auto& c : e->cells) {
-				Prim W(c->U);
-				Cons U(W);
-//std::cout << (U - c->U) << std::endl;
+		//for (auto& e : m->edges) {
+		parallel.foreach(
+			m->edges.begin(), 
+			m->edges.end(), 
+			[](std::shared_ptr<Edge> e) {
+				e->flux = StateVec();
+#if 0
+for (auto& c : e->cells) {
+	Prim W(c->U);
+	Cons U(W);
+	std::cout << (U - c->U) << std::endl;
+}
+#endif
 			}
-		}
+		);
 
-		for (auto& e : m->edges) {
-if (e->cells.size() != 2) continue;
+		//for (auto& e : m->edges) {
+		parallel.foreach(
+			m->edges.begin(),
+			m->edges.end(),
+			[this, dt](std::shared_ptr<Edge> e) {
+//if (e->cells.size() != 2) continue;
 
-			std::pair<Cons, Cons> ULR = getEdgeStates(e);
-			Cons UL = ULR.first;
-			Cons UR = ULR.second;
+				std::pair<Cons, Cons> ULR = getEdgeStates(e);
+				Cons UL = ULR.first;
+				Cons UR = ULR.second;
 assert(UL == e->cells[0]->U);
 assert(UR == e->cells[1]->U);
 assert(UL(3) == 0);
@@ -541,43 +627,43 @@ for (int i = 0; i < StateVec::size; ++i) {
 	assert(isfinite(UR(0)));	
 }	
 
-			// 1) roe values at edge 
-			// rotate to align edge normal to x axis
-			// so x-direction flux jacobian is good for calculating the flux 
-			UL.m() = rotateTo(UL.m(), e->normal);
-			UR.m() = rotateTo(UR.m(), e->normal);
+				// 1) roe values at edge 
+				// rotate to align edge normal to x axis
+				// so x-direction flux jacobian is good for calculating the flux 
+				UL.m() = rotateTo(UL.m(), e->normal);
+				UR.m() = rotateTo(UR.m(), e->normal);
 
-			real ETotalL = UL.ETotal();
-			Prim WL(UL);
-			real rhoL = WL.rho();
+				real ETotalL = UL.ETotal();
+				Prim WL(UL);
+				real rhoL = WL.rho();
 assert(rhoL > 0);			
-			vec vL = WL.v();
-			real PL = WL.P();
+				vec vL = WL.v();
+				real PL = WL.P();
 assert(PL > 0);			
-			real hTotalL = calc_hTotal(rhoL, PL, ETotalL);
+				real hTotalL = calc_hTotal(rhoL, PL, ETotalL);
 assert(hTotalL > 0);			
-			real sqrtRhoL = sqrt(rhoL);
-			
-			real ETotalR = UR.ETotal();
-			Prim WR(UR);
-			real rhoR = WR.rho();
-assert(rhoR > 0);			
-			vec vR = WR.v();
-			real PR = WR.P();
-assert(PR > 0);			
-			real hTotalR = calc_hTotal(rhoR, PR, ETotalR);
-assert(hTotalR > 0);			
-			real sqrtRhoR = sqrt(rhoR);
+				real sqrtRhoL = sqrt(rhoL);
 				
+				real ETotalR = UR.ETotal();
+				Prim WR(UR);
+				real rhoR = WR.rho();
+assert(rhoR > 0);			
+				vec vR = WR.v();
+				real PR = WR.P();
+assert(PR > 0);			
+				real hTotalR = calc_hTotal(rhoR, PR, ETotalR);
+assert(hTotalR > 0);			
+				real sqrtRhoR = sqrt(rhoR);
+					
 //std::cout << (UL - Cons(WL)) << std::endl;
 //std::cout << (UR - Cons(WR)) << std::endl;
-			
-			vec v = (vL * sqrtRhoL + vR * sqrtRhoR) / (sqrtRhoL + sqrtRhoR);
-			real vx = v(0), vy = v(1), vz = v(2);
-			real hTotal = (sqrtRhoL * hTotalL + sqrtRhoR * hTotalR) / (sqrtRhoL + sqrtRhoR);
-			real Cs = calcSpeedOfSound(v, hTotal);
-			real CsSq = Cs * Cs;
-			//e.roe = matrix{rho, vx, vy, vz, hTotal, Cs}
+				
+				vec v = (vL * sqrtRhoL + vR * sqrtRhoR) / (sqrtRhoL + sqrtRhoR);
+				real vx = v(0), vy = v(1), vz = v(2);
+				real hTotal = (sqrtRhoL * hTotalL + sqrtRhoR * hTotalR) / (sqrtRhoL + sqrtRhoR);
+				real Cs = calcSpeedOfSound(v, hTotal);
+				real CsSq = Cs * Cs;
+				//e.roe = matrix{rho, vx, vy, vz, hTotal, Cs}
 
 assert(isfinite(sqrtRhoL));
 assert(isfinite(sqrtRhoR));
@@ -587,94 +673,100 @@ assert(isfinite(vz));
 assert(isfinite(hTotal));
 assert(isfinite(Cs));
 
-			// 2) eigenbasis at interface
-		
-			real vSq = vec::lenSq(v);
-
-			static_assert(StateVec::size == 5);
-
-			//StateVec lambdas = {vx - Cs, vx, vx, vx, vx + Cs};
-			StateVec lambdas;
-			lambdas(0) = vx - Cs;
-			lambdas(1) = vx;
-			lambdas(2) = vx;
-			lambdas(3) = vx;
-			lambdas(4) = vx + Cs;
+				// 2) eigenbasis at interface
 			
-			real gamma_1 = heatCapacityRatio - 1;
-			real evL[5][5] = {
-				{(.5 * gamma_1 * vSq + Cs * vx) / (2 * CsSq),	(-Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
-				{1 - gamma_1 * vSq / (2 * CsSq),				gamma_1 * vx / CsSq,				gamma_1 * vy / CsSq,			gamma_1 * vz / CsSq,		-gamma_1 / CsSq,		},
-				{-vy,											0,									1,								0,							0,						}, 
-				{-vz,											0,									0,								1,							0,						},
-				{(.5 * gamma_1 * vSq - Cs * vx) / (2 * CsSq),	(Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
-			};
-	
-			real evR[5][5] = {
-				{1, 				1, 			0,		0,		1,				},
-				{vx - Cs, 			vx, 		0,		0,		vx + Cs,		},
-				{vy,				vy,			1,		0,		vy,				},
-				{vz,				vz,			0,		1,		vz,				},
-				{hTotal - Cs * vx, .5 * vSq, 	vy,		vz,		hTotal + Cs * vx},
-			};
+				real vSq = vec::lenSq(v);
+
+				static_assert(StateVec::size == 5);
+
+				//StateVec lambdas = {vx - Cs, vx, vx, vx, vx + Cs};
+				StateVec lambdas;
+				lambdas(0) = vx - Cs;
+				lambdas(1) = vx;
+				lambdas(2) = vx;
+				lambdas(3) = vx;
+				lambdas(4) = vx + Cs;
+				
+				real gamma_1 = heatCapacityRatio - 1;
+				real evL[5][5] = {
+					{(.5 * gamma_1 * vSq + Cs * vx) / (2 * CsSq),	(-Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
+					{1 - gamma_1 * vSq / (2 * CsSq),				gamma_1 * vx / CsSq,				gamma_1 * vy / CsSq,			gamma_1 * vz / CsSq,		-gamma_1 / CsSq,		},
+					{-vy,											0,									1,								0,							0,						}, 
+					{-vz,											0,									0,								1,							0,						},
+					{(.5 * gamma_1 * vSq - Cs * vx) / (2 * CsSq),	(Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
+				};
 		
-			Cons dU = UR - UL;
-			Cons dUTilde = matmul(&evL[0][0], dU);
-		
-			Cons fluxTilde;
-			for (int j = 0; j < 5; ++j) {
-				real lambda = lambdas(j);
-				real phi = 0;
-				real sgnLambda = lambda >= 0 ? 1 : -1;
-				real dx = e->cellDist;
-				real epsilon = lambda * dt / dx;
-				fluxTilde(j) = -.5 * lambda * dUTilde(j) * (sgnLambda + phi * (epsilon - sgnLambda));
-			}
-		
-			Cons UAvg = (UR + UL) * .5;
-			Cons UAvgTilde = matmul(&evL[0][0], UAvg);
-			fluxTilde = fluxTilde + lambdas * UAvgTilde;
-		
-			Cons flux = matmul(&evR[0][0], fluxTilde);
-			// here's the flux, aligned along the normal
-		
-			flux.m() = rotateFrom(flux.m(), e->normal);
-		
+				real evR[5][5] = {
+					{1, 				1, 			0,		0,		1,				},
+					{vx - Cs, 			vx, 		0,		0,		vx + Cs,		},
+					{vy,				vy,			1,		0,		vy,				},
+					{vz,				vz,			0,		1,		vz,				},
+					{hTotal - Cs * vx, .5 * vSq, 	vy,		vz,		hTotal + Cs * vx},
+				};
+			
+				Cons dU = UR - UL;
+				Cons dUTilde = matmul(&evL[0][0], dU);
+			
+				Cons fluxTilde;
+				for (int j = 0; j < 5; ++j) {
+					real lambda = lambdas(j);
+					real phi = 0;
+					real sgnLambda = lambda >= 0 ? 1 : -1;
+					real dx = e->cellDist;
+					real epsilon = lambda * dt / dx;
+					fluxTilde(j) = -.5 * lambda * dUTilde(j) * (sgnLambda + phi * (epsilon - sgnLambda));
+				}
+			
+				Cons UAvg = (UR + UL) * .5;
+				Cons UAvgTilde = matmul(&evL[0][0], UAvg);
+				fluxTilde = fluxTilde + lambdas * UAvgTilde;
+			
+				Cons flux = matmul(&evR[0][0], fluxTilde);
+				// here's the flux, aligned along the normal
+			
+				flux.m() = rotateFrom(flux.m(), e->normal);
+			
 for (int i = 0; i < StateVec::size; ++i) {
 	assert(isfinite(flux(0)));	
 }	
-			
-			// here's the flux in underlying coordinates
-			e->flux = flux;
+				
+				// here's the flux in underlying coordinates
+				e->flux = flux;
 assert(e->flux(3) == 0);
-std::cout << flux << std::endl;
-		}
-
-		for (auto& c : m->cells) {
-			Cons dU_dt;
-			for (auto& e : c->edges) {
-				//if (e.hasFlux) {
-					if (c == e->cells.front()) {
-						dU_dt -= e->flux * (e->length / c->volume);
-					} else {
-						dU_dt += e->flux * (e->length / c->volume);
-					}
-				//}
+//std::cout << flux << std::endl;
 			}
-			c->U += dU_dt * dt;
+		);
+
+		//for (auto& c : m->cells) {
+		parallel.foreach(
+			m->cells.begin(),
+			m->cells.end(),
+			[dt](std::shared_ptr<Cell> c) {
+				Cons dU_dt;
+				for (auto& e : c->edges) {
+					//if (e.hasFlux) {
+						if (c == e->cells.front()) {
+							dU_dt -= e->flux * (e->length / c->volume);
+						} else {
+							dU_dt += e->flux * (e->length / c->volume);
+						}
+					//}
+				}
+				c->U += dU_dt * dt;
 	
-	Prim W(c->U);
-	assert(W.rho() > 0);
-	assert(vec::length(W.v()) > 0);
-	assert(W.P() > 0);
-	real hTotal = calc_hTotal(W.rho(), W.P(), c->U.ETotal());
-	assert(hTotal > 0);
-	Cons U2(W);
-	for (int i = 0; i < StateVec::size; ++i) {
-		real delta = U2(i) - c->U(i);
-		assert(fabs(delta) < 1e-9);
-	}
+Prim W(c->U);
+assert(W.rho() > 0);
+assert(vec::length(W.v()) > 0);
+assert(W.P() > 0);
+real hTotal = calc_hTotal(W.rho(), W.P(), c->U.ETotal());
+assert(hTotal > 0);
+Cons U2(W);
+for (int i = 0; i < StateVec::size; ++i) {
+	real delta = U2(i) - c->U(i);
+	assert(fabs(delta) < 1e-9);
 }
+			}
+		);
 
 	}
 
@@ -693,7 +785,7 @@ std::cout << flux << std::endl;
 			//igCheckbox("ortho", &ortho);
 		
 			if (igSmallButton("reset state")) {
-				m->resetState();
+				resetState();
 			}
 	
 			igCombo("display method", &displayMethod, displayMethodNames, DisplayMethod::COUNT, -1);
@@ -719,7 +811,7 @@ std::cout << flux << std::endl;
 		case SDL_KEYUP:
 			if (canHandleKeyboard) {
 				if (event.key.keysym.sym == SDLK_r) {
-					m->resetState();
+					resetState();
 				} else if (event.key.keysym.sym == SDLK_u) {
 					singleStep = true;
 				} else if (event.key.keysym.sym == SDLK_SPACE) {
