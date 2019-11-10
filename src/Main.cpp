@@ -202,7 +202,7 @@ struct Mesh {
 				//addVtx(vec(grid(u)));
 				
 				real2 u = grid(x);
-				std::function<real(int)> f = [&u](int i) -> real { return i < vecdim ? u(i) : 0.; };
+				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
 				addVtx(vec(f));
 			}
 		}
@@ -214,7 +214,6 @@ struct Mesh {
 		}
 	
 		calcAux();
-		setInitState();
 	}
 
 	Mesh(const std::string& fn) {
@@ -256,7 +255,6 @@ struct Mesh {
 		}
 
 		calcAux();
-		setInitState();
 	}
 
 	void addVtx(vec x) {
@@ -293,7 +291,10 @@ struct Mesh {
 		c->pos = sum(map<
 			std::vector<std::shared_ptr<Vertex>>,
 			std::vector<vec>
-		>(c->vtxs, [](std::shared_ptr<Vertex> v) { return v->pos; })) * (1. / (real)n);
+		>(c->vtxs, [](std::shared_ptr<Vertex> v) {
+			return v->pos;
+		})) * (1. / (real)n);
+		
 		for (auto& e : c->edges) {
 			e->cells.push_back(c);
 		}
@@ -337,9 +338,6 @@ struct Mesh {
 					return v->pos;
 				}));
 		}
-	}
-
-	void setInitState() {
 	}
 };
 
@@ -396,9 +394,9 @@ struct CFDMeshApp : public GLApp::GLApp {
 
 	bool running = false;
 	bool singleStep = false;
-	bool showVtxs = true;
+	bool showVtxs = false;
+	bool showEdges = false;
 	bool showCellCenters = false;
-	bool showEdges = true;
 
 	int displayMethod = 0;
 	float displayScalar = 1.;
@@ -417,7 +415,7 @@ struct CFDMeshApp : public GLApp::GLApp {
 		
 		//m = std::make_shared<Mesh>("grids/n0012_113-33.p2dfmt");
 		m = std::make_shared<Mesh>(
-			int2(128, 128),
+			int2(101, 101),
 			real2(-1),
 			real2(1),
 			[](real2 v) { return v; }
@@ -767,7 +765,6 @@ for (int i = 0; i < StateVec::size; ++i) {
 }
 			}
 		);
-
 	}
 
 	virtual void update() {
