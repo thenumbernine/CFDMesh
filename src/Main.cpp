@@ -1,7 +1,8 @@
 #include "GLApp/gl.h"
-#include "ImGuiCommon/ImGuiCommon.h"
 #include "GLApp/GLApp.h"
+#include "GLApp/ViewBehavior.h"
 
+#include "ImGuiCommon/ImGuiCommon.h"
 #include "Parallel/Parallel.h"
 #include "Tensor/Tensor.h"
 #include "Common/File.h"
@@ -461,8 +462,8 @@ static const char* displayMethodNames[DisplayMethod::COUNT] = {
 
 template<typename T> T cubed(const T& t) { return t * t * t; }
 
-struct CFDMeshApp : public GLApp::GLApp {
-	using Super = ::GLApp::GLApp;
+struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
+	using Super = ::GLApp::ViewBehavior<::GLApp::GLApp>;
 	
 	std::shared_ptr<Mesh> m;
 	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui;
@@ -490,27 +491,44 @@ struct CFDMeshApp : public GLApp::GLApp {
 	
 	virtual void init() {
 		Super::init();
+		
+		view = viewOrtho;
+		
 		glClearColor(.5, .75, .75, 1);
 
 		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 		
-		//m = std::make_shared<Mesh>(Mesh::buildFromFile(parallel, "grids/n0012_113-33.p2dfmt"));
-		m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
+		m = std::make_shared<Mesh>(Mesh::buildFromFile(parallel, "grids/n0012_113-33.p2dfmt"));
+		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
 		//m = std::make_shared<Mesh>(Mesh::buildTriChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
 		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cbrt(v(0)), cbrt(v(1))); }));
 		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cubed(v(0)), cubed(v(1))); }));
+		/** /
+		m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { 
+			real r = real2::length(v);
+			//real theta = std::max(0., 1. - r);
+			real sigma = 3.;	//almost 0 at r=1
+			const real rotationAmplitude = 3.;
+			real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
+			real costh = cos(theta), sinth = sin(theta);
+			return real2(
+				costh * v(0) - sinth * v(1),
+				sinth * v(0) + costh * v(1));
+		}));
+		/ **/
 	
-#if 0	//constant velocity
+#if 1	//constant velocity
 		initcond = [](vec) -> Cons {
 			return Cons(Prim(1.,
 				//behavior inconsistency:
 				// vec(x) produces [x, x, ..., x]
 				// vec(x, 0) produces [x, 0, ..., 0]
-				vec(.1, 0.),
+				//vec(.1, 0.),
+				vec(),
 				1.));
 		};
 #endif
-#if 1	//Sod
+#if 0	//Sod
 		initcond = [](vec x) -> Cons {
 			bool lhs = x(0) < 0 && x(1) < 0;
 			return Cons(Prim(
@@ -551,28 +569,7 @@ struct CFDMeshApp : public GLApp::GLApp {
 		Super::shutdown();
 	}
 
-	virtual void resize(int width, int height) {
-		Super::resize(width, height);
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		
-		float aspectRatio = (float)width / (float)height;
-		
-		//float zNear = .1f;
-		//float zFar = 100;
-		//glFrustum(-aspectRatio * zNear, aspectRatio * zNear, -zNear, zNear, zNear, zFar);
-		
-		float zNear = -1;
-		float zFar = 1;
-		float w = 1.;
-		glOrtho(-aspectRatio * w, aspectRatio * w, -w, w, zNear, zFar);
-	}
-	
 	void draw() {
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-		//glTranslatef(0.f, 0.f, -2.f);
-		
 		glClear(GL_COLOR_BUFFER_BIT);
 		for (const auto& c : m->cells) {
 			Prim W(c.U);
@@ -608,6 +605,7 @@ struct CFDMeshApp : public GLApp::GLApp {
 			glPointSize(1);
 		}
 		if (showEdges) {
+			glColor3f(1,1,1);
 			glBegin(GL_LINES);
 			for (const auto& e : m->edges) {
 				for (int vi : e.vtxs) {
