@@ -160,8 +160,8 @@ struct Edge {
 	real length;
 	real cellDist;
 	StateVec flux;
-	int vtxs[2];	//this is always two
-	int cells[2];	//this is always two
+	int vtxs[2];
+	int cells[2];
 	Edge(int va, int vb) : length(0), cellDist(0) {
 		vtxs[0] = va;
 		vtxs[1] = vb;
@@ -196,17 +196,23 @@ struct Mesh {
 	std::vector<Edge> edges;
 	std::vector<Cell> cells;
 
-	Mesh(
+//liu kang wins.  friendship.
+private:
+	Mesh() {}
+
+public:
+	static Mesh buildQuadChart(
+		Parallel::Parallel& parallel,
 		int2 size,
 		real2 mins,
 		real2 maxs,
-		std::function<real2(real2)> grid,
-		Parallel::Parallel& parallel
+		std::function<real2(real2)> grid
 	) {
+		Mesh mesh;
 		int m = size(0);
 		int n = size(1);
 	
-		vtxs.resize(m * n);
+		mesh.vtxs.resize(m * n);
 		for (int j = 0; j < n; ++j) {
 			for (int i = 0; i < m; ++i) {
 				real2 x = real2(
@@ -215,20 +221,61 @@ struct Mesh {
 				
 				real2 u = grid(x);
 				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				vtxs[i + m * j].pos = vec(f);
+				mesh.vtxs[i + m * j].pos = vec(f);
 			}
 		}
 		
 		for (int i = 0; i < n-1; ++i) {
 			for (int j = 0; j < m-1; ++j) {
-				addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1), j+1 + m * i});
+				mesh.addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1), j+1 + m * i});
 			}
 		}
 	
-		calcAux(parallel);
+		mesh.calcAux(parallel);
+		
+		return mesh;
 	}
 
-	Mesh(const std::string& fn, Parallel::Parallel& parallel) {
+	static Mesh buildTriChart(
+		Parallel::Parallel& parallel,
+		int2 size,
+		real2 mins,
+		real2 maxs,
+		std::function<real2(real2)> grid
+	) {
+		Mesh mesh;
+		int m = size(0);
+		int n = size(1);
+	
+		mesh.vtxs.resize(m * n);
+		for (int j = 0; j < n; ++j) {
+			for (int i = 0; i < m; ++i) {
+				real2 x = real2(
+					((real)i + .5) / (real)size(0),
+					((real)j + .5) / (real)size(1)) * (maxs - mins) + mins;
+				
+				real2 u = grid(x);
+				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
+				mesh.vtxs[i + m * j].pos = vec(f);
+			}
+		}
+		
+		for (int i = 0; i < n-1; ++i) {
+			for (int j = 0; j < m-1; ++j) {
+				mesh.addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1)});
+				mesh.addCell(std::vector<int>{j+1 + m * (i+1), j+1 + m * i, j + m * i});
+			}
+		}
+	
+		mesh.calcAux(parallel);
+		
+		return mesh;
+	}
+
+
+	static Mesh buildFromFile(Parallel::Parallel& parallel, const std::string& fn) {
+		Mesh mesh;	
+		
 		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read("grids/n0012_113-33.p2dfmt"), "\n");
 	
 		std::string first = ls.front();
@@ -255,18 +302,20 @@ struct Mesh {
 		auto vs = std::vector(x.begin() + m*n, x.end());
 		assert(us.size() == vs.size());
 
-		vtxs.resize(m*n);
+		mesh.vtxs.resize(m*n);
 		for (int i = 0; i < (int)us.size(); ++i) {
-			vtxs[i].pos = vec(us[i], vs[i]);
+			mesh.vtxs[i].pos = vec(us[i], vs[i]);
 		}
 	
 		for (int i = 0; i < n-1; ++i) {
 			for (int j = 0; j < m-1; ++j) {
-				addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1), j+1 + m * i});
+				mesh.addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1), j+1 + m * i});
 			}
 		}
 	
-		calcAux(parallel);
+		mesh.calcAux(parallel);
+	
+		return mesh;
 	}
 
 	int addEdge(int va, int vb) {
@@ -410,6 +459,8 @@ static const char* displayMethodNames[DisplayMethod::COUNT] = {
 	"volume",
 };
 
+template<typename T> T cubed(const T& t) { return t * t * t; }
+
 struct CFDMeshApp : public GLApp::GLApp {
 	using Super = ::GLApp::GLApp;
 	
@@ -417,8 +468,10 @@ struct CFDMeshApp : public GLApp::GLApp {
 	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui;
 	std::function<Cons(vec)> initcond;
 
+	double time = 0;
 	bool running = false;
 	bool singleStep = false;
+	
 	bool showVtxs = false;
 	bool showEdges = false;
 	bool showCellCenters = false;
@@ -441,8 +494,11 @@ struct CFDMeshApp : public GLApp::GLApp {
 
 		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 		
-		//m = std::make_shared<Mesh>("grids/n0012_113-33.p2dfmt", parallel);
-		m = std::make_shared<Mesh>(int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }, parallel);
+		//m = std::make_shared<Mesh>(Mesh::buildFromFile(parallel, "grids/n0012_113-33.p2dfmt"));
+		m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
+		//m = std::make_shared<Mesh>(Mesh::buildTriChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
+		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cbrt(v(0)), cbrt(v(1))); }));
+		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cubed(v(0)), cubed(v(1))); }));
 	
 #if 0	//constant velocity
 		initcond = [](vec) -> Cons {
@@ -471,19 +527,21 @@ struct CFDMeshApp : public GLApp::GLApp {
 	void resetState() {
 		running = false;
 		singleStep = false;
+		time = 0;
 
 		parallel.foreach(
 			m->cells.begin(),
 			m->cells.end(),
 			[this](auto& c) {
 				c.U = initcond(c.pos);
-			
+#ifdef DEBUG			
 				Prim W(c.U);
 				assert(W.rho() > 0);
 				assert(vec::length(W.v()) >= 0);
 				assert(W.P() > 0);
 				real hTotal = calc_hTotal(W.rho(), W.P(), c.U.ETotal());
 				assert(hTotal > 0);
+#endif			
 			}
 		);
 	}
@@ -516,7 +574,6 @@ struct CFDMeshApp : public GLApp::GLApp {
 		//glTranslatef(0.f, 0.f, -2.f);
 		
 		glClear(GL_COLOR_BUFFER_BIT);
-		glBegin(GL_QUADS);
 		for (const auto& c : m->cells) {
 			Prim W(c.U);
 			
@@ -526,11 +583,12 @@ struct CFDMeshApp : public GLApp::GLApp {
 				glColor3f(displayScalar * c.volume, .5, 1. - displayScalar * c.volume);
 			}
 			
+			glBegin(GL_POLYGON);
 			for (int vi : c.vtxs) {
 				glVertex2v(m->vtxs[vi].pos.v);
 			}
+			glEnd();
 		}
-		glEnd();
 
 		if (showVtxs || showCellCenters) {
 			glColor3f(1,1,1);
@@ -771,7 +829,7 @@ assert(e.flux(3) == 0);
 					//}
 				}
 				c.U += dU_dt * dt;
-	
+#ifdef DEBUG	
 Prim W(c.U);
 assert(W.rho() > 0);
 assert(vec::length(W.v()) >= 0);
@@ -783,8 +841,11 @@ for (int i = 0; i < StateVec::size; ++i) {
 	real delta = U2(i) - c.U(i);
 	assert(fabs(delta) < 1e-9);
 }
+#endif			
 			}
 		);
+	
+		time += dt;
 	}
 
 	virtual void update() {
@@ -792,6 +853,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 		draw();
 		
 		gui->update([this](){
+			igText("time: %f", time);
 			igCheckbox("running", &running);
 			
 			if (igSmallButton("step")) singleStep = true;
