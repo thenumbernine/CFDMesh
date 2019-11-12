@@ -160,9 +160,14 @@ struct Edge {
 	real length;
 	real cellDist;
 	StateVec flux;
-	std::vector<int> vtxs;	//this is always two
-	std::vector<int> cells;	//this is always two
-	Edge(std::vector<int> vtxs_) : length(0), cellDist(0), vtxs(vtxs_) {}
+	int vtxs[2];	//this is always two
+	int cells[2];	//this is always two
+	Edge(int va, int vb) : length(0), cellDist(0) {
+		vtxs[0] = va;
+		vtxs[1] = vb;
+		cells[0] = -1;
+		cells[1] = -1;
+	}
 };
 
 struct Cell {
@@ -275,7 +280,7 @@ struct Mesh {
 			}
 		}
 		assert(ei == (int)edges.size());
-		edges.push_back(Edge(std::vector<int>{va,vb}));
+		edges.push_back(Edge(va, vb));
 		vtxs[va].edges.push_back(ei);
 		vtxs[vb].edges.push_back(ei);
 		return ei;
@@ -301,7 +306,14 @@ struct Mesh {
 		cells.push_back(c);
 	
 		for (int ei : c.edges) {
-			edges[ei].cells.push_back(ci);
+			Edge* e = &edges[ei];
+			if (e->cells[0] == -1) {
+				e->cells[0] = ci;
+			} else if (e->cells[1] == -1) {
+				e->cells[1] = ci;
+			} else {
+				throw Common::Exception() << "tried to add too many cells to an edge";
+			}
 		}
 	}
 
@@ -320,16 +332,16 @@ struct Mesh {
 			}
 
 			{
-				int a = -1, b = -1;
-				if (e.cells.size() > 0) a = e.cells[0];
-				if (e.cells.size() > 1) b = e.cells[1];
-				if (e.cells.size() == 2) {
+				int a = e.cells[0];
+				int b = e.cells[1];
+				if (a != -1 && b != -1) {
 					if (vec::dot(cells[a].pos - cells[b].pos, e.normal) < 0) {
 						std::swap(a, b);
-						e.cells = std::vector<int>{a, b};
+						e.cells[0] = a;
+						e.cells[1] = b;
 					}
 					e.cellDist = vec::length(cells[b].pos - cells[a].pos);
-				} else if (e.cells.size() == 1) {
+				} else if (a != -1) {
 					e.cellDist = vec::length(cells[a].pos - e.pos) * 2.;
 				} else {
 					throw Common::Exception() << "you are here";
@@ -415,10 +427,9 @@ struct CFDMeshApp : public GLApp::GLApp {
 	float displayScalar = 1;
 
 	//1 = mirror boundary, -1 = freeflow boundary
-	float restitution = -1;
+	float restitution = 1;
 
-	//Parallel::Parallel parallel;
-	Parallel::Parallel parallel = Parallel::Parallel(1);
+	Parallel::Parallel parallel;
 
 	virtual const char* getTitle() {
 		return "CFD Mesh";
@@ -484,18 +495,25 @@ struct CFDMeshApp : public GLApp::GLApp {
 
 	virtual void resize(int width, int height) {
 		Super::resize(width, height);
-		float aspectRatio = (float)width / (float)height;
-		float zNear = .1f;
-		float zFar = 100.f;
 		glMatrixMode(GL_PROJECTION);
 		glLoadIdentity();
-		glFrustum(-aspectRatio * zNear, aspectRatio * zNear, -zNear, zNear, zNear, zFar);
+		
+		float aspectRatio = (float)width / (float)height;
+		
+		//float zNear = .1f;
+		//float zFar = 100;
+		//glFrustum(-aspectRatio * zNear, aspectRatio * zNear, -zNear, zNear, zNear, zFar);
+		
+		float zNear = -1;
+		float zFar = 1;
+		float w = 1.;
+		glOrtho(-aspectRatio * w, aspectRatio * w, -w, w, zNear, zFar);
 	}
 	
 	void draw() {
 		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
-		glTranslatef(0.f, 0.f, -2.f);
+		//glTranslatef(0.f, 0.f, -2.f);
 		
 		glClear(GL_COLOR_BUFFER_BIT);
 		glBegin(GL_QUADS);
@@ -543,10 +561,8 @@ struct CFDMeshApp : public GLApp::GLApp {
 	}
 
 	std::pair<Cons, Cons> getEdgeStates(const Edge* e) {
-		Cell* cL = nullptr;
-		Cell* cR = nullptr;
-		if (e->cells.size() > 0) cL = &m->cells[e->cells[0]];
-		if (e->cells.size() > 1) cR = &m->cells[e->cells[1]];
+		Cell* cL = e->cells[0] == -1 ? nullptr : &m->cells[e->cells[0]];
+		Cell* cR = e->cells[1] == -1 ? nullptr : &m->cells[e->cells[1]];
 		if (cL && cR) {
 			return std::pair<Cons, Cons>{cL->U, cR->U};
 		} else if (cL) {
@@ -622,8 +638,8 @@ for (int ci : e.cells) {
 				std::pair<Cons, Cons> ULR = getEdgeStates(&e);
 				Cons UL = ULR.first;
 				Cons UR = ULR.second;
-assert(e.cells.size() <= 0 || UL == m->cells[e.cells[0]].U);
-assert(e.cells.size() <= 1 || UR == m->cells[e.cells[1]].U);
+assert(e.cells[0] == -1 || UL == m->cells[e.cells[0]].U);
+assert(e.cells[1] == -1 || UR == m->cells[e.cells[1]].U);
 assert(UL(3) == 0);
 assert(UR(3) == 0);
 
