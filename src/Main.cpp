@@ -207,7 +207,8 @@ public:
 		int2 size,
 		real2 mins,
 		real2 maxs,
-		std::function<real2(real2)> grid
+		std::function<real2(real2)> grid,
+		int2 repeat
 	) {
 		Mesh mesh;
 		int m = size(0);
@@ -217,18 +218,22 @@ public:
 		for (int j = 0; j < n; ++j) {
 			for (int i = 0; i < m; ++i) {
 				real2 x = real2(
-					((real)i + .5) / (real)size(0),
-					((real)j + .5) / (real)size(1)) * (maxs - mins) + mins;
+					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
+					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
 				
 				real2 u = grid(x);
 				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
 				mesh.vtxs[i + m * j].pos = vec(f);
 			}
 		}
-		
-		for (int i = 0; i < n-1; ++i) {
-			for (int j = 0; j < m-1; ++j) {
-				mesh.addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1), j+1 + m * i});
+
+		int jmax = repeat(0) ? m : m-1;
+		int imax = repeat(1) ? n : n-1;
+		for (int i = 0; i < imax; ++i) {
+			int in = (i + 1) % n;
+			for (int j = 0; j < jmax; ++j) {
+				int jn = (j + 1) % m;
+				mesh.addCell(std::vector<int>{j + m * i, j + m * in, jn + m * in, jn + m * i});
 			}
 		}
 	
@@ -498,7 +503,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		glClearColor(.5, .75, .75, 1);
 		
 		//m = std::make_shared<Mesh>(Mesh::buildFromFile(parallel, "grids/n0012_113-33.p2dfmt"));
-		m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
+		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
 		//m = std::make_shared<Mesh>(Mesh::buildTriChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
 		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cbrt(v(0)), cbrt(v(1))); }));
 		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cubed(v(0)), cubed(v(1))); }));
@@ -515,6 +520,10 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 				sinth * v(0) + costh * v(1));
 		}));
 		/ **/
+		
+		m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(51, 101), real2(.01, 0), real2(1, 2*M_PI), [](real2 v) -> real2 { 
+			return real2(cos(v(1)), sin(v(1))) * v(0);
+		}, int2(0, 1)));
 	
 #if 0	//constant velocity
 		initcond = [](vec) -> Cons {
@@ -759,7 +768,100 @@ assert(isfinite(Cs));
 		return flux;
 	}
 
-	Cons (CFDMeshApp::*calcFlux)(Edge* e, Cons, Cons, real) = &CFDMeshApp::calcFluxRoe;
+	Cons calcFluxHLL(Edge* e, Cons UL, Cons UR, real dt) {
+		Prim WL(UL), WR(UR);
+		
+		real densityL = WL.rho();
+		real invDensityL = 1. / densityL;
+		vec velocityL = WL.v();
+		real velocitySqL = vec::dot(velocityL, velocityL);
+		real energyTotalL = UL.ETotal() * invDensityL;
+		real energyKineticL = .5 * velocitySqL;
+		real energyPotentialL = 0;//potentialBuffer[indexPrev];
+		real energyInternalL = energyTotalL - energyKineticL - energyPotentialL;
+		real pressureL = (heatCapacityRatio - 1.) * densityL * energyInternalL;
+		real enthalpyTotalL = energyTotalL + pressureL * invDensityL;
+		real speedOfSoundL = sqrt((heatCapacityRatio - 1.) * (enthalpyTotalL - .5 * velocitySqL));
+		real roeWeightL = sqrt(densityL);
+
+		real densityR = WR.rho();
+		real invDensityR = 1. / densityR;
+		vec velocityR = WR.v();
+		real velocitySqR = vec::dot(velocityR, velocityR);
+		real energyTotalR = UR.ETotal() * invDensityR;
+		real energyKineticR = .5 * velocitySqR;
+		real energyPotentialR = 0;//potentialBuffer[index];
+		real energyInternalR = energyTotalR - energyKineticR - energyPotentialR;
+		real pressureR = (heatCapacityRatio - 1.) * densityR * energyInternalR;
+		real enthalpyTotalR = energyTotalR + pressureR * invDensityR;
+		real speedOfSoundR = sqrt((heatCapacityRatio - 1.) * (enthalpyTotalR - .5 * velocitySqR));
+		real roeWeightR = sqrt(densityR);
+	
+		real roeWeightNormalization = 1. / (roeWeightL + roeWeightR);
+		vec velocity = (velocityL * roeWeightL + velocityR * roeWeightR) * roeWeightNormalization;
+		real enthalpyTotal = (roeWeightL * enthalpyTotalL + roeWeightR * enthalpyTotalR) * roeWeightNormalization;
+		real energyPotential = (roeWeightL * energyPotentialL + roeWeightR * energyPotentialR) * roeWeightNormalization; 
+	
+		real velocitySq = vec::dot(velocity, velocity);
+		real speedOfSound = sqrt((heatCapacityRatio - 1.) * (enthalpyTotal - .5 * velocitySq - energyPotential));
+
+		//eigenvalues
+
+		real eigenvaluesMinL = velocityL(0) - speedOfSoundL;
+		real eigenvaluesMaxR = velocityR(0) + speedOfSoundR;
+		real eigenvaluesMin = velocity(0) - speedOfSound;
+		real eigenvaluesMax = velocity(0) + speedOfSound;
+	#if 0	//Davis direct
+		real sl = eigenvaluesMinL;
+		real sr = eigenvaluesMaxR;
+	#endif
+	#if 1	//Davis direct bounded
+		real sl = std::min(eigenvaluesMinL, eigenvaluesMin);
+		real sr = std::max(eigenvaluesMaxR, eigenvaluesMax);
+	#endif
+
+		Cons eigenvalues;
+		eigenvalues(0) = sl;
+		eigenvalues(1) = velocity(0);
+		eigenvalues(2) = velocity(0);
+		eigenvalues(3) = velocity(0);
+		eigenvalues(4) = sr;
+
+		//flux
+
+		Cons fluxL;
+		fluxL(0) = densityL * velocityL(0);
+		fluxL(1) = densityL * velocityL(0) * velocityL(0) +  pressureL;
+		fluxL(2) = densityL * velocityL(1) * velocityL(0);
+		fluxL(3) = densityL * velocityL(2) * velocityL(0);
+		fluxL(4) = densityL * enthalpyTotalL * velocityL(0);
+		
+		Cons fluxR;
+		fluxR(0) = densityR * velocityR(0);
+		fluxR(1) = densityR * velocityR(0) * velocityR(0) + pressureR;
+		fluxR(2) = densityR * velocityR(1) * velocityR(0);
+		fluxR(3) = densityR * velocityR(2) * velocityR(0);
+		fluxR(4) = densityR * enthalpyTotalR * velocityR(0);	
+
+		//HLL
+		Cons flux;
+		if (0. <= sl) {
+			flux = fluxL;
+		} else if (sl <= 0. && 0. <= sr) {
+			//(sr * fluxL[j] - sl * fluxR[j] + sl * sr * (UR[j] - UL[j])) / (sr - sl)
+			real invDenom = 1. / (sr - sl);
+			for (int i = 0; i < StateVec::size; ++i) {
+				flux(i) = (sr * fluxL(i) - sl * fluxR(i) + sl * sr * (UR(i) - UL(i))) * invDenom; 
+			}
+		} else if (sr <= 0.) {
+			flux = fluxR;
+		}
+	
+		return flux;
+	}
+
+	//Cons (CFDMeshApp::*calcFlux)(Edge*, Cons, Cons, real) = &CFDMeshApp::calcFluxRoe;
+	Cons (CFDMeshApp::*calcFlux)(Edge*, Cons, Cons, real) = &CFDMeshApp::calcFluxHLL;
 
 	void step() {
 		real dt = calcDT();
