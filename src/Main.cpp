@@ -277,7 +277,7 @@ public:
 	static Mesh buildFromFile(Parallel::Parallel& parallel, const std::string& fn) {
 		Mesh mesh;	
 		
-		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read("grids/n0012_113-33.p2dfmt"), "\n");
+		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(fn), "\n");
 	
 		std::string first = ls.front();
 		ls.pop_front();
@@ -466,7 +466,6 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	using Super = ::GLApp::ViewBehavior<::GLApp::GLApp>;
 	
 	std::shared_ptr<Mesh> m;
-	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui;
 	std::function<Cons(vec)> initcond;
 
 	double time = 0;
@@ -484,22 +483,22 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	float restitution = 1;
 
 	Parallel::Parallel parallel;
+	
+	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 
 	virtual const char* getTitle() {
 		return "CFD Mesh";
 	}
 	
-	virtual void init() {
-		Super::init();
+	CFDMeshApp(const Init& args) : Super(args) {
 		
 		view = viewOrtho;
-		
-		glClearColor(.5, .75, .75, 1);
+		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
 
-		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
+		glClearColor(.5, .75, .75, 1);
 		
-		m = std::make_shared<Mesh>(Mesh::buildFromFile(parallel, "grids/n0012_113-33.p2dfmt"));
-		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
+		//m = std::make_shared<Mesh>(Mesh::buildFromFile(parallel, "grids/n0012_113-33.p2dfmt"));
+		m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
 		//m = std::make_shared<Mesh>(Mesh::buildTriChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
 		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cbrt(v(0)), cbrt(v(1))); }));
 		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cubed(v(0)), cubed(v(1))); }));
@@ -517,7 +516,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		}));
 		/ **/
 	
-#if 1	//constant velocity
+#if 0	//constant velocity
 		initcond = [](vec) -> Cons {
 			return Cons(Prim(1.,
 				//behavior inconsistency:
@@ -528,7 +527,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 				1.));
 		};
 #endif
-#if 0	//Sod
+#if 1	//Sod
 		initcond = [](vec x) -> Cons {
 			bool lhs = x(0) < 0 && x(1) < 0;
 			return Cons(Prim(
@@ -562,11 +561,6 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 #endif			
 			}
 		);
-	}
-
-	virtual void shutdown() {
-		gui = nullptr;
-		Super::shutdown();
 	}
 
 	void draw() {
@@ -636,8 +630,10 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		} 
 		throw Common::Exception() << "here";
 	}
+		
+	real cfl = .5;
 
-	void step() {
+	real calcDT() {
 		//for (auto& c : m->cells) {
 		real result = parallel.reduce(
 			m->cells.begin(), 
@@ -667,24 +663,106 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			[](real a, real b) -> real { return std::min(a,b); }
 		);
 		// calculate dt
-		real cfl = .5;
 		real dt = result * cfl;
+		return dt;
+	}
 
-		//for (auto& e : m->edges) {
-		parallel.foreach(
-			m->edges.begin(), 
-			m->edges.end(), 
-			[](auto& e) {
-				e.flux = StateVec();
-#if 0
-for (int ci : e.cells) {
-	Prim W(cells[ci].U);
-	Cons U(W);
-	std::cout << (U - cells[ci].U) << std::endl;
-}
-#endif
-			}
-		);
+	Cons calcFluxRoe(Edge* e, Cons UL, Cons UR, real dt) {
+		real ETotalL = UL.ETotal();
+		Prim WL(UL);
+		real rhoL = WL.rho();
+assert(rhoL > 0);			
+		vec vL = WL.v();
+		real PL = WL.P();
+assert(PL > 0);			
+		real hTotalL = calc_hTotal(rhoL, PL, ETotalL);
+assert(hTotalL > 0);			
+		real sqrtRhoL = sqrt(rhoL);
+		
+		real ETotalR = UR.ETotal();
+		Prim WR(UR);
+		real rhoR = WR.rho();
+assert(rhoR > 0);			
+		vec vR = WR.v();
+		real PR = WR.P();
+assert(PR > 0);			
+		real hTotalR = calc_hTotal(rhoR, PR, ETotalR);
+assert(hTotalR > 0);			
+		real sqrtRhoR = sqrt(rhoR);
+			
+		vec v = (vL * sqrtRhoL + vR * sqrtRhoR) / (sqrtRhoL + sqrtRhoR);
+		real vx = v(0), vy = v(1), vz = v(2);
+		real hTotal = (sqrtRhoL * hTotalL + sqrtRhoR * hTotalR) / (sqrtRhoL + sqrtRhoR);
+		real Cs = calcSpeedOfSound(v, hTotal);
+		real CsSq = Cs * Cs;
+		//e->roe = matrix{rho, vx, vy, vz, hTotal, Cs}
+
+assert(isfinite(sqrtRhoL));
+assert(isfinite(sqrtRhoR));
+assert(isfinite(vx));
+assert(isfinite(vy));
+assert(isfinite(vz));
+assert(isfinite(hTotal));
+assert(isfinite(Cs));
+
+		// 2) eigenbasis at interface
+	
+		real vSq = vec::lenSq(v);
+
+		static_assert(StateVec::size == 5);
+
+		//StateVec lambdas = {vx - Cs, vx, vx, vx, vx + Cs};
+		StateVec lambdas;
+		lambdas(0) = vx - Cs;
+		lambdas(1) = vx;
+		lambdas(2) = vx;
+		lambdas(3) = vx;
+		lambdas(4) = vx + Cs;
+		
+		real gamma_1 = heatCapacityRatio - 1;
+		real evL[5][5] = {
+			{(.5 * gamma_1 * vSq + Cs * vx) / (2 * CsSq),	(-Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
+			{1 - gamma_1 * vSq / (2 * CsSq),				gamma_1 * vx / CsSq,				gamma_1 * vy / CsSq,			gamma_1 * vz / CsSq,		-gamma_1 / CsSq,		},
+			{-vy,											0,									1,								0,							0,						}, 
+			{-vz,											0,									0,								1,							0,						},
+			{(.5 * gamma_1 * vSq - Cs * vx) / (2 * CsSq),	(Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
+		};
+
+		real evR[5][5] = {
+			{1, 				1, 			0,		0,		1,				},
+			{vx - Cs, 			vx, 		0,		0,		vx + Cs,		},
+			{vy,				vy,			1,		0,		vy,				},
+			{vz,				vz,			0,		1,		vz,				},
+			{hTotal - Cs * vx, .5 * vSq, 	vy,		vz,		hTotal + Cs * vx},
+		};
+	
+		Cons dU = UR - UL;
+		Cons dUTilde = matmul(&evL[0][0], dU);
+	
+		Cons fluxTilde;
+		for (int j = 0; j < 5; ++j) {
+			real lambda = lambdas(j);
+			real phi = 0;
+			real sgnLambda = lambda >= 0 ? 1 : -1;
+			real dx = e->cellDist;
+			real epsilon = lambda * dt / dx;
+			fluxTilde(j) = -.5 * lambda * dUTilde(j) * (sgnLambda + phi * (epsilon - sgnLambda));
+		}
+	
+		Cons UAvg = (UR + UL) * .5;
+		Cons UAvgTilde = matmul(&evL[0][0], UAvg);
+		fluxTilde = fluxTilde + lambdas * UAvgTilde;
+	
+		Cons flux = matmul(&evR[0][0], fluxTilde);
+		// here's the flux, aligned along the normal
+
+		return flux;
+	}
+
+	Cons (CFDMeshApp::*calcFlux)(Edge* e, Cons, Cons, real) = &CFDMeshApp::calcFluxRoe;
+
+	void step() {
+		real dt = calcDT();
 
 		//for (auto& e : m->edges) {
 		parallel.foreach(
@@ -710,93 +788,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 				UL.m() = rotateTo(UL.m(), e.normal);
 				UR.m() = rotateTo(UR.m(), e.normal);
 
-				real ETotalL = UL.ETotal();
-				Prim WL(UL);
-				real rhoL = WL.rho();
-assert(rhoL > 0);			
-				vec vL = WL.v();
-				real PL = WL.P();
-assert(PL > 0);			
-				real hTotalL = calc_hTotal(rhoL, PL, ETotalL);
-assert(hTotalL > 0);			
-				real sqrtRhoL = sqrt(rhoL);
-				
-				real ETotalR = UR.ETotal();
-				Prim WR(UR);
-				real rhoR = WR.rho();
-assert(rhoR > 0);			
-				vec vR = WR.v();
-				real PR = WR.P();
-assert(PR > 0);			
-				real hTotalR = calc_hTotal(rhoR, PR, ETotalR);
-assert(hTotalR > 0);			
-				real sqrtRhoR = sqrt(rhoR);
-					
-				vec v = (vL * sqrtRhoL + vR * sqrtRhoR) / (sqrtRhoL + sqrtRhoR);
-				real vx = v(0), vy = v(1), vz = v(2);
-				real hTotal = (sqrtRhoL * hTotalL + sqrtRhoR * hTotalR) / (sqrtRhoL + sqrtRhoR);
-				real Cs = calcSpeedOfSound(v, hTotal);
-				real CsSq = Cs * Cs;
-				//e.roe = matrix{rho, vx, vy, vz, hTotal, Cs}
-
-assert(isfinite(sqrtRhoL));
-assert(isfinite(sqrtRhoR));
-assert(isfinite(vx));
-assert(isfinite(vy));
-assert(isfinite(vz));
-assert(isfinite(hTotal));
-assert(isfinite(Cs));
-
-				// 2) eigenbasis at interface
-			
-				real vSq = vec::lenSq(v);
-
-				static_assert(StateVec::size == 5);
-
-				//StateVec lambdas = {vx - Cs, vx, vx, vx, vx + Cs};
-				StateVec lambdas;
-				lambdas(0) = vx - Cs;
-				lambdas(1) = vx;
-				lambdas(2) = vx;
-				lambdas(3) = vx;
-				lambdas(4) = vx + Cs;
-				
-				real gamma_1 = heatCapacityRatio - 1;
-				real evL[5][5] = {
-					{(.5 * gamma_1 * vSq + Cs * vx) / (2 * CsSq),	(-Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
-					{1 - gamma_1 * vSq / (2 * CsSq),				gamma_1 * vx / CsSq,				gamma_1 * vy / CsSq,			gamma_1 * vz / CsSq,		-gamma_1 / CsSq,		},
-					{-vy,											0,									1,								0,							0,						}, 
-					{-vz,											0,									0,								1,							0,						},
-					{(.5 * gamma_1 * vSq - Cs * vx) / (2 * CsSq),	(Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
-				};
-		
-				real evR[5][5] = {
-					{1, 				1, 			0,		0,		1,				},
-					{vx - Cs, 			vx, 		0,		0,		vx + Cs,		},
-					{vy,				vy,			1,		0,		vy,				},
-					{vz,				vz,			0,		1,		vz,				},
-					{hTotal - Cs * vx, .5 * vSq, 	vy,		vz,		hTotal + Cs * vx},
-				};
-			
-				Cons dU = UR - UL;
-				Cons dUTilde = matmul(&evL[0][0], dU);
-			
-				Cons fluxTilde;
-				for (int j = 0; j < 5; ++j) {
-					real lambda = lambdas(j);
-					real phi = 0;
-					real sgnLambda = lambda >= 0 ? 1 : -1;
-					real dx = e.cellDist;
-					real epsilon = lambda * dt / dx;
-					fluxTilde(j) = -.5 * lambda * dUTilde(j) * (sgnLambda + phi * (epsilon - sgnLambda));
-				}
-			
-				Cons UAvg = (UR + UL) * .5;
-				Cons UAvgTilde = matmul(&evL[0][0], UAvg);
-				fluxTilde = fluxTilde + lambdas * UAvgTilde;
-			
-				Cons flux = matmul(&evR[0][0], fluxTilde);
-				// here's the flux, aligned along the normal
+				Cons flux = (this->*calcFlux)(&e, UL, UR, dt);
 			
 				flux.m() = rotateFrom(flux.m(), e.normal);
 			
@@ -846,11 +838,11 @@ for (int i = 0; i < StateVec::size; ++i) {
 		time += dt;
 	}
 
-	virtual void update() {
-		Super::update();
+	virtual void onUpdate() {
+		Super::onUpdate();
 		draw();
 		
-		gui->update([this](){
+		gui->onUpdate([this](){
 			igText("time: %f", time);
 			igCheckbox("running", &running);
 			
@@ -880,9 +872,9 @@ for (int i = 0; i < StateVec::size; ++i) {
 		}
 	}
 
-	virtual void sdlEvent(SDL_Event& event) {
-		Super::sdlEvent(event);
-		if (gui) gui->sdlEvent(event);
+	virtual void onSDLEvent(SDL_Event& event) {
+		Super::onSDLEvent(event);
+		if (gui) gui->onSDLEvent(event);
 		//bool canHandleMouse = !igGetIO()->WantCaptureMouse;
 		bool canHandleKeyboard = !igGetIO()->WantCaptureKeyboard;
 		switch (event.type) {
