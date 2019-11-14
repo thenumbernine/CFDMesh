@@ -61,6 +61,7 @@ To map(const From& from, std::function<typename To::value_type(typename From::va
 using real = double;
 
 using int2 = Tensor::Vector<int, 2>;
+using float2 = Tensor::Vector<float, 2>;
 using real2 = Tensor::Vector<real, 2>;
 
 //constexpr int vecdim = 2;
@@ -147,13 +148,15 @@ struct Vertex;
 struct Edge;
 struct Cell;
 
-struct Vertex {
+//zero forms
+struct Vertex {	//not required by finite volume algorithm
 	vec pos;
 	std::vector<int> edges;
 	Vertex() {}
 	Vertex(vec pos_) : pos(pos_) {}
 };
 
+//n-1 forms
 struct Edge {
 	vec pos;
 	vec delta;
@@ -161,7 +164,7 @@ struct Edge {
 	real length;
 	real cellDist;
 	StateVec flux;
-	int vtxs[2];
+	int vtxs[2];	//not required by finite volume algorithm
 	int cells[2];
 	Edge(int va, int vb) : length(0), cellDist(0) {
 		vtxs[0] = va;
@@ -169,14 +172,24 @@ struct Edge {
 		cells[0] = -1;
 		cells[1] = -1;
 	}
+
+	bool removeCell(int cellIndex) {
+		if (cells[1] == cellIndex) cells[1] = -1;
+		if (cells[0] == cellIndex) {
+			cells[0] = cells[1];
+			cells[1] = -1;
+		}
+		return cells[0] == -1 && cells[1] == -1;
+	}
 };
 
+//n forms
 struct Cell {
 	vec pos;
 	real volume;
 	Cons U;
 	std::vector<int> edges;
-	std::vector<int> vtxs;
+	std::vector<int> vtxs;		//not required by finite volume algorithm
 	Cell() : volume(0) {}
 };
 
@@ -187,29 +200,127 @@ real polyVol(const std::vector<vec>& vs) {
 	for (size_t i = 0; i < n; ++i) {
 		vec pi = vs[i];
 		vec pj = vs[(i+1)%n];
-		v += .5 * (pi(0) * pj(1) - pi(1) * pj(0));
+		v += pi(0) * pj(1) - pi(1) * pj(0);
 	}
-	return fabs(v);
+	return .5 * v;
 }
 
+bool contains(const vec pos, std::vector<vec> vtxs) {
+	size_t n = vtxs.size();
+	for (size_t i = 0; i < n; ++i) {
+		vec pi = vtxs[i] - pos;
+		vec pj = vtxs[(i+1)%n] - pos;
+		real vz = pi(0) * pj(1) - pi(1) * pj(0);
+		if (vz < 0) return false;
+	}
+	return true;
+}
+
+struct MeshArgs {
+	int2 size_ = int2(101, 101);
+	MeshArgs& size(int2 x) { size_ = x; return *this; }
+	
+	real2 mins_ = real2(-1, -1);
+	MeshArgs& mins(real2 x) { mins_ = x; return *this; }
+
+	real2 maxs_ = real2(1, 1);
+	MeshArgs& maxs(real2 x) { maxs_ = x; return *this; }
+
+	using GridFunc = std::function<real2(real2)>;
+	GridFunc grid_ = [](real2 x) -> real2 { return x; };
+	MeshArgs& grid(GridFunc x) { grid_ = x; return *this; }
+	
+	int2 repeat_ = int2(0, 0);
+	MeshArgs& repeat(int2 x) { repeat_ = x; return *this; }
+
+	int2 capmin_ = int2(0, 0);
+	MeshArgs& capmin(int2 x) { capmin_ = x; return *this; }
+};
+
 struct Mesh {
-	std::vector<Vertex> vtxs;
-	std::vector<Edge> edges;
-	std::vector<Cell> cells;
+	std::vector<Vertex> vtxs;	//0-forms, which construct n and n-1 forms
+	std::vector<Edge> edges;	//n-1-forms, hold flux information between cells
+	std::vector<Cell> cells;	//n-forms, hold the info at each cell
 
 //liu kang wins.  friendship.
 private:
 	Mesh() {}
 
 public:
+
 	static Mesh buildQuadChart(
 		Parallel::Parallel& parallel,
-		int2 size,
-		real2 mins,
-		real2 maxs,
-		std::function<real2(real2)> grid,
-		int2 repeat
+		MeshArgs args = MeshArgs()
 	) {
+		int2 size = args.size_;
+		real2 mins = args.mins_;
+		real2 maxs = args.maxs_;
+		auto grid = args.grid_;
+		int2 repeat = args.repeat_;
+		int2 capmin = args.capmin_;
+
+		Mesh mesh;
+		int m = size(0);
+		int n = size(1);
+
+		int vtxsize = m * n;
+		if (capmin(0)) vtxsize++;
+		mesh.vtxs.resize(vtxsize);
+		for (int j = 0; j < n; ++j) {
+			for (int i = 0; i < m; ++i) {
+				real2 x = real2(
+					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
+					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
+				
+				real2 u = grid(x);
+				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
+				mesh.vtxs[i + m * j].pos = vec(f);
+			}
+		}
+		
+		int capindex = m * n;
+		if (capmin(0)) {
+			vec sum;
+			for (int j = 0; j < n; ++j) {
+				sum += mesh.vtxs[0 + m * j].pos;
+			}
+			mesh.vtxs[capindex].pos = sum / (real)n;
+		}
+
+		int imax = repeat(0) ? m : m-1;
+		int jmax = repeat(1) ? n : n-1;
+		for (int j = 0; j < jmax; ++j) {
+			int jn = (j + 1) % n;
+			for (int i = 0; i < imax; ++i) {
+				int in = (i + 1) % m;
+				mesh.addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
+			}
+		}
+
+		if (capmin(0)) {
+			for (int j = 0; j < jmax; ++j) {
+				int jn = (j + 1) % n;
+				mesh.addCell(std::vector<int>{ 0 + m * j, 0 + m * jn, capindex });
+			}
+		}
+
+
+		mesh.calcAux(parallel);
+		
+		return mesh;
+	}
+
+	static Mesh buildTriChart(
+		Parallel::Parallel& parallel,
+		MeshArgs& args
+	) {
+		int2 size = args.size_;
+		real2 mins = args.mins_;
+		real2 maxs = args.maxs_;
+		auto grid = args.grid_;
+		int2 repeat = args.repeat_;
+		//int2 capmin = args.capmin_;
+	
 		Mesh mesh;
 		int m = size(0);
 		int n = size(1);
@@ -226,50 +337,15 @@ public:
 				mesh.vtxs[i + m * j].pos = vec(f);
 			}
 		}
-
-		int jmax = repeat(0) ? m : m-1;
-		int imax = repeat(1) ? n : n-1;
-		for (int i = 0; i < imax; ++i) {
-			int in = (i + 1) % n;
-			for (int j = 0; j < jmax; ++j) {
-				int jn = (j + 1) % m;
-				mesh.addCell(std::vector<int>{j + m * i, j + m * in, jn + m * in, jn + m * i});
-			}
-		}
-	
-		mesh.calcAux(parallel);
 		
-		return mesh;
-	}
-
-	static Mesh buildTriChart(
-		Parallel::Parallel& parallel,
-		int2 size,
-		real2 mins,
-		real2 maxs,
-		std::function<real2(real2)> grid
-	) {
-		Mesh mesh;
-		int m = size(0);
-		int n = size(1);
-	
-		mesh.vtxs.resize(m * n);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					((real)i + .5) / (real)size(0),
-					((real)j + .5) / (real)size(1)) * (maxs - mins) + mins;
-				
-				real2 u = grid(x);
-				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh.vtxs[i + m * j].pos = vec(f);
-			}
-		}
-		
-		for (int i = 0; i < n-1; ++i) {
-			for (int j = 0; j < m-1; ++j) {
-				mesh.addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1)});
-				mesh.addCell(std::vector<int>{j+1 + m * (i+1), j+1 + m * i, j + m * i});
+		int imax = repeat(0) ? m : m-1;
+		int jmax = repeat(1) ? n : n-1;
+		for (int j = 0; j < jmax; ++j) {
+			int jn = (j + 1) % n;
+			for (int i = 0; i < imax; ++i) {
+				int in = (i + 1) % m;
+				mesh.addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn});
+				mesh.addCell(std::vector<int>{in + m * jn, i + m * jn, i + m * j});
 			}
 		}
 	
@@ -293,15 +369,8 @@ public:
 		std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
 		if (_x.front() == "") _x.pop_front();
 		if (_x.back() == "") _x.pop_back();
-		std::vector<real> x = map<
-			std::list<std::string>,
-			std::vector<real>
-		>(
-			_x,
-			[](const std::string& s) -> real {
-				return std::stod(s);
-			}
-		);
+		std::function<real(const std::string&)> f = [](const std::string& s) -> real { return std::stod(s); };
+		std::vector<real> x = map<std::list<std::string>, std::vector<real>>(_x, f);
 		assert(x.size() == (size_t)(2 * m * n));
 	
 		auto us = std::vector(x.begin(), x.begin() + m*n);
@@ -313,9 +382,9 @@ public:
 			mesh.vtxs[i].pos = vec(us[i], vs[i]);
 		}
 	
-		for (int i = 0; i < n-1; ++i) {
-			for (int j = 0; j < m-1; ++j) {
-				mesh.addCell(std::vector<int>{j + m * i, j + m * (i+1), j+1 + m * (i+1), j+1 + m * i});
+		for (int j = 0; j < n-1; ++j) {
+			for (int i = 0; i < m-1; ++i) {
+				mesh.addCell(std::vector<int>{i + m * j, i + m * (j+1), i+1 + m * (j+1), i+1 + m * j});
 			}
 		}
 	
@@ -348,15 +417,28 @@ public:
 		for (size_t i = 0; i < n; ++i) {
 			c.edges.push_back(addEdge(vis[i], vis[(i+1)%n]));
 		}
-		
-		//TODO com vs average pos
+
+		c.volume = polyVol(map<std::vector<int>, std::vector<vec>>(c.vtxs, [this](int vi) -> vec { return vtxs[vi].pos; }));
+		assert(c.volume > 0);
+
+#if 1	//vertex average
+		//TODO use COM
 		c.pos = sum(map<
 			std::vector<int>,
 			std::vector<vec>
 		>(c.vtxs, [this](int vi) {
 			return vtxs[vi].pos;
 		})) * (1. / (real)n);
-
+#else	//COM
+		for (int j = 0; j < 3; ++j) {
+			for (int i = 0; i < n; ++i) {
+				vec x1 = vtxs[vis[i]].pos;
+				vec x2 = vtxs[vis[(i+1)%n]].pos;
+				c.pos(j) += (x1(j) + x2(j)) / (x1(0) * x2(1) - x1(1) * x2(0));
+			}
+			c.pos(j) /= (6 * c.volume);
+		}
+#endif
 		int ci = (int)cells.size();
 		cells.push_back(c);
 	
@@ -382,7 +464,7 @@ public:
 				e.pos = (a.pos + b.pos) * .5;
 				e.delta = a.pos - b.pos;
 				e.length = vec::length(e.delta);
-				e.normal = vec(-e.delta(1), e.delta(0));
+				e.normal = vec(e.delta(1), -e.delta(0));
 				e.normal *= 1. / vec::length(e.normal);
 			}
 
@@ -403,21 +485,6 @@ public:
 				}
 			}
 		}
-
-		parallel.foreach(
-			cells.begin(),
-			cells.end(),
-			[this](Cell& c) {
-				c.volume = polyVol(map<
-						std::vector<int>,
-						std::vector<vec>
-					>(c.vtxs, [this](int vi) -> vec {
-						return vtxs[vi].pos;
-					}));
-			}
-		);
-		
-
 	}
 };
 
@@ -467,6 +534,63 @@ static const char* displayMethodNames[DisplayMethod::COUNT] = {
 
 template<typename T> T cubed(const T& t) { return t * t * t; }
 
+struct InitCond {
+	virtual ~InitCond() {}
+	virtual const char* name() const = 0;
+	virtual Cons initCell(vec pos) const = 0;
+};
+
+struct InitCondConst : public InitCond {
+	virtual const char* name() const { return "constant"; }
+	virtual Cons initCell(vec x) const {
+		return Cons(Prim(1.,
+			//behavior inconsistency:
+			// vec(x) produces [x, x, ..., x]
+			// vec(x, 0) produces [x, 0, ..., 0]
+			vec(.01, 0.),
+			//vec(),
+			1.
+		));
+	}
+};
+
+struct InitCondSod : public InitCond {
+	virtual const char* name() const { return "Sod"; }
+	virtual Cons initCell(vec x) const {
+		bool lhs = x(0) < 0 && x(1) < 0;
+		return Cons(Prim(
+			lhs ? 1. : .125,
+			vec(),
+			lhs ? 1. : .1
+		));
+	}
+};
+
+struct InitCondSpiral : public InitCond {
+	virtual const char* name() const { return "Spiral"; }
+	virtual Cons initCell(vec x) const {
+		return Cons(Prim(
+			1,
+			vec(-x(1), x(0)),
+			1
+		));
+	}
+};
+
+std::vector<std::shared_ptr<InitCond>> initConds = {
+	std::make_shared<InitCondConst>(),
+	std::make_shared<InitCondSod>(),
+	std::make_shared<InitCondSpiral>(),
+};
+
+std::vector<const char*> initCondNames = map<
+	std::vector<std::shared_ptr<InitCond>>,
+	std::vector<const char*>
+>(
+	initConds,
+	[](std::shared_ptr<InitCond> ic) -> const char* { return ic->name(); }
+);
+
 struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	using Super = ::GLApp::ViewBehavior<::GLApp::GLApp>;
 	
@@ -484,8 +608,12 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	int displayMethod = 0;
 	float displayScalar = 1;
 
+	int initCondIndex = 0;
+
 	//1 = mirror boundary, -1 = freeflow boundary
 	float restitution = 1;
+
+	float2 mousepos;
 
 	Parallel::Parallel parallel;
 	
@@ -503,50 +631,42 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		glClearColor(.5, .75, .75, 1);
 		
 		//m = std::make_shared<Mesh>(Mesh::buildFromFile(parallel, "grids/n0012_113-33.p2dfmt"));
-		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
+		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel));
 		//m = std::make_shared<Mesh>(Mesh::buildTriChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return v; }));
 		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cbrt(v(0)), cbrt(v(1))); }));
 		//m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { return real2(cubed(v(0)), cubed(v(1))); }));
 		/** /
-		m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(101, 101), real2(-1), real2(1), [](real2 v) -> real2 { 
-			real r = real2::length(v);
-			//real theta = std::max(0., 1. - r);
-			real sigma = 3.;	//almost 0 at r=1
-			const real rotationAmplitude = 3.;
-			real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
-			real costh = cos(theta), sinth = sin(theta);
-			return real2(
-				costh * v(0) - sinth * v(1),
-				sinth * v(0) + costh * v(1));
-		}));
+		m = std::make_shared<Mesh>(Mesh::buildQuadChart(
+			parallel,
+			MeshArgs()
+				.grid([](real2 v) -> real2 { 
+					real r = real2::length(v);
+					//real theta = std::max(0., 1. - r);
+					real sigma = 3.;	//almost 0 at r=1
+					const real rotationAmplitude = 3.;
+					real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
+					real costh = cos(theta), sinth = sin(theta);
+					return real2(
+						costh * v(0) - sinth * v(1),
+						sinth * v(0) + costh * v(1));
+				})
+		));
 		/ **/
-		
-		m = std::make_shared<Mesh>(Mesh::buildQuadChart(parallel, int2(51, 101), real2(.01, 0), real2(1, 2*M_PI), [](real2 v) -> real2 { 
-			return real2(cos(v(1)), sin(v(1))) * v(0);
-		}, int2(0, 1)));
+		/**/
+		m = std::make_shared<Mesh>(Mesh::buildQuadChart(
+			parallel, 
+			MeshArgs()
+				.size(int2(51, 201))
+				.mins(real2(.5, 0))
+				.maxs(real2(1, 2*M_PI))
+				.grid([](real2 v) -> real2 { 
+					return real2(cos(v(1)), sin(v(1))) * v(0);
+				})
+				.repeat(int2(0, 1))
+				//.capmin(int2(1, 0))
+		));
+		/**/
 	
-#if 0	//constant velocity
-		initcond = [](vec) -> Cons {
-			return Cons(Prim(1.,
-				//behavior inconsistency:
-				// vec(x) produces [x, x, ..., x]
-				// vec(x, 0) produces [x, 0, ..., 0]
-				//vec(.1, 0.),
-				vec(),
-				1.));
-		};
-#endif
-#if 1	//Sod
-		initcond = [](vec x) -> Cons {
-			bool lhs = x(0) < 0 && x(1) < 0;
-			return Cons(Prim(
-				lhs ? 1. : .125,
-				vec(),
-				lhs ? 1. : .1
-			));
-		};
-#endif
-
 		resetState();
 	}
 
@@ -555,11 +675,12 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		singleStep = false;
 		time = 0;
 
+		InitCond* ic = initConds[initCondIndex].get();
 		parallel.foreach(
 			m->cells.begin(),
 			m->cells.end(),
-			[this](auto& c) {
-				c.U = initcond(c.pos);
+			[this, ic](auto& c) {
+				c.U = ic->initCell(c.pos);
 #ifdef DEBUG			
 				Prim W(c.U);
 				assert(W.rho() > 0);
@@ -860,9 +981,20 @@ assert(isfinite(Cs));
 		return flux;
 	}
 
-	//Cons (CFDMeshApp::*calcFlux)(Edge*, Cons, Cons, real) = &CFDMeshApp::calcFluxRoe;
-	Cons (CFDMeshApp::*calcFlux)(Edge*, Cons, Cons, real) = &CFDMeshApp::calcFluxHLL;
 
+	using CalcFluxFunc = Cons (CFDMeshApp::*)(Edge*, Cons, Cons, real);
+	std::vector<CalcFluxFunc> calcFluxes = {
+		&CFDMeshApp::calcFluxRoe,
+		&CFDMeshApp::calcFluxHLL,
+	};
+
+	std::vector<const char*> calcFluxNames = {
+		"Roe",
+		"HLL",
+	};
+
+	int calcFluxIndex = 0;
+	
 	void step() {
 		real dt = calcDT();
 
@@ -890,7 +1022,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 				UL.m() = rotateTo(UL.m(), e.normal);
 				UR.m() = rotateTo(UR.m(), e.normal);
 
-				Cons flux = (this->*calcFlux)(&e, UL, UR, dt);
+				Cons flux = (this->*calcFluxes[calcFluxIndex])(&e, UL, UR, dt);
 			
 				flux.m() = rotateFrom(flux.m(), e.normal);
 			
@@ -963,6 +1095,11 @@ for (int i = 0; i < StateVec::size; ++i) {
 			
 			igInputFloat("display scalar", &displayScalar, .1, 1., "%f", 0);
 			igInputFloat("restitution", &restitution, .1, 1., "%f", 0);
+		
+			igCombo("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
+			
+			igCombo("init cond", &initCondIndex, initCondNames.data(), initCondNames.size(), -1);
+		
 		});
 		
 		if (running || singleStep) {
@@ -972,13 +1109,48 @@ for (int i = 0; i < StateVec::size; ++i) {
 				singleStep = false;
 			}
 		}
+#if 0	
+		if (leftButtonDown && view == viewOrtho) {
+			//find the view bounds
+			//find the mouse position
+			//find any cells at that position
+			real2 pos2 = (real2)((mousepos * 2.f - 1.f) * float2(1, -1) * float2(viewOrtho->zoom(0) * aspectRatio, viewOrtho->zoom(1)) + viewOrtho->pos);
+			std::function<real(int)> f = [&](int i) -> real { return i >= 2 ? 0 : pos2(i); };
+			vec pos = vec(f);
+
+			std::vector<int> toRemoveEdges;
+			for (auto i = m->cells.begin(); i != m->cells.end(); ++i) {
+				Cell& c = *i;
+				if (contains(pos, map<std::vector<int>, std::vector<vec>>(c.vtxs, [this](int vi) -> vec { return m->vtxs[vi].pos; }))) {
+					//remove c...
+					for (int ei : c.edges) {
+						Edge* e = &m->edges[ei];
+						if (e->removeCell(i - m->cells.begin())) {
+							//all cells on e are removed
+							toRemoveEdges.push_back(ei);
+						}
+					}
+					m->cells.erase(i);
+					break;
+				}
+			}
+			//sort largest -> smallest
+			std::sort(toRemoveEdges.begin(), toRemoveEdges.end(), [](int a, int b) -> bool { return a > b; });
+			for (int ei : toRemoveEdges) {
+				m->edges.erase(m->edges.begin() + ei);
+			}
+		}
+#endif
 	}
 
 	virtual void onSDLEvent(SDL_Event& event) {
-		Super::onSDLEvent(event);
 		if (gui) gui->onSDLEvent(event);
-		//bool canHandleMouse = !igGetIO()->WantCaptureMouse;
+		bool canHandleMouse = !igGetIO()->WantCaptureMouse;
 		bool canHandleKeyboard = !igGetIO()->WantCaptureKeyboard;
+		
+		if (canHandleMouse) {
+			Super::onSDLEvent(event);
+		}
 		switch (event.type) {
 		case SDL_KEYUP:
 			if (canHandleKeyboard) {
@@ -990,6 +1162,11 @@ for (int i = 0; i < StateVec::size; ++i) {
 					running = !running;
 				}
 			}
+			break;
+		case SDL_MOUSEMOTION:
+			mousepos = float2(
+				(float)event.motion.x / (float)screenSize(0),
+				(float)event.motion.y / (float)screenSize(1));
 			break;
 		}
 	}
