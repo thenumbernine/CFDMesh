@@ -1,3 +1,8 @@
+#include "CFDMesh/Equation/EulerEquation.h"
+#include "CFDMesh/Mesh/Mesh.h"
+#include "CFDMesh/Util.h"
+#include "CFDMesh/Vector.h"
+
 #include "GLApp/gl.h"
 #include "GLApp/GLApp.h"
 #include "GLApp/ViewBehavior.h"
@@ -7,518 +12,65 @@
 #include "Tensor/Tensor.h"
 #include "Common/File.h"
 
+#include <algorithm>
 #include <memory>
 #include <iostream>
-#include <functional>
 #include <fstream>
-#include <algorithm>
-#include <string>
 #include <vector>
 #include <list>
-#include <regex>
-#include <numeric>
-#include <utility>
 
 #include <cassert>
 
-Parallel::Parallel parallel;
-
-//https://stackoverflow.com/questions/16749069/c-split-string-by-regex
-template<typename T>
-T split(const std::string &string_to_split, const std::string& regexPattern) {
-	std::regex rgx(regexPattern);
-	std::sregex_token_iterator iter(string_to_split.begin(),
-		string_to_split.end(),
-		rgx,
-		-1);
-	std::sregex_token_iterator end;
-	T result;
-	for ( ; iter != end; ++iter) {
-		result.push_back(*iter);
-	}
-	return result;
-}
-
-template<typename T>
-std::string concat(const T& v, const std::string& sep) {
-	bool first = true;
-	std::string result = "";
-	for (const auto& s : v) {
-		if (!first) result += sep;
-		result += s;
-		first = false;
-	}
-	return result;
-}
-
-template<typename From, typename To>
-To map(const From& from, std::function<typename To::value_type(typename From::value_type)> f) {
-	To to;
-	for (const auto& v : from) {
-		to.push_back(f(v));
-	}
-	return to;
-}
-
-using real = double;
-
-using int2 = Tensor::Vector<int, 2>;
-using float2 = Tensor::Vector<float, 2>;
-using real2 = Tensor::Vector<real, 2>;
-
-//constexpr int vecdim = 2;
-constexpr int vecdim = 3;
-using vec = Tensor::Vector<real, vecdim>;	//n-dimensional vector of reals
-using StateVec = Tensor::Vector<real, vecdim + 2>;
-
-template<typename T>
-typename T::value_type sum(const T& t) {
-	return std::accumulate(t.begin(), t.end(), typename T::value_type());
-}
+using namespace CFDMesh;
+using namespace CFDMesh::Equation;
 
 
-struct Equations {
-	virtual ~Equations() {}
+//config for everything, to hold everything in one place
+template<typename real_, int vecdim_>
+struct ConfigTemplate {
+	using real = real_;
+	enum { vecdim = vecdim_ };
 	
-	//TODO abstract away the arguments ...
-	//or just turn all of Equation into a template parameter, and make everything compile-time
-	//virtual std::pair<real, real> calcLambdaMinMax(vec normal, Prim W, real Cs) = 0;
-};
-
-struct EulerEquations : public Equations {
-	real heatCapacityRatio = 1.4;
-
-	struct Prim;
-
-	struct Cons : public StateVec {
-		real& rho() { return StateVec::v[0]; }
-		vec& m() { return *(vec*)( StateVec::v + 1 ); }
-		real& ETotal() { return StateVec::v[StateVec::size-1]; }
-		
-		const real& rho() const { return StateVec::v[0]; }
-		const vec& m() const { return *(vec*)( StateVec::v + 1 ); }
-		const real& ETotal() const { return StateVec::v[StateVec::size-1]; }
-
-		Cons() {}
-		
-		Cons(const StateVec& v) : StateVec(v) {}
-
-		Cons(real rho_, vec m_, real ETotal_) {
-			rho() = rho_;
-			m() = m_;
-			ETotal() = ETotal_;
-		}
-	};
-
-	struct Prim : public StateVec {
-		real& rho() { return StateVec::v[0]; }
-		vec& v() { return *(vec*)( StateVec::v + 1 ); }
-		real& P() { return StateVec::v[StateVec::size-1]; }
-
-		const real& rho() const { return StateVec::v[0]; }
-		const vec& v() const { return *(vec*)( StateVec::v + 1 ); }
-		const real& P() const { return StateVec::v[StateVec::size-1]; }
-
-		Prim() {}
-		
-		Prim(const StateVec& v) : StateVec(v) {}
-		
-		Prim(real rho_, vec v_, real P_) {
-			rho() = rho_;
-			v() = v_;
-			P() = P_;
-		}
-	};
-
-	Cons consFromPrim(const Prim& W) {
-		Cons U;
-		U.rho() = W.rho();
-		U.m() = W.v() * U.rho();
-		U.ETotal() = W.P() / (heatCapacityRatio - 1.) + .5 * U.rho() * vec::lenSq(W.v());
-		return U;
-	}
-
-	Prim primFromCons(const Cons& U) {
-		Prim W;
-		W.rho() = U.rho();
-		W.v() = U.m() / W.rho();
-		W.P() = (heatCapacityRatio - 1.) * (U.ETotal() - .5 * W.rho() * vec::lenSq(W.v()));
-		return W;
-	}
-
-	real calc_hTotal(real rho, real P, real ETotal) {
-		return (ETotal + P) / rho;
-	}
-
-	real calc_Cs_from_P_rho(real P, real rho) {
-		return sqrt(heatCapacityRatio * P / rho);
-	}
-
-	real calc_Cs_from_v_hTotal(vec v, real hTotal) {
-		return sqrt((heatCapacityRatio - 1) * (hTotal - .5 * vec::lenSq(v)));
-	}
+	using real2 = Tensor::Vector<real, 2>;
 	
-	virtual std::pair<real, real> calcLambdaMinMax(vec normal, Prim W, real Cs) {
-		real v = vec::dot(normal, W.v());
-		return std::make_pair<real, real>(v - Cs, v + Cs);
-	}
+	using vec = Tensor::Vector<real, vecdim>;	//n-dimensional vector of reals
+	using StateVec = Tensor::Vector<real, vecdim + 2>;
 };
 
 
+//using Config = ConfigTemplate<double, 2>;
+using Config = ConfigTemplate<double, 3>;
 
-using Cons = EulerEquations::Cons;
-using Prim = EulerEquations::Prim;
 
-EulerEquations eqn;
+using real = Config::real;
+constexpr int vecdim = Config::vecdim;
+using real2 = Config::real2;
+using vec = Config::vec;
+using StateVec = Config::StateVec;
 
-struct Vertex;
-struct Edge;
-struct Cell;
 
-//zero-forms
-struct Vertex {	//not required by finite volume algorithm
-	vec pos;
-	std::vector<int> edges;
-	Vertex() {}
-	Vertex(vec pos_) : pos(pos_) {}
+
+using ThisEquation = EulerEquation<Config>;
+using Cons = ThisEquation::Cons;
+using Prim = ThisEquation::Prim;
+
+struct MeshConfig : public Config {
+	using Cons = ThisEquation::Cons;
 };
 
-//(n-1)-forms
-struct Edge {
-	vec pos;
-	vec delta;
-	vec normal;
-	real length;
-	real cellDist;
-	StateVec flux;
-	int vtxs[2];	//not required by finite volume algorithm
-	int cells[2];	//there are always only 2 n-forms on either side of a (n-1)-form
-	Edge(int va, int vb) : length(0), cellDist(0) {
-		vtxs[0] = va;
-		vtxs[1] = vb;
-		cells[0] = -1;
-		cells[1] = -1;
-	}
-
-	bool removeCell(int cellIndex) {
-		if (cells[1] == cellIndex) cells[1] = -1;
-		if (cells[0] == cellIndex) {
-			cells[0] = cells[1];
-			cells[1] = -1;
-		}
-		return cells[0] == -1 && cells[1] == -1;
-	}
-};
-
-//n-forms
-struct Cell {
-	vec pos;
-	real volume;
-	Cons U;
-	std::vector<int> edges;
-	std::vector<int> vtxs;		//not required by finite volume algorithm
-	Cell() : volume(0) {}
-};
-
-//2D polygon volume
-real polyVol(const std::vector<vec>& vs) {
-	size_t n = vs.size();
-	real v = 0;
-	for (size_t i = 0; i < n; ++i) {
-		vec pi = vs[i];
-		vec pj = vs[(i+1)%n];
-		v += pi(0) * pj(1) - pi(1) * pj(0);
-	}
-	return .5 * v;
-}
-
-bool contains(const vec pos, std::vector<vec> vtxs) {
-	size_t n = vtxs.size();
-	for (size_t i = 0; i < n; ++i) {
-		vec pi = vtxs[i] - pos;
-		vec pj = vtxs[(i+1)%n] - pos;
-		real vz = pi(0) * pj(1) - pi(1) * pj(0);
-		if (vz > 0) return false;
-	}
-	return true;
-}
-
-struct MeshArgs {
-	int2 size_ = int2(101, 101);
-	MeshArgs& size(int2 x) { size_ = x; return *this; }
-	
-	real2 mins_ = real2(-1, -1);
-	MeshArgs& mins(real2 x) { mins_ = x; return *this; }
-
-	real2 maxs_ = real2(1, 1);
-	MeshArgs& maxs(real2 x) { maxs_ = x; return *this; }
-
-	using GridFunc = std::function<real2(real2)>;
-	GridFunc grid_ = [](real2 x) -> real2 { return x; };
-	MeshArgs& grid(GridFunc x) { grid_ = x; return *this; }
-	
-	int2 repeat_ = int2(0, 0);
-	MeshArgs& repeat(int2 x) { repeat_ = x; return *this; }
-
-	int2 capmin_ = int2(0, 0);
-	MeshArgs& capmin(int2 x) { capmin_ = x; return *this; }
-};
-
-struct Mesh {
-	std::vector<Vertex> vtxs;	//0-forms, which construct n and n-1 forms
-	std::vector<Edge> edges;	//n-1-forms, hold flux information between cells
-	std::vector<Cell> cells;	//n-forms, hold the info at each cell
-
-//liu kang wins.  friendship.
-private:
-	Mesh() {}
-
-public:
-
-	static Mesh buildQuadChart(
-		MeshArgs args = MeshArgs()
-	) {
-		int2 size = args.size_;
-		real2 mins = args.mins_;
-		real2 maxs = args.maxs_;
-		auto grid = args.grid_;
-		int2 repeat = args.repeat_;
-		int2 capmin = args.capmin_;
-
-		Mesh mesh;
-		int m = size(0);
-		int n = size(1);
-
-		int vtxsize = m * n;
-		if (capmin(0)) vtxsize++;
-		mesh.vtxs.resize(vtxsize);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
-					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
-				
-				real2 u = grid(x);
-				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh.vtxs[i + m * j].pos = vec(f);
-			}
-		}
-		
-		int capindex = m * n;
-		if (capmin(0)) {
-			vec sum;
-			for (int j = 0; j < n; ++j) {
-				sum += mesh.vtxs[0 + m * j].pos;
-			}
-			mesh.vtxs[capindex].pos = sum / (real)n;
-		}
-
-		int imax = repeat(0) ? m : m-1;
-		int jmax = repeat(1) ? n : n-1;
-		for (int j = 0; j < jmax; ++j) {
-			int jn = (j + 1) % n;
-			for (int i = 0; i < imax; ++i) {
-				int in = (i + 1) % m;
-				mesh.addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
-			}
-		}
-
-		if (capmin(0)) {
-			for (int j = 0; j < jmax; ++j) {
-				int jn = (j + 1) % n;
-				mesh.addCell(std::vector<int>{ 0 + m * j, 0 + m * jn, capindex });
-			}
-		}
+using ThisMeshNamespace = CFDMesh::MeshNamespace<MeshConfig>;
+using Mesh = ThisMeshNamespace::Mesh;
+using MeshArgs = ThisMeshNamespace::MeshArgs;
+using Cell = ThisMeshNamespace::Cell;
+using Face = ThisMeshNamespace::Face;
 
 
-		mesh.calcAux();
-		
-		return mesh;
-	}
 
-	static Mesh buildTriChart(
-		MeshArgs args = MeshArgs()
-	) {
-		int2 size = args.size_;
-		real2 mins = args.mins_;
-		real2 maxs = args.maxs_;
-		auto grid = args.grid_;
-		int2 repeat = args.repeat_;
-		//int2 capmin = args.capmin_;
-	
-		Mesh mesh;
-		int m = size(0);
-		int n = size(1);
-	
-		mesh.vtxs.resize(m * n);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
-					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
-				
-				real2 u = grid(x);
-				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh.vtxs[i + m * j].pos = vec(f);
-			}
-		}
-		
-		int imax = repeat(0) ? m : m-1;
-		int jmax = repeat(1) ? n : n-1;
-		for (int j = 0; j < jmax; ++j) {
-			int jn = (j + 1) % n;
-			for (int i = 0; i < imax; ++i) {
-				int in = (i + 1) % m;
-				mesh.addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn});
-				mesh.addCell(std::vector<int>{in + m * jn, i + m * jn, i + m * j});
-			}
-		}
-	
-		mesh.calcAux();
-		
-		return mesh;
-	}
-
-
-	static Mesh buildFromFile(const std::string& fn) {
-		Mesh mesh;	
-		
-		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(fn), "\n");
-	
-		std::string first = ls.front();
-		ls.pop_front();
-		std::vector<std::string> m_n = split<std::vector<std::string>>(ls.front(), "\\s+");
-		ls.pop_front();
-		int m = std::stoi(m_n[0]);
-		int n = std::stoi(m_n[1]);
-		std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
-		if (_x.front() == "") _x.pop_front();
-		if (_x.back() == "") _x.pop_back();
-		std::function<real(const std::string&)> f = [](const std::string& s) -> real { return std::stod(s); };
-		std::vector<real> x = map<std::list<std::string>, std::vector<real>>(_x, f);
-		assert(x.size() == (size_t)(2 * m * n));
-	
-		auto us = std::vector(x.begin(), x.begin() + m*n);
-		auto vs = std::vector(x.begin() + m*n, x.end());
-		assert(us.size() == vs.size());
-
-		mesh.vtxs.resize(m*n);
-		for (int i = 0; i < (int)us.size(); ++i) {
-			mesh.vtxs[i].pos = vec(us[i], vs[i]);
-		}
-	
-		for (int j = 0; j < n-1; ++j) {
-			for (int i = 0; i < m-1; ++i) {
-				mesh.addCell(std::vector<int>{i + m * j, i + m * (j+1), i+1 + m * (j+1), i+1 + m * j});
-			}
-		}
-	
-		mesh.calcAux();
-	
-		return mesh;
-	}
-
-	int addEdge(int va, int vb) {
-		int ei = 0;
-		for (; ei < (int)edges.size(); ++ei) {
-			Edge* e = &edges[ei];
-			if ((e->vtxs[0] == va && e->vtxs[1] == vb) ||
-				(e->vtxs[0] == vb && e->vtxs[1] == va)) 
-			{
-				return ei;
-			}
-		}
-		assert(ei == (int)edges.size());
-		edges.push_back(Edge(va, vb));
-		vtxs[va].edges.push_back(ei);
-		vtxs[vb].edges.push_back(ei);
-		return ei;
-	}
-
-	void addCell(std::vector<int> vis) {
-		Cell c;
-		c.vtxs = vis;
-		size_t n = vis.size();
-		for (size_t i = 0; i < n; ++i) {
-			c.edges.push_back(addEdge(vis[i], vis[(i+1)%n]));
-		}
-
-		c.volume = polyVol(map<std::vector<int>, std::vector<vec>>(c.vtxs, [this](int vi) -> vec { return vtxs[vi].pos; }));
-		assert(c.volume > 0);
-
-#if 1	//vertex average
-		//TODO use COM
-		c.pos = sum(map<
-			std::vector<int>,
-			std::vector<vec>
-		>(c.vtxs, [this](int vi) {
-			return vtxs[vi].pos;
-		})) * (1. / (real)n);
-#else	//COM
-		for (int j = 0; j < 3; ++j) {
-			for (int i = 0; i < n; ++i) {
-				vec x1 = vtxs[vis[i]].pos;
-				vec x2 = vtxs[vis[(i+1)%n]].pos;
-				c.pos(j) += (x1(j) + x2(j)) / (x1(0) * x2(1) - x1(1) * x2(0));
-			}
-			c.pos(j) /= (6 * c.volume);
-		}
-#endif
-		int ci = (int)cells.size();
-		cells.push_back(c);
-	
-		for (int ei : c.edges) {
-			Edge* e = &edges[ei];
-			if (e->cells[0] == -1) {
-				e->cells[0] = ci;
-			} else if (e->cells[1] == -1) {
-				e->cells[1] = ci;
-			} else {
-				throw Common::Exception() << "tried to add too many cells to an edge";
-			}
-		}
-	}
-
-	//calculate edge info
-	//calculate cell volume info
-	void calcAux() {		
-		for (auto& e : edges) {
-			{
-				auto& a = vtxs[e.vtxs[0]];
-				auto& b = vtxs[e.vtxs[1]];
-				e.pos = (a.pos + b.pos) * .5;
-				e.delta = a.pos - b.pos;
-				e.length = vec::length(e.delta);
-				e.normal = vec(e.delta(1), -e.delta(0));
-				e.normal *= 1. / vec::length(e.normal);
-			}
-
-			{
-				int a = e.cells[0];
-				int b = e.cells[1];
-				if (a != -1 && b != -1) {
-					if (vec::dot(cells[a].pos - cells[b].pos, e.normal) < 0) {
-						std::swap(a, b);
-						e.cells[0] = a;
-						e.cells[1] = b;
-						e.normal *= -1;
-					}
-					//distance between cell centers
-					//e.cellDist = vec::length(cells[b].pos - cells[a].pos);
-					//distance projected to edge normal
-					e.cellDist = fabs(vec::dot(e.normal, cells[b].pos - cells[a].pos));
-				} else if (a != -1) {
-					e.cellDist = vec::length(cells[a].pos - e.pos) * 2.;
-				} else {
-					throw Common::Exception() << "you are here";
-				}
-			}
-		}
-	}
-};
+static Parallel::Parallel parallel;
+static ThisEquation eqn;
 
 // rotate vx,vy such that n now points along the x dir
-vec rotateTo(vec v, vec n) {
+static vec rotateTo(vec v, vec n) {
 	return vec(
 		v(0) * n(0) + v(1) * n(1),
 		v(1) * n(0) - v(0) * n(1)
@@ -526,29 +78,18 @@ vec rotateTo(vec v, vec n) {
 }
 
 // rotate vx,vy such that the x dir now points along n 
-vec rotateFrom(vec v, vec n) {
+static vec rotateFrom(vec v, vec n) {
 	return vec(
 		v(0) * n(0) - v(1) * n(1),
 		v(1) * n(0) + v(0) * n(1)
 	);
 }
 
+template<typename T> T cubed(const T& t) { return t * t * t; }
+
 template<typename T> void glVertex2v(const T* v);
 template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
 template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
-
-StateVec matmul(const real* A, const StateVec& x) {
-	StateVec y;
-	for (int i = 0; i < StateVec::size; ++i) {
-		real sum = 0;
-		for (int j = 0; j < StateVec::size; ++j) {
-			//C layout, so row-major
-			sum += A[j + StateVec::size * i] * x(j);
-		}
-		y(i) = sum;
-	}
-	return y;
-}
 
 enum DisplayMethod {
 	STATE,
@@ -560,8 +101,6 @@ static const char* displayMethodNames[DisplayMethod::COUNT] = {
 	"state",
 	"volume",
 };
-
-template<typename T> T cubed(const T& t) { return t * t * t; }
 
 struct InitCond {
 	virtual ~InitCond() {}
@@ -619,7 +158,7 @@ std::vector<std::shared_ptr<InitCond>> initConds = {
 };
 
 std::vector<const char*> initCondNames = map<
-	std::vector<std::shared_ptr<InitCond>>,
+	decltype(initConds),
 	std::vector<const char*>
 >(
 	initConds,
@@ -759,7 +298,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 				assert(W.rho() > 0);
 				assert(vec::length(W.v()) >= 0);
 				assert(W.P() > 0);
-				real hTotal = calc_hTotal(W.rho(), W.P(), c.U.ETotal());
+				real hTotal = eqn.calc_hTotal(W.rho(), W.P(), c.U.ETotal());
 				assert(hTotal > 0);
 #endif			
 			}
@@ -816,7 +355,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		if (showEdges) {
 			glColor3f(1,1,1);
 			glBegin(GL_LINES);
-			for (const auto& e : m->edges) {
+			for (const auto& e : m->faces) {
 				for (int vi : e.vtxs) {
 					glVertex2v(m->vtxs[vi].pos.v);
 				}
@@ -825,7 +364,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		}
 	}
 
-	std::pair<Cons, Cons> getEdgeStates(const Edge* e) {
+	std::pair<Cons, Cons> getEdgeStates(const Face* e) {
 		Cell* cL = e->cells[0] == -1 ? nullptr : &m->cells[e->cells[0]];
 		Cell* cR = e->cells[1] == -1 ? nullptr : &m->cells[e->cells[1]];
 		if (cL && cR) {
@@ -863,8 +402,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 					normal(j) = 1;
 #endif
 #if 1 //check mesh interfaces
-				for (int ei : c.edges) {
-					Edge* e = &m->edges[ei];
+				for (int ei : c.faces) {
+					Face* e = &m->faces[ei];
 					vec normal = e->normal;
 #endif
 					real lambdaMin, lambdaMax;
@@ -873,7 +412,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 					lambdaMax = lambdaMinMax.second;
 					lambdaMin = std::min<real>(0, lambdaMin);
 					lambdaMax = std::max<real>(0, lambdaMax);
-					// TODO a better way to do this.  maybe use edges' lambdas?  maybe do this after calculating the eigenbasis?
+					// TODO a better way to do this.  maybe use faces' lambdas?  maybe do this after calculating the eigenbasis?
 					//real dx = sqrt(c.volume);
 					real dx = e->length;
 					real dum = dx / (abs(lambdaMax - lambdaMin) + 1e-9);
@@ -889,187 +428,68 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		return dt;
 	}
 
-	Cons calcFluxRoe(Edge* e, Cons UL, Cons UR, real dt) {
-		real ETotalL = UL.ETotal();
-		Prim WL = eqn.primFromCons(UL);
-		real rhoL = WL.rho();
-assert(rhoL > 0);			
-		vec vL = WL.v();
-		real PL = WL.P();
-assert(PL > 0);			
-		real hTotalL = eqn.calc_hTotal(rhoL, PL, ETotalL);
-assert(hTotalL > 0);			
-		real sqrtRhoL = sqrt(rhoL);
-		
-		real ETotalR = UR.ETotal();
-		Prim WR = eqn.primFromCons(UR);
-		real rhoR = WR.rho();
-assert(rhoR > 0);			
-		vec vR = WR.v();
-		real PR = WR.P();
-assert(PR > 0);			
-		real hTotalR = eqn.calc_hTotal(rhoR, PR, ETotalR);
-assert(hTotalR > 0);			
-		real sqrtRhoR = sqrt(rhoR);
-			
-		vec v = (vL * sqrtRhoL + vR * sqrtRhoR) / (sqrtRhoL + sqrtRhoR);
-		real vx = v(0), vy = v(1), vz = v(2);
-		real hTotal = (sqrtRhoL * hTotalL + sqrtRhoR * hTotalR) / (sqrtRhoL + sqrtRhoR);
-		real Cs = eqn.calc_Cs_from_v_hTotal(v, hTotal);
-		real CsSq = Cs * Cs;
-		//e->roe = matrix{rho, vx, vy, vz, hTotal, Cs}
-
-assert(isfinite(sqrtRhoL));
-assert(isfinite(sqrtRhoR));
-assert(isfinite(vx));
-assert(isfinite(vy));
-assert(isfinite(vz));
-assert(isfinite(hTotal));
-assert(isfinite(Cs));
-
-		// 2) eigenbasis at interface
-	
-		real vSq = vec::lenSq(v);
-
+	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt) {
 		static_assert(StateVec::size == 5);
-
-		//StateVec lambdas = {vx - Cs, vx, vx, vx, vx + Cs};
-		StateVec lambdas;
-		lambdas(0) = vx - Cs;
-		lambdas(1) = vx;
-		lambdas(2) = vx;
-		lambdas(3) = vx;
-		lambdas(4) = vx + Cs;
 		
-		real gamma_1 = eqn.heatCapacityRatio - 1;
-		real evL[5][5] = {
-			{(.5 * gamma_1 * vSq + Cs * vx) / (2 * CsSq),	(-Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
-			{1 - gamma_1 * vSq / (2 * CsSq),				gamma_1 * vx / CsSq,				gamma_1 * vy / CsSq,			gamma_1 * vz / CsSq,		-gamma_1 / CsSq,		},
-			{-vy,											0,									1,								0,							0,						}, 
-			{-vz,											0,									0,								1,							0,						},
-			{(.5 * gamma_1 * vSq - Cs * vx) / (2 * CsSq),	(Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
-		};
+		ThisEquation::RoeAvg vars = eqn.calcRoeAvg(UL, UR);
 
-		real evR[5][5] = {
-			{1, 				1, 			0,		0,		1,				},
-			{vx - Cs, 			vx, 		0,		0,		vx + Cs,		},
-			{vy,				vy,			1,		0,		vy,				},
-			{vz,				vz,			0,		1,		vz,				},
-			{hTotal - Cs * vx, .5 * vSq, 	vy,		vz,		hTotal + Cs * vx},
-		};
-	
+		StateVec lambdas = eqn.getEigenvalues(vars);
+
 		Cons dU = UR - UL;
-		Cons dUTilde = matmul(&evL[0][0], dU);
+		Cons dUTilde = eqn.apply_evL(dU, vars);
 	
 		Cons fluxTilde;
 		for (int j = 0; j < 5; ++j) {
 			real lambda = lambdas(j);
 			real phi = 0;
 			real sgnLambda = lambda >= 0 ? 1 : -1;
-			real dx = e->cellDist;
 			real epsilon = lambda * dt / dx;
 			fluxTilde(j) = -.5 * lambda * dUTilde(j) * (sgnLambda + phi * (epsilon - sgnLambda));
 		}
 	
 		Cons UAvg = (UR + UL) * .5;
-		Cons UAvgTilde = matmul(&evL[0][0], UAvg);
+		Cons UAvgTilde = eqn.apply_evL(UAvg, vars);
 		fluxTilde = fluxTilde + lambdas * UAvgTilde;
 	
-		Cons flux = matmul(&evR[0][0], fluxTilde);
+		Cons flux = eqn.apply_evR(fluxTilde, vars);
 		// here's the flux, aligned along the normal
 
 		return flux;
 	}
 
-	Cons calcFluxHLL(Edge* e, Cons UL, Cons UR, real dt) {
-		Prim WL = eqn.primFromCons(UL);
-		Prim WR = eqn.primFromCons(UR);
+	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt) {
+		ThisEquation::RoeAvg vars = eqn.calcRoeAvg(UL, UR);
+
+		real CsL = eqn.calc_Cs_from_P_rho(vars.WL.P(), vars.WL.rho());
+		real CsR = eqn.calc_Cs_from_P_rho(vars.WR.P(), vars.WR.rho());
+
+		real lambdaMinL = eqn.calcLambdaMin(vars.WL.v()(0), CsL);
+		real lambdaMaxR = eqn.calcLambdaMax(vars.WR.v()(0), CsR);
+		real lambdaMin = eqn.calcLambdaMin(vars.v(0), vars.Cs);
+		real lambdaMax = eqn.calcLambdaMax(vars.v(0), vars.Cs);
+#if 0	//Davis direct
+		real sl = lambdaMinL;
+		real sr = lambdaMaxR;
+#endif
+#if 1	//Davis direct bounded
+		real sl = std::min(lambdaMinL, lambdaMin);
+		real sr = std::max(lambdaMaxR, lambdaMax);
+#endif
 		
-		real gamma_1 = eqn.heatCapacityRatio - 1;
-		
-		real densityL = WL.rho();
-		real invDensityL = 1. / densityL;
-		vec velocityL = WL.v();
-		real velocitySqL = vec::dot(velocityL, velocityL);
-		real energyTotalL = UL.ETotal() * invDensityL;
-		real energyKineticL = .5 * velocitySqL;
-		real energyPotentialL = 0;//potentialBuffer[indexPrev];
-		real energyInternalL = energyTotalL - energyKineticL - energyPotentialL;
-		real pressureL = gamma_1 * densityL * energyInternalL;
-		real enthalpyTotalL = energyTotalL + pressureL * invDensityL;
-		real speedOfSoundL = sqrt(gamma_1 * (enthalpyTotalL - .5 * velocitySqL));
-		real roeWeightL = sqrt(densityL);
-
-		real densityR = WR.rho();
-		real invDensityR = 1. / densityR;
-		vec velocityR = WR.v();
-		real velocitySqR = vec::dot(velocityR, velocityR);
-		real energyTotalR = UR.ETotal() * invDensityR;
-		real energyKineticR = .5 * velocitySqR;
-		real energyPotentialR = 0;//potentialBuffer[index];
-		real energyInternalR = energyTotalR - energyKineticR - energyPotentialR;
-		real pressureR = gamma_1 * densityR * energyInternalR;
-		real enthalpyTotalR = energyTotalR + pressureR * invDensityR;
-		real speedOfSoundR = sqrt(gamma_1 * (enthalpyTotalR - .5 * velocitySqR));
-		real roeWeightR = sqrt(densityR);
-	
-		real roeWeightNormalization = 1. / (roeWeightL + roeWeightR);
-		vec velocity = (velocityL * roeWeightL + velocityR * roeWeightR) * roeWeightNormalization;
-		real enthalpyTotal = (roeWeightL * enthalpyTotalL + roeWeightR * enthalpyTotalR) * roeWeightNormalization;
-		real energyPotential = (roeWeightL * energyPotentialL + roeWeightR * energyPotentialR) * roeWeightNormalization; 
-	
-		real velocitySq = vec::dot(velocity, velocity);
-		real speedOfSound = sqrt(gamma_1 * (enthalpyTotal - .5 * velocitySq - energyPotential));
-
-		//eigenvalues
-
-		real eigenvaluesMinL = velocityL(0) - speedOfSoundL;
-		real eigenvaluesMaxR = velocityR(0) + speedOfSoundR;
-		real eigenvaluesMin = velocity(0) - speedOfSound;
-		real eigenvaluesMax = velocity(0) + speedOfSound;
-	#if 0	//Davis direct
-		real sl = eigenvaluesMinL;
-		real sr = eigenvaluesMaxR;
-	#endif
-	#if 1	//Davis direct bounded
-		real sl = std::min(eigenvaluesMinL, eigenvaluesMin);
-		real sr = std::max(eigenvaluesMaxR, eigenvaluesMax);
-	#endif
-
-		Cons eigenvalues;
-		eigenvalues(0) = sl;
-		eigenvalues(1) = velocity(0);
-		eigenvalues(2) = velocity(0);
-		eigenvalues(3) = velocity(0);
-		eigenvalues(4) = sr;
-
-		//flux
-
-		Cons fluxL;
-		fluxL(0) = densityL * velocityL(0);
-		fluxL(1) = densityL * velocityL(0) * velocityL(0) +  pressureL;
-		fluxL(2) = densityL * velocityL(1) * velocityL(0);
-		fluxL(3) = densityL * velocityL(2) * velocityL(0);
-		fluxL(4) = densityL * enthalpyTotalL * velocityL(0);
-		
-		Cons fluxR;
-		fluxR(0) = densityR * velocityR(0);
-		fluxR(1) = densityR * velocityR(0) * velocityR(0) + pressureR;
-		fluxR(2) = densityR * velocityR(1) * velocityR(0);
-		fluxR(3) = densityR * velocityR(2) * velocityR(0);
-		fluxR(4) = densityR * enthalpyTotalR * velocityR(0);	
-
-		//HLL
 		Cons flux;
 		if (0. <= sl) {
+			Cons fluxL = eqn.calcFluxFromCons(UL);
 			flux = fluxL;
 		} else if (sl <= 0. && 0. <= sr) {
+			Cons fluxL = eqn.calcFluxFromCons(UL);
+			Cons fluxR = eqn.calcFluxFromCons(UR);
 			//(sr * fluxL[j] - sl * fluxR[j] + sl * sr * (UR[j] - UL[j])) / (sr - sl)
 			real invDenom = 1. / (sr - sl);
 			for (int i = 0; i < StateVec::size; ++i) {
 				flux(i) = (sr * fluxL(i) - sl * fluxR(i) + sl * sr * (UR(i) - UL(i))) * invDenom; 
 			}
 		} else if (sr <= 0.) {
+			Cons fluxR = eqn.calcFluxFromCons(UR);
 			flux = fluxR;
 		}
 	
@@ -1077,7 +497,7 @@ assert(isfinite(Cs));
 	}
 
 
-	using CalcFluxFunc = Cons (CFDMeshApp::*)(Edge*, Cons, Cons, real);
+	using CalcFluxFunc = Cons (CFDMeshApp::*)(Cons, Cons, real, real);
 	std::vector<CalcFluxFunc> calcFluxes = {
 		&CFDMeshApp::calcFluxRoe,
 		&CFDMeshApp::calcFluxHLL,
@@ -1093,11 +513,11 @@ assert(isfinite(Cs));
 	void step() {
 		real dt = calcDT();
 
-		//for (auto& e : m->edges) {
+		//for (auto& e : m->faces) {
 		parallel.foreach(
-			m->edges.begin(),
-			m->edges.end(),
-			[this, dt](Edge& e) {
+			m->faces.begin(),
+			m->faces.end(),
+			[this, dt](Face& e) {
 				std::pair<Cons, Cons> ULR = getEdgeStates(&e);
 				Cons UL = ULR.first;
 				Cons UR = ULR.second;
@@ -1107,22 +527,24 @@ assert(UL(3) == 0);
 assert(UR(3) == 0);
 
 for (int i = 0; i < StateVec::size; ++i) {
-	assert(isfinite(UL(0)));	
-	assert(isfinite(UR(0)));	
+	assert(std::isfinite(UL(0)));	
+	assert(std::isfinite(UR(0)));	
 }	
 
-				// 1) roe values at edge 
+				// roe values at edge 
 				// rotate to align edge normal to x axis
 				// so x-direction flux jacobian is good for calculating the flux 
 				UL.m() = rotateTo(UL.m(), e.normal);
 				UR.m() = rotateTo(UR.m(), e.normal);
-
-				Cons flux = (this->*calcFluxes[calcFluxIndex])(&e, UL, UR, dt);
-			
+				
+				real dx = e.cellDist;
+				Cons flux = (this->*calcFluxes[calcFluxIndex])(UL, UR, dx, dt);
+		
+				// rotate back to normal
 				flux.m() = rotateFrom(flux.m(), e.normal);
 			
 for (int i = 0; i < StateVec::size; ++i) {
-	assert(isfinite(flux(0)));	
+	assert(std::isfinite(flux(0)));	
 }	
 				
 				// here's the flux in underlying coordinates
@@ -1137,8 +559,8 @@ assert(e.flux(3) == 0);
 			m->cells.end(),
 			[this, dt](Cell& c) {
 				Cons dU_dt;
-				for (int ei : c.edges) {
-					Edge* e = &m->edges[ei];
+				for (int ei : c.faces) {
+					Face* e = &m->faces[ei];
 					//if (e.hasFlux) {
 						if (&c == &m->cells[e->cells[0]]) {
 							dU_dt -= e->flux * (e->length / c.volume);
@@ -1222,7 +644,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 				int selectedCellIndex = -1;
 				for (int i = 0; i < (int)m->cells.size(); ++i) {
 					Cell* c = &m->cells[i];
-					if (contains(pos, map<std::vector<int>, std::vector<vec>>(c->vtxs, [this](int vi) -> vec { return m->vtxs[vi].pos; }))) {
+					if (ThisMeshNamespace::contains(pos, map<std::vector<int>, std::vector<vec>>(c->vtxs, [this](int vi) -> vec { return m->vtxs[vi].pos; }))) {
 						selectedCellIndex = i;
 						break;
 					}
@@ -1244,8 +666,8 @@ for (int i = 0; i < StateVec::size; ++i) {
 					if (leftButtonDown) {
 						std::vector<int> toRemoveEdges;
 						//remove c...
-						for (int ei : c->edges) {
-							Edge* e = &m->edges[ei];
+						for (int ei : c->faces) {
+							Face* e = &m->faces[ei];
 							if (e->removeCell(i - m->cells.begin())) {
 								//all cells on e are removed
 								toRemoveEdges.push_back(ei);
@@ -1256,7 +678,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 						//sort largest -> smallest
 						std::sort(toRemoveEdges.begin(), toRemoveEdges.end(), [](int a, int b) -> bool { return a > b; });
 						for (int ei : toRemoveEdges) {
-							m->edges.erase(m->edges.begin() + ei);
+							m->faces.erase(m->faces.begin() + ei);
 						}
 					}
 #endif			
