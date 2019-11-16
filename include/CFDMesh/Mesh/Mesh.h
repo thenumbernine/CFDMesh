@@ -86,180 +86,32 @@ struct Cell {
 	Cell() : volume(0) {}
 };
 
-struct MeshArgs {
-	int2 size_ = int2(101, 101);
-	MeshArgs& size(int2 x) { size_ = x; return *this; }
-	
-	real2 mins_ = real2(-1, -1);
-	MeshArgs& mins(real2 x) { mins_ = x; return *this; }
-
-	real2 maxs_ = real2(1, 1);
-	MeshArgs& maxs(real2 x) { maxs_ = x; return *this; }
-
-	using GridFunc = std::function<real2(real2)>;
-	GridFunc grid_ = [](real2 x) -> real2 { return x; };
-	MeshArgs& grid(GridFunc x) { grid_ = x; return *this; }
-	
-	int2 repeat_ = int2(0, 0);
-	MeshArgs& repeat(int2 x) { repeat_ = x; return *this; }
-
-	int2 capmin_ = int2(0, 0);
-	MeshArgs& capmin(int2 x) { capmin_ = x; return *this; }
-};
-
+struct MeshFactory;
 struct Mesh {
+//liu kang wins.  friendship.
+protected:
+	struct ctorkey {
+		explicit ctorkey(int) {}
+	};
+
+	Mesh(const Mesh&) = delete;
+	const Mesh& operator=(const Mesh&) = delete;
+
+	template <typename... T>
+	static ::std::shared_ptr<Mesh> create(T &&...args) {
+		return ::std::make_shared<Mesh>(ctorkey{0}, ::std::forward<T>(args)...);
+	}
+
+public:
 	std::vector<Vertex> vtxs;	//0-forms, which construct n and n-1 forms
 	std::vector<Face> faces;	//n-1-forms, hold flux information between cells
 	std::vector<Cell> cells;	//n-forms, hold the info at each cell
 
-//liu kang wins.  friendship.
-private:
-	Mesh() {}
-
-public:
-
-	static Mesh buildQuadChart(
-		MeshArgs args = MeshArgs()
-	) {
-		int2 size = args.size_;
-		real2 mins = args.mins_;
-		real2 maxs = args.maxs_;
-		auto grid = args.grid_;
-		int2 repeat = args.repeat_;
-		int2 capmin = args.capmin_;
-
-		Mesh mesh;
-		int m = size(0);
-		int n = size(1);
-
-		int vtxsize = m * n;
-		if (capmin(0)) vtxsize++;
-		mesh.vtxs.resize(vtxsize);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
-					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
-				
-				real2 u = grid(x);
-				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh.vtxs[i + m * j].pos = vec(f);
-			}
-		}
-		
-		int capindex = m * n;
-		if (capmin(0)) {
-			vec sum;
-			for (int j = 0; j < n; ++j) {
-				sum += mesh.vtxs[0 + m * j].pos;
-			}
-			mesh.vtxs[capindex].pos = sum / (real)n;
-		}
-
-		int imax = repeat(0) ? m : m-1;
-		int jmax = repeat(1) ? n : n-1;
-		for (int j = 0; j < jmax; ++j) {
-			int jn = (j + 1) % n;
-			for (int i = 0; i < imax; ++i) {
-				int in = (i + 1) % m;
-				mesh.addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
-			}
-		}
-
-		if (capmin(0)) {
-			for (int j = 0; j < jmax; ++j) {
-				int jn = (j + 1) % n;
-				mesh.addCell(std::vector<int>{ 0 + m * j, 0 + m * jn, capindex });
-			}
-		}
-
-
-		mesh.calcAux();
-		
-		return mesh;
-	}
-
-	static Mesh buildTriChart(
-		MeshArgs args = MeshArgs()
-	) {
-		int2 size = args.size_;
-		real2 mins = args.mins_;
-		real2 maxs = args.maxs_;
-		auto grid = args.grid_;
-		int2 repeat = args.repeat_;
-		//int2 capmin = args.capmin_;
+	friend struct MeshFactory;
 	
-		Mesh mesh;
-		int m = size(0);
-		int n = size(1);
-	
-		mesh.vtxs.resize(m * n);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
-					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
-				
-				real2 u = grid(x);
-				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh.vtxs[i + m * j].pos = vec(f);
-			}
-		}
-		
-		int imax = repeat(0) ? m : m-1;
-		int jmax = repeat(1) ? n : n-1;
-		for (int j = 0; j < jmax; ++j) {
-			int jn = (j + 1) % n;
-			for (int i = 0; i < imax; ++i) {
-				int in = (i + 1) % m;
-				mesh.addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn});
-				mesh.addCell(std::vector<int>{in + m * jn, i + m * jn, i + m * j});
-			}
-		}
-	
-		mesh.calcAux();
-		
-		return mesh;
-	}
+	explicit Mesh(const ctorkey&) {}
+	virtual ~Mesh() {}
 
-
-	static Mesh buildFromFile(const std::string& fn) {
-		Mesh mesh;	
-		
-		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(fn), "\n");
-	
-		std::string first = ls.front();
-		ls.pop_front();
-		std::vector<std::string> m_n = split<std::vector<std::string>>(ls.front(), "\\s+");
-		ls.pop_front();
-		int m = std::stoi(m_n[0]);
-		int n = std::stoi(m_n[1]);
-		std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
-		if (_x.front() == "") _x.pop_front();
-		if (_x.back() == "") _x.pop_back();
-		std::function<real(const std::string&)> f = [](const std::string& s) -> real { return std::stod(s); };
-		std::vector<real> x = map<std::list<std::string>, std::vector<real>>(_x, f);
-		assert(x.size() == (size_t)(2 * m * n));
-	
-		auto us = std::vector(x.begin(), x.begin() + m*n);
-		auto vs = std::vector(x.begin() + m*n, x.end());
-		assert(us.size() == vs.size());
-
-		mesh.vtxs.resize(m*n);
-		for (int i = 0; i < (int)us.size(); ++i) {
-			mesh.vtxs[i].pos = vec(us[i], vs[i]);
-		}
-	
-		for (int j = 0; j < n-1; ++j) {
-			for (int i = 0; i < m-1; ++i) {
-				mesh.addCell(std::vector<int>{i + m * j, i + m * (j+1), i+1 + m * (j+1), i+1 + m * j});
-			}
-		}
-	
-		mesh.calcAux();
-	
-		return mesh;
-	}
 
 	int addEdge(int va, int vb) {
 		int ei = 0;
@@ -360,6 +212,21 @@ public:
 	}
 };
 
+
+struct MeshFactory {
+	const char* name = nullptr;
+	
+	MeshFactory(const char* name_) : name(name_) {}
+	virtual ~MeshFactory() {}
+	virtual void updateGUI() {}
+	virtual std::shared_ptr<Mesh> createMesh() const = 0;
+protected:
+	virtual std::shared_ptr<Mesh> createMeshSuper() const {
+		return Mesh::create();
+	}
+};
+	
+
 //2D polygon volume
 static real polyVol(const std::vector<vec>& vs) {
 	size_t n = vs.size();
@@ -384,4 +251,5 @@ static bool contains(const vec pos, std::vector<vec> vtxs) {
 }
 
 };
+
 }

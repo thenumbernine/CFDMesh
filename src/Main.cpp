@@ -60,7 +60,7 @@ struct MeshConfig : public Config {
 
 using ThisMeshNamespace = CFDMesh::MeshNamespace<MeshConfig>;
 using Mesh = ThisMeshNamespace::Mesh;
-using MeshArgs = ThisMeshNamespace::MeshArgs;
+using MeshFactory = ThisMeshNamespace::MeshFactory;
 using Cell = ThisMeshNamespace::Cell;
 using Face = ThisMeshNamespace::Face;
 
@@ -165,71 +165,225 @@ std::vector<const char*> initCondNames = map<
 	[](std::shared_ptr<InitCond> ic) -> const char* { return ic->name(); }
 );
 
-std::vector<std::function<std::shared_ptr<Mesh>()>> meshes = {
-	[]() -> std::shared_ptr<Mesh> {
-		return std::make_shared<Mesh>(Mesh::buildFromFile("grids/n0012_113-33.p2dfmt"));
-	},
-	[]() -> std::shared_ptr<Mesh> {
-		return std::make_shared<Mesh>(Mesh::buildQuadChart());
-	},
-	[]() -> std::shared_ptr<Mesh> {
-		return std::make_shared<Mesh>(Mesh::buildTriChart());
-	},
-	[]() -> std::shared_ptr<Mesh> {
-		return std::make_shared<Mesh>(Mesh::buildQuadChart(MeshArgs()
-			.grid([](real2 v) -> real2 { return real2(cbrt(v(0)), cbrt(v(1))); })
-		));
-	},
-	[]() -> std::shared_ptr<Mesh> {
-		return std::make_shared<Mesh>(Mesh::buildQuadChart(MeshArgs()
-			.grid([](real2 v) -> real2 { return real2(cubed(v(0)), cubed(v(1))); })
-		));
-	},
-	[]() -> std::shared_ptr<Mesh> {
-		return std::make_shared<Mesh>(Mesh::buildQuadChart(
-			MeshArgs()
-				.grid([](real2 v) -> real2 { 
-					real r = real2::length(v);
-					//real theta = std::max(0., 1. - r);
-					real sigma = 3.;	//almost 0 at r=1
-					const real rotationAmplitude = 3.;
-					real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
-					real costh = cos(theta), sinth = sin(theta);
-					return real2(
-						costh * v(0) - sinth * v(1),
-						sinth * v(0) + costh * v(1));
-				})
-		));
-	},
-	[]() -> std::shared_ptr<Mesh> {
-		return std::make_shared<Mesh>(Mesh::buildQuadChart(
-			MeshArgs()
-				.size(int2(51, 201))
-				.mins(real2(.5, 0))
-				.maxs(real2(1, 2*M_PI))
-				.grid([](real2 v) -> real2 { 
-					return real2(cos(v(1)), sin(v(1))) * v(0);
-				})
-				.repeat(int2(0, 1))
-				//.capmin(int2(1, 0))
-		));
-	},
+
+struct FileMeshFactory : public MeshFactory {
+	std::string filename = {"grids/n0012_113-33.p2dfmt"};
+	
+	FileMeshFactory() : MeshFactory("p2dfmt mesh") {}
+
+	virtual std::shared_ptr<Mesh> createMesh() const {
+		std::shared_ptr<Mesh> mesh = createMeshSuper();
+		
+		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(filename), "\n");
+	
+		std::string first = ls.front();
+		ls.pop_front();
+		std::vector<std::string> m_n = split<std::vector<std::string>>(ls.front(), "\\s+");
+		ls.pop_front();
+		int m = std::stoi(m_n[0]);
+		int n = std::stoi(m_n[1]);
+		std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
+		if (_x.front() == "") _x.pop_front();
+		if (_x.back() == "") _x.pop_back();
+		std::function<real(const std::string&)> f = [](const std::string& s) -> real { return std::stod(s); };
+		std::vector<real> x = map<std::list<std::string>, std::vector<real>>(_x, f);
+		assert(x.size() == (size_t)(2 * m * n));
+	
+		auto us = std::vector(x.begin(), x.begin() + m*n);
+		auto vs = std::vector(x.begin() + m*n, x.end());
+		assert(us.size() == vs.size());
+
+		mesh->vtxs.resize(m*n);
+		for (int i = 0; i < (int)us.size(); ++i) {
+			mesh->vtxs[i].pos = vec(us[i], vs[i]);
+		}
+	
+		for (int j = 0; j < n-1; ++j) {
+			for (int i = 0; i < m-1; ++i) {
+				mesh->addCell(std::vector<int>{i + m * j, i + m * (j+1), i+1 + m * (j+1), i+1 + m * j});
+			}
+		}
+	
+		mesh->calcAux();
+		return mesh;
+	}
+
+	virtual void updateGUI() {
+		//TODO filename popup
+	}
 };
 
-std::vector<std::string> meshNameStrs = map<
-	decltype(meshes),
-	std::vector<std::string>
->(
-	meshes,
-	[](const std::function<std::shared_ptr<Mesh>()>& meshgen) -> std::string { return std::to_string((intptr_t)(void*)&meshgen); }
-);
+struct ChartMeshFactory : public MeshFactory {
+	int2 size = int2(101, 101);
+	float2 mins = real2(-1, -1);
+	float2 maxs = real2(1, 1);
+	int2 repeat = int2(0, 0);
+	int2 capmin = int2(0, 0);
 
-std::vector<const char*> meshNames = map<
-	decltype(meshNameStrs),
+	ChartMeshFactory(const char* name_) : MeshFactory(name_) {}
+
+	virtual real2 grid(real2 x) const { return x; }
+	
+	virtual void updateGUI() {
+		igInputInt2("size", size.v, 0);
+		igInputFloat2("mins", mins.v, "%f", 0);
+		igInputFloat2("maxs", maxs.v, "%f", 0);
+		igInputInt2("repeat", repeat.v, 0);
+		igInputInt2("capmin", capmin.v, 0);
+	}
+};
+
+struct TriUnitMeshFactory : public ChartMeshFactory {
+	TriUnitMeshFactory() : ChartMeshFactory("unit square of triangles") {}
+	
+	virtual std::shared_ptr<Mesh> createMesh() const {
+		std::shared_ptr<Mesh> mesh = createMeshSuper();
+		
+		int m = size(0);
+		int n = size(1);
+	
+		mesh->vtxs.resize(m * n);
+		for (int j = 0; j < n; ++j) {
+			for (int i = 0; i < m; ++i) {
+				real2 x = real2(
+					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
+					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
+				
+				real2 u = grid(x);
+				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
+				mesh->vtxs[i + m * j].pos = vec(f);
+			}
+		}
+		
+		int imax = repeat(0) ? m : m-1;
+		int jmax = repeat(1) ? n : n-1;
+		for (int j = 0; j < jmax; ++j) {
+			int jn = (j + 1) % n;
+			for (int i = 0; i < imax; ++i) {
+				int in = (i + 1) % m;
+				mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn});
+				mesh->addCell(std::vector<int>{in + m * jn, i + m * jn, i + m * j});
+			}
+		}
+	
+		mesh->calcAux();
+		return mesh;
+	}
+};
+
+struct QuadUnitMeshFactory : public ChartMeshFactory {
+	QuadUnitMeshFactory(const char* name_ = "unit square of quads") : ChartMeshFactory(name_) {}
+	
+	virtual std::shared_ptr<Mesh> createMesh() const {
+		std::shared_ptr<Mesh> mesh = createMeshSuper();
+
+		int m = size(0);
+		int n = size(1);
+
+		int vtxsize = m * n;
+		if (capmin(0)) vtxsize++;
+		mesh->vtxs.resize(vtxsize);
+		for (int j = 0; j < n; ++j) {
+			for (int i = 0; i < m; ++i) {
+				real2 x = real2(
+					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
+					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
+				
+				real2 u = grid(x);
+				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
+				mesh->vtxs[i + m * j].pos = vec(f);
+			}
+		}
+		
+		int capindex = m * n;
+		if (capmin(0)) {
+			vec sum;
+			for (int j = 0; j < n; ++j) {
+				sum += mesh->vtxs[0 + m * j].pos;
+			}
+			mesh->vtxs[capindex].pos = sum / (real)n;
+		}
+
+		int imax = repeat(0) ? m : m-1;
+		int jmax = repeat(1) ? n : n-1;
+		for (int j = 0; j < jmax; ++j) {
+			int jn = (j + 1) % n;
+			for (int i = 0; i < imax; ++i) {
+				int in = (i + 1) % m;
+				mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
+			}
+		}
+
+		if (capmin(0)) {
+			for (int j = 0; j < jmax; ++j) {
+				int jn = (j + 1) % n;
+				mesh->addCell(std::vector<int>{ 0 + m * j, 0 + m * jn, capindex });
+			}
+		}
+
+		mesh->calcAux();
+		return mesh;
+	}
+};
+
+struct QuadUnitCbrtMeshFactory : public QuadUnitMeshFactory {
+	QuadUnitCbrtMeshFactory() : QuadUnitMeshFactory("unit square of quads, cbrt mapping") {}
+	virtual real2 grid(real2 v) const {
+		return real2(cbrt(v(0)), cbrt(v(1)));
+	}
+};
+
+struct QuadUnitCubedMeshFactory : public QuadUnitMeshFactory {
+	QuadUnitCubedMeshFactory() : QuadUnitMeshFactory("unit square of quads, cubed mapping") {}
+	virtual real2 grid(real2 v) const {
+		return real2(cubed(v(0)), cubed(v(1)));
+	}
+};
+
+struct TwistQuadUnitMeshFactory : public QuadUnitMeshFactory {
+	TwistQuadUnitMeshFactory() : QuadUnitMeshFactory("unit square of quads, twist in the middle") {}
+	virtual real2 grid(real2 v) const {
+		real r = real2::length(v);
+		//real theta = std::max(0., 1. - r);
+		real sigma = 3.;	//almost 0 at r=1
+		const real rotationAmplitude = 3.;
+		real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
+		real costh = cos(theta), sinth = sin(theta);
+		return real2(
+			costh * v(0) - sinth * v(1),
+			sinth * v(0) + costh * v(1));	
+	}
+};
+
+struct DonutQuadUnitMeshFactory : public QuadUnitMeshFactory {
+	DonutQuadUnitMeshFactory() : QuadUnitMeshFactory("polar") {
+		size = int2(51, 201);
+		mins = real2(.5, 0);
+		maxs = real2(1, 2*M_PI);
+		repeat = int2(0, 1);
+		//capmin = int2(1, 0);
+	}
+	virtual real2 grid(real2 v) const {
+		return real2(cos(v(1)), sin(v(1))) * v(0);
+	}
+};
+
+std::vector<std::shared_ptr<MeshFactory>> meshGenerators = {
+	std::make_shared<FileMeshFactory>(),
+	std::make_shared<QuadUnitMeshFactory>(),
+	std::make_shared<TriUnitMeshFactory>(),
+	std::make_shared<QuadUnitCbrtMeshFactory>(),
+	std::make_shared<QuadUnitCubedMeshFactory>(),
+	std::make_shared<TwistQuadUnitMeshFactory>(),
+	std::make_shared<DonutQuadUnitMeshFactory>(),
+};
+
+std::vector<const char*> meshGenerationNames = map<
+	decltype(meshGenerators),
 	std::vector<const char*>
 >(
-	meshNameStrs,
-	[](const std::string& s) -> const char* { return s.c_str(); }
+	meshGenerators,
+	[](const std::shared_ptr<MeshFactory>& m) -> const char* { return m->name; }
 );
 
 struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
@@ -259,7 +413,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		
 	float cfl = .5;
 
-	int meshIndex = 1;
+	int meshGenerationIndex = 1;
 	
 	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 
@@ -274,12 +428,12 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 		glClearColor(.5, .75, .75, 1);
 		
-		resetMesh();	
-		resetState();
+		resetMesh();	//which calls resetState()
 	}
 
 	void resetMesh() {
-		m = meshes[meshIndex]();
+		m = meshGenerators[meshGenerationIndex]->createMesh();
+		resetState();
 	}
 
 	void resetState() {
@@ -623,10 +777,17 @@ for (int i = 0; i < StateVec::size; ++i) {
 			initConds[initCondIndex]->updateGUI();
 			igPopID();
 
-			if (igCombo("mesh", &meshIndex, meshNames.data(), meshNames.size(), -1)) {
+			if (igCombo("mesh", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
 				resetMesh();
 			}
-
+			
+			igPushIDStr("mesh generation fields");
+			meshGenerators[meshGenerationIndex]->updateGUI();
+			igPopID();
+			
+			if (igSmallButton("reset mesh")) {
+				resetMesh();
+			}
 
 			if (view == viewOrtho) {
 				//find the view bounds
