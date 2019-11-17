@@ -5,70 +5,76 @@
 #include "Tensor/Vector.h"
 #include <cimgui.h>
 #include <utility>
-#include <memory>
 #include <cmath>
 #include <cassert>
 
 namespace CFDMesh {
 namespace Equation {
 
-template<typename Config>
-struct Euler : public Equation<Config> {
-	using real = typename Config::real;
-	using real3 = typename Config::real3;
-	using StateVec = Tensor::Vector<real, 5>;
+template<typename real>
+struct EulerNamespace {
 
-	enum { numWaves = 5 };
+using real3 = Tensor::Vector<real, 3>;
+
+enum { numCons = 5 };
+
+using StateVec_ = Tensor::Vector<real, numCons>;
+
+struct Cons : public StateVec_ {
+	real& rho() { return StateVec_::v[0]; }
+	real3& m() { return *(real3*)( StateVec_::v + 1 ); }
+	real& ETotal() { return StateVec_::v[StateVec_::size-1]; }
+	
+	const real& rho() const { return StateVec_::v[0]; }
+	const real3& m() const { return *(real3*)( StateVec_::v + 1 ); }
+	const real& ETotal() const { return StateVec_::v[StateVec_::size-1]; }
+
+	Cons() {}
+	
+	Cons(const StateVec_& v) : StateVec_(v) {}
+
+	Cons(real rho_, real3 m_, real ETotal_) {
+		rho() = rho_;
+		m() = m_;
+		ETotal() = ETotal_;
+	}
+};
+
+struct Prim_ : public StateVec_ {
+	real& rho() { return StateVec_::v[0]; }
+	real3& v() { return *(real3*)( StateVec_::v + 1 ); }
+	real& P() { return StateVec_::v[StateVec_::size-1]; }
+
+	const real& rho() const { return StateVec_::v[0]; }
+	const real3& v() const { return *(real3*)( StateVec_::v + 1 ); }
+	const real& P() const { return StateVec_::v[StateVec_::size-1]; }
+
+	Prim_() {}
+	
+	Prim_(const StateVec_& v) : StateVec_(v) {}
+	
+	Prim_(real rho_, real3 v_, real P_) {
+		rho() = rho_;
+		v() = v_;
+		P() = P_;
+	}
+};
+
+struct Euler : public Equation<real, Cons, Euler> {
+	using Super = Equation<real, Cons, Euler>;
+
+	using Prim = Prim_;
+
+	using StateVec = StateVec_;
+
+	enum { numWaves = numCons };
 	using WaveVec = StateVec;
+
+	using InitCond = typename Super::InitCond;
+	using DisplayMethod = typename Super::DisplayMethod;
 
 	real heatCapacityRatio = 1.4;
 
-	struct Cons : public StateVec {
-		real& rho() { return StateVec::v[0]; }
-		real3& m() { return *(real3*)( StateVec::v + 1 ); }
-		real& ETotal() { return StateVec::v[StateVec::size-1]; }
-		
-		const real& rho() const { return StateVec::v[0]; }
-		const real3& m() const { return *(real3*)( StateVec::v + 1 ); }
-		const real& ETotal() const { return StateVec::v[StateVec::size-1]; }
-
-		Cons() {}
-		
-		Cons(const StateVec& v) : StateVec(v) {}
-
-		Cons(real rho_, real3 m_, real ETotal_) {
-			rho() = rho_;
-			m() = m_;
-			ETotal() = ETotal_;
-		}
-	};
-
-	struct Prim : public StateVec {
-		real& rho() { return StateVec::v[0]; }
-		real3& v() { return *(real3*)( StateVec::v + 1 ); }
-		real& P() { return StateVec::v[StateVec::size-1]; }
-
-		const real& rho() const { return StateVec::v[0]; }
-		const real3& v() const { return *(real3*)( StateVec::v + 1 ); }
-		const real& P() const { return StateVec::v[StateVec::size-1]; }
-
-		Prim() {}
-		
-		Prim(const StateVec& v) : StateVec(v) {}
-		
-		Prim(real rho_, real3 v_, real P_) {
-			rho() = rho_;
-			v() = v_;
-			P() = P_;
-		}
-	};
-
-	struct InitCond {
-		virtual ~InitCond() {}
-		virtual const char* name() const = 0;
-		virtual Cons initCell(const Euler* eqn, real3 pos) const = 0;
-		virtual void updateGUI() {}
-	};
 
 	struct InitCondConst : public InitCond {
 		using InitCond::InitCond;
@@ -79,7 +85,7 @@ struct Euler : public Equation<Config> {
 
 		virtual const char* name() const { return "constant"; }
 		virtual Cons initCell(const Euler* eqn, real3 x) const {
-			return eqn->consFromPrim(Prim(rho, real3(vx, vy), P));
+			return eqn->consFromPrim(Prim_(rho, real3(vx, vy), P));
 		}
 		
 		virtual void updateGUI() {
@@ -105,7 +111,7 @@ struct Euler : public Equation<Config> {
 		virtual const char* name() const { return "Sod"; }
 		virtual Cons initCell(const Euler* eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0;
-			return eqn->consFromPrim(Prim(
+			return eqn->consFromPrim(Prim_(
 				lhs ? rhoL : rhoR,
 				lhs ? real3(vxL, vyL, vzL) : real3(vxR, vyR, vzR),
 				lhs ? PL : PR
@@ -130,7 +136,7 @@ struct Euler : public Equation<Config> {
 		using InitCond::InitCond;
 		virtual const char* name() const { return "Spiral"; }
 		virtual Cons initCell(const Euler* eqn, real3 x) const {
-			return eqn->consFromPrim(Prim(
+			return eqn->consFromPrim(Prim_(
 				1,
 				real3(-x(1), x(0)),
 				1
@@ -138,61 +144,22 @@ struct Euler : public Equation<Config> {
 		}
 	};
 
-	std::vector<std::shared_ptr<InitCond>> initConds;
-	std::vector<const char*> initCondNames;
-
-
-	struct DisplayMethod {
-		using DisplayFunc = std::function<float(const Euler*, const Cons&)>;
-		std::string name;
-		DisplayFunc f;
-		DisplayMethod(const std::string& name_, DisplayFunc f_) : name(name_), f(f_) {}
-	};
-
-	std::vector<std::shared_ptr<DisplayMethod>> displayMethods;
-	std::vector<const char*> displayMethodNames;
-
 
 	Euler() {
-		initConds = {
+		Super::initConds = {
 			std::make_shared<InitCondConst>(),
 			std::make_shared<InitCondSod>(),
 			std::make_shared<InitCondSpiral>(),
 		};
 
-		initCondNames = map<
-			decltype(initConds),
-			std::vector<const char*>
-		>(
-			initConds,
-			[](std::shared_ptr<InitCond> ic) -> const char* { return ic->name(); }
-		);
-	
-		displayMethods = {
-			std::make_shared<DisplayMethod>("rho", [](const Euler* eqn, const Cons& U) -> float { return U.rho(); }),
-			
-			std::make_shared<DisplayMethod>("m", [](const Euler* eqn, const Cons& U) -> float { return real3::length(U.m()); }),
-			std::make_shared<DisplayMethod>("mx", [](const Euler* eqn, const Cons& U) -> float { return U.m()(0); }),
-			std::make_shared<DisplayMethod>("my", [](const Euler* eqn, const Cons& U) -> float { return U.m()(1); }),
-			std::make_shared<DisplayMethod>("mz", [](const Euler* eqn, const Cons& U) -> float { return U.m()(2); }),
-			
-			std::make_shared<DisplayMethod>("ETotal", [](const Euler* eqn, const Cons& U) -> float { return U.ETotal(); }),
-			
-			std::make_shared<DisplayMethod>("v", [](const Euler* eqn, const Cons& U) -> float { return real3::length(U.m()) / U.rho(); }),
-			std::make_shared<DisplayMethod>("vx", [](const Euler* eqn, const Cons& U) -> float { return U.m()(0) / U.rho(); }),
-			std::make_shared<DisplayMethod>("vy", [](const Euler* eqn, const Cons& U) -> float { return U.m()(1) / U.rho(); }),
-			std::make_shared<DisplayMethod>("vz", [](const Euler* eqn, const Cons& U) -> float { return U.m()(2) / U.rho(); }),
-			
-			std::make_shared<DisplayMethod>("P", [](const Euler* eqn, const Cons& U) -> float { return eqn->primFromCons(U).P(); }),
-		};
+		Super::addDisplayScalar("rho", [](const Euler* eqn, const Cons& U) -> float { return U.rho(); });
+		Super::addDisplayVector("m", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)U.m(); });
+		Super::addDisplayScalar("ETotal", [](const Euler* eqn, const Cons& U) -> float { return U.ETotal(); });
+		Super::addDisplayVector("v", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)(U.m() / U.rho()); });
+		Super::addDisplayScalar("P", [](const Euler* eqn, const Cons& U) -> float { return eqn->primFromCons(U).P(); });
 
-		displayMethodNames = map<
-			decltype(displayMethods),
-			std::vector<const char*>
-		>(
-			displayMethods,
-			[](const std::shared_ptr<DisplayMethod>& m) -> const char* { return m->name.c_str(); }
-		);
+
+		Super::getNames();
 	}
 
 	Cons consFromPrim(const Prim& W) const {
@@ -211,15 +178,15 @@ struct Euler : public Equation<Config> {
 		return W;
 	}
 
-	real calc_hTotal(real rho, real P, real ETotal) {
+	real calc_hTotal(real rho, real P, real ETotal) const {
 		return (ETotal + P) / rho;
 	}
 
-	real calc_Cs_from_P_rho(real P, real rho) {
+	real calc_Cs_from_P_rho(real P, real rho) const {
 		return sqrt(heatCapacityRatio * P / rho);
 	}
 
-	real calc_Cs_from_vSq_hTotal(real vSq, real hTotal) {
+	real calc_Cs_from_vSq_hTotal(real vSq, real hTotal) const {
 		return sqrt((heatCapacityRatio - 1) * (hTotal - .5 * vSq));
 	}
 
@@ -289,9 +256,19 @@ assert(std::isfinite(vars.Cs));
 		return lambdas;
 	}
 
-	std::pair<real, real> calcLambdaMinMax(real3 normal, Prim W, real Cs) {
-		real v = real3::dot(normal, W.v());
-		return std::make_pair<real, real>(v - Cs, v + Cs);
+	struct CalcLambdaVars {
+		real v;
+		real Cs;
+		
+		CalcLambdaVars(const Euler& eqn, const Cons& U) {
+			Prim W = eqn.primFromCons(U);
+			v = real3::length(W.v());
+			Cs = eqn.calc_Cs_from_P_rho(W.P(), W.rho());
+		}
+	};
+
+	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) {
+		return std::make_pair<real, real>(vars.v - vars.Cs, vars.v + vars.Cs);
 	}
 
 	real calcLambdaMin(real v, real Cs) {
@@ -363,6 +340,18 @@ assert(std::isfinite(vars.Cs));
 		flux(4) = U.m()(0) * hTotal;
 		return flux;
 	}
+
+	Cons rotateTo(Cons U, real3 normal) {
+		U.m() = CFDMesh::rotateTo<real3>(U.m(), normal);
+		return U;
+	}
+	
+	Cons rotateFrom(Cons U, real3 normal) {
+		U.m() = CFDMesh::rotateFrom<real3>(U.m(), normal);
+		return U;
+	}
+};
+
 };
 
 }

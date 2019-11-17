@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CFDMesh/Equation/Equation.h"
+#include "CFDMesh/Util.h"
 #include "Tensor/Vector.h"
 #include <utility>
 #include <cmath>
@@ -9,10 +10,11 @@
 namespace CFDMesh {
 namespace Equation {
 
-template<typename Config>
-struct GLMMaxwell : public Equation<Config> {
-	using real = typename Config::real;
-	using real3 = typename Config::real3;
+template<typename real>
+struct GLMMaxwell : public Equation<GLMMaxwell<real>> {
+	using real = real;
+	using real2 = Tensor::Vector<real, 2>;
+	using real3 = Tensor::Vector<real, 3>;
 
 	//notice we only integrate 8 vars
 	using StateVec = Tensor::Vector<real, 12>;
@@ -32,6 +34,44 @@ struct GLMMaxwell : public Equation<Config> {
 
 		using StateVec::StateVec;
 	};
+
+	struct DisplayMethod {
+		using DisplayFunc = std::function<float(const GLMMaxwell*, const Cons&)>;
+		std::string name;
+		DisplayFunc f;
+		DisplayMethod(const std::string& name_, DisplayFunc f_) : name(name_), f(f_) {}
+	};
+
+	std::vector<std::shared_ptr<DisplayMethod>> displayMethods;
+
+	GLMMaxwell() {
+
+		Super::displayMethods = {
+			std::make_shared<DisplayMethod>("rho", [](const Euler* eqn, const Cons& U) -> float { return U.rho(); }),
+			
+			std::make_shared<DisplayMethod>("m", [](const Euler* eqn, const Cons& U) -> float { return real3::length(U.m()); }),
+			std::make_shared<DisplayMethod>("mx", [](const Euler* eqn, const Cons& U) -> float { return U.m()(0); }),
+			std::make_shared<DisplayMethod>("my", [](const Euler* eqn, const Cons& U) -> float { return U.m()(1); }),
+			std::make_shared<DisplayMethod>("mz", [](const Euler* eqn, const Cons& U) -> float { return U.m()(2); }),
+			
+			std::make_shared<DisplayMethod>("ETotal", [](const Euler* eqn, const Cons& U) -> float { return U.ETotal(); }),
+			
+			std::make_shared<DisplayMethod>("v", [](const Euler* eqn, const Cons& U) -> float { return real3::length(U.m()) / U.rho(); }),
+			std::make_shared<DisplayMethod>("vx", [](const Euler* eqn, const Cons& U) -> float { return U.m()(0) / U.rho(); }),
+			std::make_shared<DisplayMethod>("vy", [](const Euler* eqn, const Cons& U) -> float { return U.m()(1) / U.rho(); }),
+			std::make_shared<DisplayMethod>("vz", [](const Euler* eqn, const Cons& U) -> float { return U.m()(2) / U.rho(); }),
+			
+			std::make_shared<DisplayMethod>("P", [](const Euler* eqn, const Cons& U) -> float { return eqn->primFromCons(U).P(); }),
+		};
+
+		displayMethodNames = map<
+			decltype(displayMethods),
+			std::vector<const char*>
+		>(
+			displayMethods,
+			[](const std::shared_ptr<DisplayMethod>& m) -> const char* { return m->name.c_str(); }
+		);
+	}
 
 	using Prim = Cons;
 

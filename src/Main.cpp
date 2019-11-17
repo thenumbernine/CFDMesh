@@ -27,33 +27,24 @@ using namespace CFDMesh;
 
 
 //config for everything, to hold everything in one place
-template<typename real_>
-struct ConfigTemplate {
-	using real = real_;
-	using real2 = Tensor::Vector<real, 2>;
-	using real3 = Tensor::Vector<real, 3>;
-};
+using real = double;
+//using real = float;
 
 
-//using Config = ConfigTemplate<double>;
-using Config = ConfigTemplate<double>;
+using real2 = Tensor::Vector<real, 2>;
+using real3 = Tensor::Vector<real, 3>;
 
-
-using real = Config::real;
-using real2 = Config::real2;
-using real3 = Config::real3;
-
-
-
-using ThisEquation = Equation::Euler<Config>;
-//using ThisEquation = Equation::GLMMaxwell<Config>;
+using ThisEquation = Equation::EulerNamespace<real>::Euler;
+//using ThisEquation = Equation::GLMMaxwell<real>;
 
 using StateVec = ThisEquation::StateVec;
 using WaveVec = ThisEquation::WaveVec;
 using Cons = ThisEquation::Cons;
-using Prim = ThisEquation::Prim;
 
-struct MeshConfig : public Config {
+struct MeshConfig {
+	using real = ::real;
+	using real2 = ::real2;
+	using real3 = ::real3;
 	using Cons = ThisEquation::Cons;
 	using StateVec = ThisEquation::Cons;
 };
@@ -68,22 +59,6 @@ using Face = ThisMeshNamespace::Face;
 
 static Parallel::Parallel parallel;
 static ThisEquation eqn;
-
-// rotate vx,vy such that n now points along the x dir
-static real3 rotateTo(real3 v, real3 n) {
-	return real3(
-		v(0) * n(0) + v(1) * n(1),
-		v(1) * n(0) - v(0) * n(1)
-	);
-}
-
-// rotate vx,vy such that the x dir now points along n 
-static real3 rotateFrom(real3 v, real3 n) {
-	return real3(
-		v(0) * n(0) - v(1) * n(1),
-		v(1) * n(0) + v(0) * n(1)
-	);
-}
 
 template<typename T> void glVertex2v(const T* v);
 template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
@@ -507,25 +482,16 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			m->cells.begin(), 
 			m->cells.end(), 
 			[this](Cell& c) -> real {
-				Prim W = eqn.primFromCons(c.U);
-				real rho = W.rho();
-				real P = W.P();
-				real Cs = eqn.calc_Cs_from_P_rho(P, rho);
+				
 				real result = std::numeric_limits<real>::infinity();
-#if 0 //check cartesian basis directions				
-				for (int j = 0; j < real3::size; ++j) {
-					real3 normal;
-					normal(j) = 1;
-#endif
-#if 1 //check mesh interfaces
-				//for (int ei : c.faces) {
-					//Face* e = &m->faces[ei];
 				for (int ei = 0; ei < c.faceCount; ++ei) {
 					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
-					real3 normal = e->normal;
-#endif
+					
+					Cons U = eqn.rotateTo(c.U, e->normal);
+					ThisEquation::CalcLambdaVars vars(eqn, U);
+					
 					real lambdaMin, lambdaMax;
-					std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(normal, W, Cs);
+					std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(vars);
 					lambdaMin = lambdaMinMax.first;
 					lambdaMax = lambdaMinMax.second;
 					lambdaMin = std::min<real>(0, lambdaMin);
@@ -634,9 +600,13 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			m->faces.begin(),
 			m->faces.end(),
 			[this, dt](Face& e) {
+				//roe averaged values at edge 
 				std::pair<Cons, Cons> ULR = getEdgeStates(&e);
-				Cons UL = ULR.first;
-				Cons UR = ULR.second;
+				
+				//rotate to align edge normal to x axis
+				//so x-direction flux jacobian is good for calculating the flux 
+				Cons UL = eqn.rotateTo(ULR.first, e.normal);
+				Cons UR = eqn.rotateTo(ULR.second, e.normal);
 assert(e.cells[0] == -1 || UL == m->cells[e.cells[0]].U);
 assert(e.cells[1] == -1 || UR == m->cells[e.cells[1]].U);
 
@@ -644,25 +614,15 @@ for (int i = 0; i < StateVec::size; ++i) {
 	assert(std::isfinite(UL(i)));	
 	assert(std::isfinite(UR(i)));	
 }	
-
-				// roe values at edge 
-				// rotate to align edge normal to x axis
-				// so x-direction flux jacobian is good for calculating the flux 
-				UL.m() = rotateTo(UL.m(), e.normal);
-				UR.m() = rotateTo(UR.m(), e.normal);
-				
-				real dx = e.cellDist;
-				Cons flux = (this->*calcFluxes[calcFluxIndex])(UL, UR, dx, dt);
+			
+				Cons F = (this->*calcFluxes[calcFluxIndex])(UL, UR, e.cellDist, dt);
 		
 				// rotate back to normal
-				flux.m() = rotateFrom(flux.m(), e.normal);
-			
+				e.flux = eqn.rotateFrom(F, e.normal);
+
 for (int i = 0; i < StateVec::size; ++i) {
-	assert(std::isfinite(flux(i)));	
-}	
-				
-				// here's the flux in underlying coordinates
-				e.flux = flux;
+	assert(std::isfinite(e.flux(i)));
+}		
 			}
 		);
 
