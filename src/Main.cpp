@@ -89,17 +89,6 @@ template<typename T> void glVertex2v(const T* v);
 template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
 template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
 
-enum DisplayMethod {
-	STATE,
-	VOLUME,
-	COUNT
-};
-
-static const char* displayMethodNames[DisplayMethod::COUNT] = {
-	"state",
-	"volume",
-};
-
 struct InitCond {
 	virtual ~InitCond() {}
 	virtual const char* name() const = 0;
@@ -127,14 +116,37 @@ struct InitCondConst : public InitCond {
 };
 
 struct InitCondSod : public InitCond {
+	float rhoL = 1;
+	float vxL = 0;
+	float vyL = 0;
+	float vzL = 0;
+	float PL = 1;
+	float rhoR = .125;
+	float vxR = 0;
+	float vyR = 0;
+	float vzR = 0;
+	float PR = .1;
 	virtual const char* name() const { return "Sod"; }
 	virtual Cons initCell(vec x) const {
 		bool lhs = x(0) < 0 && x(1) < 0;
 		return eqn.consFromPrim(Prim(
-			lhs ? 1. : .125,
-			vec(),
-			lhs ? 1. : .1
+			lhs ? rhoL : rhoR,
+			lhs ? vec(vxL, vyL, vzL) : vec(vxR, vyR, vzR),
+			lhs ? PL : PR
 		));
+	}
+
+	virtual void updateGUI() {
+		igInputFloat("rhoL", &rhoL, .1, 1, "%f", 0);
+		igInputFloat("vxL", &vxL, .1, 1, "%f", 0);
+		igInputFloat("vyL", &vyL, .1, 1, "%f", 0);
+		igInputFloat("vzL", &vzL, .1, 1, "%f", 0);
+		igInputFloat("PL", &PL, .1, 1, "%f", 0);
+		igInputFloat("rhoR", &rhoR, .1, 1, "%f", 0);
+		igInputFloat("vxR", &vxR, .1, 1, "%f", 0);
+		igInputFloat("vyR", &vyR, .1, 1, "%f", 0);
+		igInputFloat("vzR", &vzR, .1, 1, "%f", 0);
+		igInputFloat("PR", &PR, .1, 1, "%f", 0);
 	}
 };
 
@@ -386,6 +398,39 @@ std::vector<const char*> meshGenerationNames = map<
 	[](const std::shared_ptr<MeshFactory>& m) -> const char* { return m->name; }
 );
 
+
+struct DisplayMethod {
+	std::string name;
+	std::function<float(const Cons&)> f;
+	DisplayMethod(const std::string& name_, std::function<float(const Cons&)> f_) : name(name_), f(f_) {}
+};
+
+std::vector<std::shared_ptr<DisplayMethod>> displayMethods = {
+	std::make_shared<DisplayMethod>("rho", [](const Cons& U) -> float { return U.rho(); }),
+	
+	std::make_shared<DisplayMethod>("m", [](const Cons& U) -> float { return vec::length(U.m()); }),
+	std::make_shared<DisplayMethod>("mx", [](const Cons& U) -> float { return U.m()(0); }),
+	std::make_shared<DisplayMethod>("my", [](const Cons& U) -> float { return U.m()(1); }),
+	std::make_shared<DisplayMethod>("mz", [](const Cons& U) -> float { return U.m()(2); }),
+	
+	std::make_shared<DisplayMethod>("ETotal", [](const Cons& U) -> float { return U.ETotal(); }),
+	
+	std::make_shared<DisplayMethod>("v", [](const Cons& U) -> float { return vec::length(U.m()) / U.rho(); }),
+	std::make_shared<DisplayMethod>("vx", [](const Cons& U) -> float { return U.m()(0) / U.rho(); }),
+	std::make_shared<DisplayMethod>("vy", [](const Cons& U) -> float { return U.m()(1) / U.rho(); }),
+	std::make_shared<DisplayMethod>("vz", [](const Cons& U) -> float { return U.m()(2) / U.rho(); }),
+	
+	std::make_shared<DisplayMethod>("P", [](const Cons& U) -> float { return eqn.primFromCons(U).P(); }),
+};
+
+std::vector<const char*> displayMethodNames = map<
+	decltype(displayMethods),
+	std::vector<const char*>
+>(
+	displayMethods,
+	[](const std::shared_ptr<DisplayMethod>& m) -> const char* { return m->name.c_str(); }
+);
+
 struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	using Super = ::GLApp::ViewBehavior<::GLApp::GLApp>;
 	
@@ -401,8 +446,11 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	bool showCellCenters = false;
 	Cell* selectedCell = nullptr;
 
-	int displayMethod = 0;
-	float displayScalar = 1;
+	bool displayAutomaticRange = true;
+	int displayMethodIndex = 0;
+	
+	using ValueRange = std::pair<float, float>; //min, max
+	ValueRange displayValueRange = ValueRange(0, 1);
 
 	int initCondIndex = 1;
 
@@ -420,14 +468,50 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	virtual const char* getTitle() {
 		return "CFD Mesh";
 	}
-	
+
+	GLuint gradientTex = {};
+
 	CFDMeshApp(const Init& args) : Super(args) {
-		
 		view = viewOrtho;
 		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
 
 		glClearColor(.5, .75, .75, 1);
-		
+
+		std::vector<float4> gradientColors = {
+			{1,0,0,1},
+			{1,1,0,1},
+			{0,1,0,1},
+			{0,1,1,1},
+			{0,0,1,1},
+			{1,0,1,1},
+		};
+
+		int gradientTexWidth = 256;
+		std::vector<uchar4> gradientTexData(gradientTexWidth );
+		for (int i = 0; i < gradientTexWidth ; ++i) {
+			float f = (float)(i+.5)/(float)gradientTexWidth;
+			f *= (float)gradientColors.size();
+			int ip = (int)floor(f);
+			float fn = f - (float)ip;
+			float fp = 1 - fn;
+			int n1 = ip;
+			int n2 = (n1 + 1) % gradientColors.size();
+			const float4& c1 = gradientColors[n1];
+			const float4& c2 = gradientColors[n2];
+			float4 c = (c1 * fp + c2 * fn) * 255;
+			for (int j = 0; j < 4; ++j) {
+				c(j) = std::clamp<float>(c(j), 0, 255);
+			}
+			gradientTexData[i] = (uchar4)c;
+		}
+		glGenTextures(1, &gradientTex);
+		glBindTexture(GL_TEXTURE_1D, gradientTex);
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA, gradientTexData.size(), 0, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->v);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glBindTexture(GL_TEXTURE_1D, 0);
+
 		resetMesh();	//which calls resetState()
 	}
 
@@ -447,35 +531,29 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			m->cells.end(),
 			[this, ic](auto& c) {
 				c.U = ic->initCell(c.pos);
-#ifdef DEBUG			
-				Prim W = eqn.primFromCons(c.U);
-				assert(W.rho() > 0);
-				assert(vec::length(W.v()) >= 0);
-				assert(W.P() > 0);
-				real hTotal = eqn.calc_hTotal(W.rho(), W.P(), c.U.ETotal());
-				assert(hTotal > 0);
-#endif			
 			}
 		);
 	}
 
 	void draw() {
 		glClear(GL_COLOR_BUFFER_BIT);
+
+		glEnable(GL_TEXTURE_1D);
+		glBindTexture(GL_TEXTURE_1D, gradientTex);
+
 		for (const auto& c : m->cells) {
-			Prim W = eqn.primFromCons(c.U);
-			
-			if (displayMethod == DisplayMethod::STATE) {
-				glColor3f(displayScalar * W.rho(), displayScalar * vec::length(W.v()), displayScalar * W.P());
-			} else if (displayMethod == DisplayMethod::VOLUME) {
-				glColor3f(displayScalar * c.volume, .5, 1. - displayScalar * c.volume);
-			}
-			
+			real f = (c.displayValue - displayValueRange.first) / (displayValueRange.second - displayValueRange.first);
+			glTexCoord1f(f);
 			glBegin(GL_POLYGON);
 			for (int vi = 0; vi < c.vtxCount; ++vi) {
 				glVertex2v(m->vtxs[m->cellVtxIndexes[vi + c.vtxOffset]].pos.v);
 			}
 			glEnd();
 		}
+		
+		glBindTexture(GL_TEXTURE_1D, 0);
+		glDisable(GL_TEXTURE_1D);
+		
 		if (selectedCell) {
 			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 			glLineWidth(3);
@@ -679,12 +757,10 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 				Cons UR = ULR.second;
 assert(e.cells[0] == -1 || UL == m->cells[e.cells[0]].U);
 assert(e.cells[1] == -1 || UR == m->cells[e.cells[1]].U);
-assert(UL(3) == 0);
-assert(UR(3) == 0);
 
 for (int i = 0; i < StateVec::size; ++i) {
-	assert(std::isfinite(UL(0)));	
-	assert(std::isfinite(UR(0)));	
+	assert(std::isfinite(UL(i)));	
+	assert(std::isfinite(UR(i)));	
 }	
 
 				// roe values at edge 
@@ -700,12 +776,11 @@ for (int i = 0; i < StateVec::size; ++i) {
 				flux.m() = rotateFrom(flux.m(), e.normal);
 			
 for (int i = 0; i < StateVec::size; ++i) {
-	assert(std::isfinite(flux(0)));	
+	assert(std::isfinite(flux(i)));	
 }	
 				
 				// here's the flux in underlying coordinates
 				e.flux = flux;
-assert(e.flux(3) == 0);
 			}
 		);
 
@@ -728,25 +803,41 @@ assert(e.flux(3) == 0);
 					//}
 				}
 				c.U += dU_dt * dt;
-#ifdef DEBUG	
-Prim W = eqn.primFromCons(c.U);
-assert(W.rho() > 0);
-assert(vec::length(W.v()) >= 0);
-assert(W.P() > 0);
-real hTotal = eqn.calc_hTotal(W.rho(), W.P(), c.U.ETotal());
-assert(hTotal > 0);
-Cons U2 = eqn.consFromPrim(W);
-for (int i = 0; i < StateVec::size; ++i) {
-	real delta = U2(i) - c.U(i);
-	assert(fabs(delta) < 1e-9);
-}
-#endif			
 			}
 		);
-	
+
+		refreshDisplayValues();
+
 		time += dt;
 	}
+	
+	void refreshDisplayValues() {
+		parallel.foreach(
+			m->cells.begin(),
+			m->cells.end(),
+			[this](Cell& c) {
+				c.displayValue = displayMethods[displayMethodIndex]->f(c.U);
+			}
+		);
 
+		if (displayAutomaticRange) {
+			displayValueRange = parallel.reduce(
+				m->cells.begin(),
+				m->cells.end(),
+				[](const Cell& c) -> ValueRange { 
+					return ValueRange(c.displayValue, c.displayValue);
+				},
+				ValueRange(INFINITY, -INFINITY),
+				[](ValueRange a, ValueRange b) -> ValueRange {
+					return ValueRange(
+						std::min<float>(a.first, b.first),
+						std::max<float>(a.second, b.second)
+					);
+				}
+			);
+		}
+	}
+	
 	virtual void onUpdate() {
 		Super::onUpdate();
 		draw();
@@ -764,34 +855,48 @@ for (int i = 0; i < StateVec::size; ++i) {
 			igCheckbox("showEdges", &showEdges);
 			//igCheckbox("ortho", &ortho);
 		
-			if (igSmallButton("reset state")) {
-				resetState();
-			}
+			igSeparator();
 	
-			igCombo("display method", &displayMethod, displayMethodNames, DisplayMethod::COUNT, -1);
+			if (igCombo("display method", &displayMethodIndex, displayMethodNames.data(), displayMethodNames.size(), -1)) {
+				refreshDisplayValues();
+			}
+		
+			igCheckbox("auto display range", &displayAutomaticRange);
+			igInputFloat("display range min", &displayValueRange.first, .1, 1, "%f", 0);
+			igInputFloat("display range max", &displayValueRange.second, .1, 1, "%f", 0);
 			
-			igInputFloat("display scalar", &displayScalar, .1, 1., "%f", 0);
+			igSeparator();
+			
 			igInputFloat("restitution", &restitution, .1, 1., "%f", 0);
+			
+			igSeparator();
 		
 			igCombo("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
 			
+			igSeparator();
+			
 			igCombo("init cond", &initCondIndex, initCondNames.data(), initCondNames.size(), -1);
-
 			igPushIDStr("init cond fields");
 			initConds[initCondIndex]->updateGUI();
 			igPopID();
-
+			
+			if (igSmallButton("reset state")) {
+				resetState();
+			}
+			
+			igSeparator();
+			
 			if (igCombo("mesh", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
 				resetMesh();
 			}
-			
 			igPushIDStr("mesh generation fields");
 			meshGenerators[meshGenerationIndex]->updateGUI();
 			igPopID();
-			
 			if (igSmallButton("reset mesh")) {
 				resetMesh();
 			}
+			
+			igSeparator();
 
 			if (view == viewOrtho) {
 				//find the view bounds
@@ -801,9 +906,13 @@ for (int i = 0; i < StateVec::size; ++i) {
 				std::function<real(int)> f = [&](int i) -> real { return i >= 2 ? 0 : pos2(i); };
 				vec pos = vec(f);
 					
-				igBeginTooltip();
-				igText("%f %f\n", pos(0), pos(1));
-				igEndTooltip();
+				bool canHandleMouse = !igGetIO()->WantCaptureMouse;
+				
+				if (canHandleMouse) {
+					igBeginTooltip();
+					igText("%f %f\n", pos(0), pos(1));
+					igEndTooltip();
+				}
 
 				selectedCell = nullptr;
 				int selectedCellIndex = -1;
@@ -832,13 +941,11 @@ for (int i = 0; i < StateVec::size; ++i) {
 					Cell* c = &m->cells[selectedCellIndex];
 					selectedCell = c;
 					
-					igBeginTooltip();
-					Prim W = eqn.primFromCons(c->U);
-					igText("rho %f", W.rho());
-					igText(" vx %f", W.v()(0));
-					igText(" vy %f", W.v()(1));
-					igText("  P %f", W.P());
-					igEndTooltip();
+					if (canHandleMouse) {
+						igBeginTooltip();
+						igText("%f", c->displayValue);
+						igEndTooltip();
+					}
 
 #if 0 //erase
 					if (leftButtonDown) {

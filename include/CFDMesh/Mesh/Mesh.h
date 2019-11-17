@@ -87,6 +87,8 @@ struct Cell {
 	int vtxOffset = 0;
 	int vtxCount = 0;
 
+	float displayValue = 0;
+
 	Cell() : volume(0) {}
 };
 

@@ -2,5 +2,9 @@
 
 #include "Tensor/Vector.h"
 
+using uchar4 = Tensor::Vector<unsigned char, 4>;
+
 using int2 = Tensor::Vector<int, 2>;
+
 using float2 = Tensor::Vector<float, 2>;
+using float4 = Tensor::Vector<float, 4>;
