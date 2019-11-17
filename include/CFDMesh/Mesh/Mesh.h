@@ -76,13 +76,17 @@ struct Cell {
 	Cons U;
 	
 	//required by the finite volume algorithm
-	std::vector<int> faces;
-	
+	//std::vector<int> faces;
+	int faceOffset = 0;
+	int faceCount = 0;
+
 	//not required by finite volume algorithm
 	//however the cell volume is required, and is calculated using vtxs
 	//also the renderer requires the vertexes
-	std::vector<int> vtxs;
-	
+	//std::vector<int> vtxs;
+	int vtxOffset = 0;
+	int vtxCount = 0;
+
 	Cell() : volume(0) {}
 };
 
@@ -90,6 +94,7 @@ struct MeshFactory;
 struct Mesh {
 //liu kang wins.  friendship.
 protected:
+	//https://stackoverflow.com/questions/8147027/how-do-i-call-stdmake-shared-on-a-class-with-only-protected-or-private-const
 	struct ctorkey {
 		explicit ctorkey(int) {}
 	};
@@ -106,6 +111,9 @@ public:
 	std::vector<Vertex> vtxs;	//0-forms, which construct n and n-1 forms
 	std::vector<Face> faces;	//n-1-forms, hold flux information between cells
 	std::vector<Cell> cells;	//n-forms, hold the info at each cell
+	std::vector<int> cellFaceIndexes;
+	std::vector<int> cellVtxIndexes;
+
 
 	friend struct MeshFactory;
 	
@@ -132,13 +140,21 @@ public:
 
 	void addCell(std::vector<int> vis) {
 		Cell c;
-		c.vtxs = vis;
+		
 		size_t n = vis.size();
+	
+		//c.vtxs = vis;
+		c.vtxOffset = (int)cellVtxIndexes.size();
+		cellVtxIndexes.insert(cellVtxIndexes.end(), vis.begin(), vis.end());
+		c.vtxCount = (int)cellVtxIndexes.size() - c.vtxOffset;
+	
+		c.faceOffset = (int)cellFaceIndexes.size();
 		for (size_t i = 0; i < n; ++i) {
-			c.faces.push_back(addEdge(vis[i], vis[(i+1)%n]));
+			cellFaceIndexes.push_back(addEdge(vis[i], vis[(i+1)%n]));
 		}
+		c.faceCount = (int)cellFaceIndexes.size() - c.faceOffset;
 
-		c.volume = polyVol(map<std::vector<int>, std::vector<vec>>(c.vtxs, [this](int vi) -> vec { return vtxs[vi].pos; }));
+		c.volume = polyVol(map<std::vector<int>, std::vector<vec>>(vis, [this](int vi) -> vec { return vtxs[vi].pos; }));
 		assert(c.volume > 0);
 
 #if 1	//vertex average
@@ -146,7 +162,7 @@ public:
 		c.pos = sum(map<
 			std::vector<int>,
 			std::vector<vec>
-		>(c.vtxs, [this](int vi) {
+		>(vis, [this](int vi) {
 			return vtxs[vi].pos;
 		})) * (1. / (real)n);
 #else	//COM
@@ -162,8 +178,9 @@ public:
 		int ci = (int)cells.size();
 		cells.push_back(c);
 	
-		for (int ei : c.faces) {
-			Face* e = &faces[ei];
+		//for (int ei : c.faces) {
+		for (int ei = 0; ei < c.faceCount; ++ei) {
+			Face* e = &faces[cellFaceIndexes[ei+c.faceOffset]];
 			if (e->cells[0] == -1) {
 				e->cells[0] = ci;
 			} else if (e->cells[1] == -1) {
@@ -245,7 +262,7 @@ static bool contains(const vec pos, std::vector<vec> vtxs) {
 		vec pi = vtxs[i] - pos;
 		vec pj = vtxs[(i+1)%n] - pos;
 		real vz = pi(0) * pj(1) - pi(1) * pj(0);
-		if (vz > 0) return false;
+		if (vz < 0) return false;
 	}
 	return true;
 }

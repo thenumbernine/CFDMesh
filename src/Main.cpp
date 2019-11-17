@@ -85,8 +85,6 @@ static vec rotateFrom(vec v, vec n) {
 	);
 }
 
-template<typename T> T cubed(const T& t) { return t * t * t; }
-
 template<typename T> void glVertex2v(const T* v);
 template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
 template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
@@ -333,6 +331,8 @@ struct QuadUnitCbrtMeshFactory : public QuadUnitMeshFactory {
 	}
 };
 
+template<typename T> T cubed(const T& t) { return t * t * t; }
+
 struct QuadUnitCubedMeshFactory : public QuadUnitMeshFactory {
 	QuadUnitCubedMeshFactory() : QuadUnitMeshFactory("unit square of quads, cubed mapping") {}
 	virtual real2 grid(real2 v) const {
@@ -471,8 +471,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			}
 			
 			glBegin(GL_POLYGON);
-			for (int vi : c.vtxs) {
-				glVertex2v(m->vtxs[vi].pos.v);
+			for (int vi = 0; vi < c.vtxCount; ++vi) {
+				glVertex2v(m->vtxs[m->cellVtxIndexes[vi + c.vtxOffset]].pos.v);
 			}
 			glEnd();
 		}
@@ -481,8 +481,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			glLineWidth(3);
 			glColor3f(1,1,0);
 			glBegin(GL_POLYGON);
-			for (int vi : selectedCell->vtxs) {
-				glVertex2v(m->vtxs[vi].pos.v);
+			for (int vi = 0; vi < selectedCell->vtxCount; ++vi) {
+				glVertex2v(m->vtxs[m->cellVtxIndexes[vi + selectedCell->vtxOffset]].pos.v);
 			}
 			glEnd();
 			glLineWidth(1);
@@ -556,8 +556,10 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 					normal(j) = 1;
 #endif
 #if 1 //check mesh interfaces
-				for (int ei : c.faces) {
-					Face* e = &m->faces[ei];
+				//for (int ei : c.faces) {
+					//Face* e = &m->faces[ei];
+				for (int ei = 0; ei < c.faceCount; ++ei) {
+					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
 					vec normal = e->normal;
 #endif
 					real lambdaMin, lambdaMax;
@@ -713,8 +715,10 @@ assert(e.flux(3) == 0);
 			m->cells.end(),
 			[this, dt](Cell& c) {
 				Cons dU_dt;
-				for (int ei : c.faces) {
-					Face* e = &m->faces[ei];
+				//for (int ei : c.faces) {
+				//	Face* e = &m->faces[ei];
+				for (int ei = 0; ei < c.faceCount; ++ei) {
+					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
 					//if (e.hasFlux) {
 						if (&c == &m->cells[e->cells[0]]) {
 							dU_dt -= e->flux * (e->length / c.volume);
@@ -805,7 +809,20 @@ for (int i = 0; i < StateVec::size; ++i) {
 				int selectedCellIndex = -1;
 				for (int i = 0; i < (int)m->cells.size(); ++i) {
 					Cell* c = &m->cells[i];
-					if (ThisMeshNamespace::contains(pos, map<std::vector<int>, std::vector<vec>>(c->vtxs, [this](int vi) -> vec { return m->vtxs[vi].pos; }))) {
+					if (ThisMeshNamespace::contains(
+						pos, 
+						map<
+							std::vector<int>, 
+							std::vector<vec>
+						>(
+							//c->vtxs,
+							//TODO change function to use an iterator
+							std::vector<int>(m->cellVtxIndexes.begin() + c->vtxOffset, m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount), 
+							
+							[this](int vi) -> vec { 
+								return m->vtxs[vi].pos; 
+							}
+						))) {
 						selectedCellIndex = i;
 						break;
 					}
