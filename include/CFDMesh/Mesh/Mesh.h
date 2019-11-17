@@ -16,7 +16,6 @@ struct MeshNamespace {
 using real = typename MeshConfig::real;
 using real2 = typename MeshConfig::real2;
 using real3 = typename MeshConfig::real3;
-using StateVec = typename MeshConfig::StateVec;
 using Cons = typename MeshConfig::Cons;
 
 
@@ -42,7 +41,7 @@ struct Face {
 	real3 normal;
 	real length;
 	real cellDist;
-	StateVec flux;
+	Cons flux;
 	
 	int cells[2];	//there are always only 2 n-forms on either side of a (n-1)-form
 	

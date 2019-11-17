@@ -37,7 +37,6 @@ using real3 = Tensor::Vector<real, 3>;
 using ThisEquation = Equation::EulerNamespace<real>::Euler;
 //using ThisEquation = Equation::GLMMaxwell<real>;
 
-using StateVec = ThisEquation::StateVec;
 using WaveVec = ThisEquation::WaveVec;
 using Cons = ThisEquation::Cons;
 
@@ -46,7 +45,6 @@ struct MeshConfig {
 	using real2 = ::real2;
 	using real3 = ::real3;
 	using Cons = ThisEquation::Cons;
-	using StateVec = ThisEquation::Cons;
 };
 
 using ThisMeshNamespace = CFDMesh::MeshNamespace<MeshConfig>;
@@ -540,15 +538,15 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	}
 
 	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt) {
+		real lambdaMinL = eqn.calcLambdaMin(ThisEquation::CalcLambdaVars(eqn, UL));
+		
+		real lambdaMaxR = eqn.calcLambdaMax(ThisEquation::CalcLambdaVars(eqn, UR));
+		
 		ThisEquation::Eigen vars = eqn.calcRoeAvg(UL, UR);
+		std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(ThisEquation::CalcLambdaVars(vars));
+		real lambdaMin = lambdaMinMax.first;
+		real lambdaMax = lambdaMinMax.second;
 
-		real CsL = eqn.calc_Cs_from_P_rho(vars.WL.P(), vars.WL.rho());
-		real CsR = eqn.calc_Cs_from_P_rho(vars.WR.P(), vars.WR.rho());
-
-		real lambdaMinL = eqn.calcLambdaMin(vars.WL.v()(0), CsL);
-		real lambdaMaxR = eqn.calcLambdaMax(vars.WR.v()(0), CsR);
-		real lambdaMin = eqn.calcLambdaMin(vars.v(0), vars.Cs);
-		real lambdaMax = eqn.calcLambdaMax(vars.v(0), vars.Cs);
 #if 0	//Davis direct
 		real sl = lambdaMinL;
 		real sr = lambdaMaxR;
@@ -567,7 +565,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			Cons fluxR = eqn.calcFluxFromCons(UR);
 			//(sr * fluxL[j] - sl * fluxR[j] + sl * sr * (UR[j] - UL[j])) / (sr - sl)
 			real invDenom = 1. / (sr - sl);
-			for (int i = 0; i < StateVec::size; ++i) {
+			for (int i = 0; i < Cons::size; ++i) {
 				flux(i) = (sr * fluxL(i) - sl * fluxR(i) + sl * sr * (UR(i) - UL(i))) * invDenom; 
 			}
 		} else if (sr <= 0.) {
@@ -607,10 +605,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 				//so x-direction flux jacobian is good for calculating the flux 
 				Cons UL = eqn.rotateTo(ULR.first, e.normal);
 				Cons UR = eqn.rotateTo(ULR.second, e.normal);
-assert(e.cells[0] == -1 || UL == m->cells[e.cells[0]].U);
-assert(e.cells[1] == -1 || UR == m->cells[e.cells[1]].U);
 
-for (int i = 0; i < StateVec::size; ++i) {
+for (int i = 0; i < Cons::size; ++i) {
 	assert(std::isfinite(UL(i)));	
 	assert(std::isfinite(UR(i)));	
 }	
@@ -620,7 +616,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 				// rotate back to normal
 				e.flux = eqn.rotateFrom(F, e.normal);
 
-for (int i = 0; i < StateVec::size; ++i) {
+for (int i = 0; i < Cons::size; ++i) {
 	assert(std::isfinite(e.flux(i)));
 }		
 			}

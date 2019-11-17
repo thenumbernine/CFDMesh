@@ -265,18 +265,20 @@ assert(std::isfinite(vars.Cs));
 			v = real3::length(W.v());
 			Cs = eqn.calc_Cs_from_P_rho(W.P(), W.rho());
 		}
+	
+		CalcLambdaVars(const Eigen& vars) : v(vars.v(0)), Cs(vars.Cs) {}
 	};
 
-	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) {
+	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) const {
 		return std::make_pair<real, real>(vars.v - vars.Cs, vars.v + vars.Cs);
 	}
 
-	real calcLambdaMin(real v, real Cs) {
-		return v - Cs;
+	real calcLambdaMin(const CalcLambdaVars& vars) const {
+		return vars.v - vars.Cs;
 	}
 
-	real calcLambdaMax(real v, real Cs) {
-		return v + Cs;
+	real calcLambdaMax(const CalcLambdaVars& vars) const {
+		return vars.v + vars.Cs;
 	}
 
 	static StateVec matmul(const real* A, const StateVec& x) {
