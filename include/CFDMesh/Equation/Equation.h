@@ -11,7 +11,7 @@ struct Equation {
 	
 	//TODO abstract away the arguments ...
 	//or just turn all of Equation into a template parameter, and make everything to do with Equation compile-time
-	//virtual std::pair<real, real> calcLambdaMinMax(vec normal, Prim W, real Cs) = 0;
+	//virtual std::pair<real, real> calcLambdaMinMax(real3 normal, Prim W, real Cs) = 0;
 };
 
 }

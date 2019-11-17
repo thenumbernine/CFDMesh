@@ -1,4 +1,6 @@
-#include "CFDMesh/Equation/EulerEquation.h"
+#include "CFDMesh/Equation/Euler.h"
+//#include "CFDMesh/Equation/GLMMaxwell.h"
+
 #include "CFDMesh/Mesh/Mesh.h"
 #include "CFDMesh/Util.h"
 #include "CFDMesh/Vector.h"
@@ -22,40 +24,38 @@
 #include <cassert>
 
 using namespace CFDMesh;
-using namespace CFDMesh::Equation;
 
 
 //config for everything, to hold everything in one place
-template<typename real_, int vecdim_>
+template<typename real_>
 struct ConfigTemplate {
 	using real = real_;
-	enum { vecdim = vecdim_ };
-	
 	using real2 = Tensor::Vector<real, 2>;
-	
-	using vec = Tensor::Vector<real, vecdim>;	//n-dimensional vector of reals
-	using StateVec = Tensor::Vector<real, vecdim + 2>;
+	using real3 = Tensor::Vector<real, 3>;
 };
 
 
-//using Config = ConfigTemplate<double, 2>;
-using Config = ConfigTemplate<double, 3>;
+//using Config = ConfigTemplate<double>;
+using Config = ConfigTemplate<double>;
 
 
 using real = Config::real;
-constexpr int vecdim = Config::vecdim;
 using real2 = Config::real2;
-using vec = Config::vec;
-using StateVec = Config::StateVec;
+using real3 = Config::real3;
 
 
 
-using ThisEquation = EulerEquation<Config>;
+using ThisEquation = Equation::Euler<Config>;
+//using ThisEquation = Equation::GLMMaxwell<Config>;
+
+using StateVec = ThisEquation::StateVec;
+using WaveVec = ThisEquation::WaveVec;
 using Cons = ThisEquation::Cons;
 using Prim = ThisEquation::Prim;
 
 struct MeshConfig : public Config {
 	using Cons = ThisEquation::Cons;
+	using StateVec = ThisEquation::Cons;
 };
 
 using ThisMeshNamespace = CFDMesh::MeshNamespace<MeshConfig>;
@@ -70,16 +70,16 @@ static Parallel::Parallel parallel;
 static ThisEquation eqn;
 
 // rotate vx,vy such that n now points along the x dir
-static vec rotateTo(vec v, vec n) {
-	return vec(
+static real3 rotateTo(real3 v, real3 n) {
+	return real3(
 		v(0) * n(0) + v(1) * n(1),
 		v(1) * n(0) - v(0) * n(1)
 	);
 }
 
 // rotate vx,vy such that the x dir now points along n 
-static vec rotateFrom(vec v, vec n) {
-	return vec(
+static real3 rotateFrom(real3 v, real3 n) {
+	return real3(
 		v(0) * n(0) - v(1) * n(1),
 		v(1) * n(0) + v(0) * n(1)
 	);
@@ -88,92 +88,6 @@ static vec rotateFrom(vec v, vec n) {
 template<typename T> void glVertex2v(const T* v);
 template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
 template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
-
-struct InitCond {
-	virtual ~InitCond() {}
-	virtual const char* name() const = 0;
-	virtual Cons initCell(vec pos) const = 0;
-	virtual void updateGUI() {}
-};
-
-struct InitCondConst : public InitCond {
-	float rho = 1;
-	float P = 1;
-	float vx = 0;
-	float vy = 0;
-
-	virtual const char* name() const { return "constant"; }
-	virtual Cons initCell(vec x) const {
-		return eqn.consFromPrim(Prim(rho, vec(vx, vy), P));
-	}
-	
-	virtual void updateGUI() {
-		igInputFloat("rho", &rho, .1, 1, "%f", 0);
-		igInputFloat("vx", &vx, .1, 1, "%f", 0);
-		igInputFloat("vy", &vy, .1, 1, "%f", 0);
-		igInputFloat("P", &P, .1, 1, "%f", 0);
-	}
-};
-
-struct InitCondSod : public InitCond {
-	float rhoL = 1;
-	float vxL = 0;
-	float vyL = 0;
-	float vzL = 0;
-	float PL = 1;
-	float rhoR = .125;
-	float vxR = 0;
-	float vyR = 0;
-	float vzR = 0;
-	float PR = .1;
-	virtual const char* name() const { return "Sod"; }
-	virtual Cons initCell(vec x) const {
-		bool lhs = x(0) < 0 && x(1) < 0;
-		return eqn.consFromPrim(Prim(
-			lhs ? rhoL : rhoR,
-			lhs ? vec(vxL, vyL, vzL) : vec(vxR, vyR, vzR),
-			lhs ? PL : PR
-		));
-	}
-
-	virtual void updateGUI() {
-		igInputFloat("rhoL", &rhoL, .1, 1, "%f", 0);
-		igInputFloat("vxL", &vxL, .1, 1, "%f", 0);
-		igInputFloat("vyL", &vyL, .1, 1, "%f", 0);
-		igInputFloat("vzL", &vzL, .1, 1, "%f", 0);
-		igInputFloat("PL", &PL, .1, 1, "%f", 0);
-		igInputFloat("rhoR", &rhoR, .1, 1, "%f", 0);
-		igInputFloat("vxR", &vxR, .1, 1, "%f", 0);
-		igInputFloat("vyR", &vyR, .1, 1, "%f", 0);
-		igInputFloat("vzR", &vzR, .1, 1, "%f", 0);
-		igInputFloat("PR", &PR, .1, 1, "%f", 0);
-	}
-};
-
-struct InitCondSpiral : public InitCond {
-	virtual const char* name() const { return "Spiral"; }
-	virtual Cons initCell(vec x) const {
-		return eqn.consFromPrim(Prim(
-			1,
-			vec(-x(1), x(0)),
-			1
-		));
-	}
-};
-
-std::vector<std::shared_ptr<InitCond>> initConds = {
-	std::make_shared<InitCondConst>(),
-	std::make_shared<InitCondSod>(),
-	std::make_shared<InitCondSpiral>(),
-};
-
-std::vector<const char*> initCondNames = map<
-	decltype(initConds),
-	std::vector<const char*>
->(
-	initConds,
-	[](std::shared_ptr<InitCond> ic) -> const char* { return ic->name(); }
-);
 
 
 struct FileMeshFactory : public MeshFactory {
@@ -205,7 +119,7 @@ struct FileMeshFactory : public MeshFactory {
 
 		mesh->vtxs.resize(m*n);
 		for (int i = 0; i < (int)us.size(); ++i) {
-			mesh->vtxs[i].pos = vec(us[i], vs[i]);
+			mesh->vtxs[i].pos = real3(us[i], vs[i]);
 		}
 	
 		for (int j = 0; j < n-1; ++j) {
@@ -261,7 +175,7 @@ struct TriUnitMeshFactory : public ChartMeshFactory {
 				
 				real2 u = grid(x);
 				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh->vtxs[i + m * j].pos = vec(f);
+				mesh->vtxs[i + m * j].pos = real3(f);
 			}
 		}
 		
@@ -301,13 +215,13 @@ struct QuadUnitMeshFactory : public ChartMeshFactory {
 				
 				real2 u = grid(x);
 				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh->vtxs[i + m * j].pos = vec(f);
+				mesh->vtxs[i + m * j].pos = real3(f);
 			}
 		}
 		
 		int capindex = m * n;
 		if (capmin(0)) {
-			vec sum;
+			real3 sum;
 			for (int j = 0; j < n; ++j) {
 				sum += mesh->vtxs[0 + m * j].pos;
 			}
@@ -399,43 +313,11 @@ std::vector<const char*> meshGenerationNames = map<
 );
 
 
-struct DisplayMethod {
-	std::string name;
-	std::function<float(const Cons&)> f;
-	DisplayMethod(const std::string& name_, std::function<float(const Cons&)> f_) : name(name_), f(f_) {}
-};
-
-std::vector<std::shared_ptr<DisplayMethod>> displayMethods = {
-	std::make_shared<DisplayMethod>("rho", [](const Cons& U) -> float { return U.rho(); }),
-	
-	std::make_shared<DisplayMethod>("m", [](const Cons& U) -> float { return vec::length(U.m()); }),
-	std::make_shared<DisplayMethod>("mx", [](const Cons& U) -> float { return U.m()(0); }),
-	std::make_shared<DisplayMethod>("my", [](const Cons& U) -> float { return U.m()(1); }),
-	std::make_shared<DisplayMethod>("mz", [](const Cons& U) -> float { return U.m()(2); }),
-	
-	std::make_shared<DisplayMethod>("ETotal", [](const Cons& U) -> float { return U.ETotal(); }),
-	
-	std::make_shared<DisplayMethod>("v", [](const Cons& U) -> float { return vec::length(U.m()) / U.rho(); }),
-	std::make_shared<DisplayMethod>("vx", [](const Cons& U) -> float { return U.m()(0) / U.rho(); }),
-	std::make_shared<DisplayMethod>("vy", [](const Cons& U) -> float { return U.m()(1) / U.rho(); }),
-	std::make_shared<DisplayMethod>("vz", [](const Cons& U) -> float { return U.m()(2) / U.rho(); }),
-	
-	std::make_shared<DisplayMethod>("P", [](const Cons& U) -> float { return eqn.primFromCons(U).P(); }),
-};
-
-std::vector<const char*> displayMethodNames = map<
-	decltype(displayMethods),
-	std::vector<const char*>
->(
-	displayMethods,
-	[](const std::shared_ptr<DisplayMethod>& m) -> const char* { return m->name.c_str(); }
-);
-
 struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	using Super = ::GLApp::ViewBehavior<::GLApp::GLApp>;
 	
 	std::shared_ptr<Mesh> m;
-	std::function<Cons(vec)> initcond;
+	std::function<Cons(real3)> initcond;
 
 	double time = 0;
 	bool running = false;
@@ -489,7 +371,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		int gradientTexWidth = 256;
 		std::vector<uchar4> gradientTexData(gradientTexWidth );
 		for (int i = 0; i < gradientTexWidth ; ++i) {
-			float f = (float)(i+.5)/(float)gradientTexWidth;
+			float f = (float)(i+.5)/(float)gradientTexWidth * (1 - 1e-7);
 			f *= (float)gradientColors.size();
 			int ip = (int)floor(f);
 			float fn = f - (float)ip;
@@ -525,14 +407,16 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		singleStep = false;
 		time = 0;
 
-		InitCond* ic = initConds[initCondIndex].get();
+		auto ic = eqn.initConds[initCondIndex].get();
 		parallel.foreach(
 			m->cells.begin(),
 			m->cells.end(),
 			[this, ic](auto& c) {
-				c.U = ic->initCell(c.pos);
+				c.U = ic->initCell(&eqn, c.pos);
 			}
 		);
+		
+		refreshDisplayValues();
 	}
 
 	void draw() {
@@ -604,14 +488,14 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		} else if (cL) {
 			Cons UL, UR;
 			UL = UR = cL->U;
-			vec m = UR.m();
-			UR.m() = m - e->normal * ((1 + restitution) * vec::dot(e->normal, m));
+			real3 m = UR.m();
+			UR.m() = m - e->normal * ((1 + restitution) * real3::dot(e->normal, m));
 			return std::pair<Cons, Cons>{UL, UR};
 		} else if (cR) {
 			Cons UL, UR;
 			UL = UR = cR->U;
-			vec m = UL.m();
-			UL.m() = m - e->normal * ((1 + restitution) * vec::dot(e->normal, m));
+			real3 m = UL.m();
+			UL.m() = m - e->normal * ((1 + restitution) * real3::dot(e->normal, m));
 			return std::pair<Cons, Cons>{UL, UR};
 		} 
 		throw Common::Exception() << "here";
@@ -629,8 +513,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 				real Cs = eqn.calc_Cs_from_P_rho(P, rho);
 				real result = std::numeric_limits<real>::infinity();
 #if 0 //check cartesian basis directions				
-				for (int j = 0; j < vec::size; ++j) {
-					vec normal;
+				for (int j = 0; j < real3::size; ++j) {
+					real3 normal;
 					normal(j) = 1;
 #endif
 #if 1 //check mesh interfaces
@@ -638,7 +522,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 					//Face* e = &m->faces[ei];
 				for (int ei = 0; ei < c.faceCount; ++ei) {
 					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
-					vec normal = e->normal;
+					real3 normal = e->normal;
 #endif
 					real lambdaMin, lambdaMax;
 					std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(normal, W, Cs);
@@ -663,17 +547,15 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	}
 
 	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt) {
-		static_assert(StateVec::size == 5);
-		
-		ThisEquation::RoeAvg vars = eqn.calcRoeAvg(UL, UR);
+		ThisEquation::Eigen vars = eqn.calcRoeAvg(UL, UR);
 
-		StateVec lambdas = eqn.getEigenvalues(vars);
+		WaveVec lambdas = eqn.getEigenvalues(vars);
 
 		Cons dU = UR - UL;
-		Cons dUTilde = eqn.apply_evL(dU, vars);
+		WaveVec dUTilde = eqn.apply_evL(dU, vars);
 	
-		Cons fluxTilde;
-		for (int j = 0; j < 5; ++j) {
+		WaveVec fluxTilde;
+		for (int j = 0; j < ThisEquation::numWaves; ++j) {
 			real lambda = lambdas(j);
 			real phi = 0;
 			real sgnLambda = lambda >= 0 ? 1 : -1;
@@ -682,7 +564,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		}
 	
 		Cons UAvg = (UR + UL) * .5;
-		Cons UAvgTilde = eqn.apply_evL(UAvg, vars);
+		WaveVec UAvgTilde = eqn.apply_evL(UAvg, vars);
 		fluxTilde = fluxTilde + lambdas * UAvgTilde;
 	
 		Cons flux = eqn.apply_evR(fluxTilde, vars);
@@ -692,7 +574,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	}
 
 	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt) {
-		ThisEquation::RoeAvg vars = eqn.calcRoeAvg(UL, UR);
+		ThisEquation::Eigen vars = eqn.calcRoeAvg(UL, UR);
 
 		real CsL = eqn.calc_Cs_from_P_rho(vars.WL.P(), vars.WL.rho());
 		real CsR = eqn.calc_Cs_from_P_rho(vars.WR.P(), vars.WR.rho());
@@ -816,7 +698,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 			m->cells.begin(),
 			m->cells.end(),
 			[this](Cell& c) {
-				c.displayValue = displayMethods[displayMethodIndex]->f(c.U);
+				c.displayValue = eqn.displayMethods[displayMethodIndex]->f(&eqn, c.U);
 			}
 		);
 
@@ -857,7 +739,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 		
 			igSeparator();
 	
-			if (igCombo("display method", &displayMethodIndex, displayMethodNames.data(), displayMethodNames.size(), -1)) {
+			if (igCombo("display method", &displayMethodIndex, eqn.displayMethodNames.data(), eqn.displayMethodNames.size(), -1)) {
 				refreshDisplayValues();
 			}
 		
@@ -875,9 +757,9 @@ for (int i = 0; i < StateVec::size; ++i) {
 			
 			igSeparator();
 			
-			igCombo("init cond", &initCondIndex, initCondNames.data(), initCondNames.size(), -1);
+			igCombo("init cond", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
 			igPushIDStr("init cond fields");
-			initConds[initCondIndex]->updateGUI();
+			eqn.initConds[initCondIndex]->updateGUI();
 			igPopID();
 			
 			if (igSmallButton("reset state")) {
@@ -904,7 +786,7 @@ for (int i = 0; i < StateVec::size; ++i) {
 				//find any cells at that position
 				real2 pos2 = (real2)((mousepos - .5f) * float2(1, -1) * float2(aspectRatio, 1) / float2(viewOrtho->zoom(0), viewOrtho->zoom(1)) + viewOrtho->pos);
 				std::function<real(int)> f = [&](int i) -> real { return i >= 2 ? 0 : pos2(i); };
-				vec pos = vec(f);
+				real3 pos = real3(f);
 					
 				bool canHandleMouse = !igGetIO()->WantCaptureMouse;
 				
@@ -922,13 +804,13 @@ for (int i = 0; i < StateVec::size; ++i) {
 						pos, 
 						map<
 							std::vector<int>, 
-							std::vector<vec>
+							std::vector<real3>
 						>(
 							//c->vtxs,
 							//TODO change function to use an iterator
 							std::vector<int>(m->cellVtxIndexes.begin() + c->vtxOffset, m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount), 
 							
-							[this](int vi) -> vec { 
+							[this](int vi) -> real3 { 
 								return m->vtxs[vi].pos; 
 							}
 						))) {

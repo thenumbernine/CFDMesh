@@ -15,7 +15,7 @@ template<typename MeshConfig>
 struct MeshNamespace {
 using real = typename MeshConfig::real;
 using real2 = typename MeshConfig::real2;
-using vec = typename MeshConfig::vec;
+using real3 = typename MeshConfig::real3;
 using StateVec = typename MeshConfig::StateVec;
 using Cons = typename MeshConfig::Cons;
 
@@ -26,20 +26,20 @@ struct Cell;
 
 //zero-forms
 struct Vertex {	//not required by finite volume algorithm
-	vec pos;
+	real3 pos;
 	
 	//keeping track of Vertex::faces isn't used by the renderer, mesh generation, or finite-volume integration
 	//std::vector<int> faces;
 	
 	Vertex() {}
-	Vertex(vec pos_) : pos(pos_) {}
+	Vertex(real3 pos_) : pos(pos_) {}
 };
 
 //(n-1)-forms
 struct Face {
-	vec pos;
-	vec delta;
-	vec normal;
+	real3 pos;
+	real3 delta;
+	real3 normal;
 	real length;
 	real cellDist;
 	StateVec flux;
@@ -71,7 +71,7 @@ struct Face {
 
 //n-forms
 struct Cell {
-	vec pos;
+	real3 pos;
 	real volume;
 	Cons U;
 	
@@ -156,22 +156,22 @@ public:
 		}
 		c.faceCount = (int)cellFaceIndexes.size() - c.faceOffset;
 
-		c.volume = polyVol(map<std::vector<int>, std::vector<vec>>(vis, [this](int vi) -> vec { return vtxs[vi].pos; }));
+		c.volume = polyVol(map<std::vector<int>, std::vector<real3>>(vis, [this](int vi) -> real3 { return vtxs[vi].pos; }));
 		assert(c.volume > 0);
 
 #if 1	//vertex average
 		//TODO use COM
 		c.pos = sum(map<
 			std::vector<int>,
-			std::vector<vec>
+			std::vector<real3>
 		>(vis, [this](int vi) {
 			return vtxs[vi].pos;
 		})) * (1. / (real)n);
 #else	//COM
 		for (int j = 0; j < 3; ++j) {
 			for (int i = 0; i < n; ++i) {
-				vec x1 = vtxs[vis[i]].pos;
-				vec x2 = vtxs[vis[(i+1)%n]].pos;
+				real3 x1 = vtxs[vis[i]].pos;
+				real3 x2 = vtxs[vis[(i+1)%n]].pos;
 				c.pos(j) += (x1(j) + x2(j)) / (x1(0) * x2(1) - x1(1) * x2(0));
 			}
 			c.pos(j) /= (6 * c.volume);
@@ -202,27 +202,27 @@ public:
 				auto& b = vtxs[e.vtxs[1]];
 				e.pos = (a.pos + b.pos) * .5;
 				e.delta = a.pos - b.pos;
-				e.length = vec::length(e.delta);
-				e.normal = vec(e.delta(1), -e.delta(0));
-				e.normal *= 1. / vec::length(e.normal);
+				e.length = real3::length(e.delta);
+				e.normal = real3(e.delta(1), -e.delta(0));
+				e.normal *= 1. / real3::length(e.normal);
 			}
 
 			{
 				int a = e.cells[0];
 				int b = e.cells[1];
 				if (a != -1 && b != -1) {
-					if (vec::dot(cells[a].pos - cells[b].pos, e.normal) < 0) {
+					if (real3::dot(cells[a].pos - cells[b].pos, e.normal) < 0) {
 						std::swap(a, b);
 						e.cells[0] = a;
 						e.cells[1] = b;
 						e.normal *= -1;
 					}
 					//distance between cell centers
-					//e.cellDist = vec::length(cells[b].pos - cells[a].pos);
+					//e.cellDist = real3::length(cells[b].pos - cells[a].pos);
 					//distance projected to edge normal
-					e.cellDist = fabs(vec::dot(e.normal, cells[b].pos - cells[a].pos));
+					e.cellDist = fabs(real3::dot(e.normal, cells[b].pos - cells[a].pos));
 				} else if (a != -1) {
-					e.cellDist = vec::length(cells[a].pos - e.pos) * 2.;
+					e.cellDist = real3::length(cells[a].pos - e.pos) * 2.;
 				} else {
 					throw Common::Exception() << "you are here";
 				}
@@ -247,22 +247,22 @@ protected:
 	
 
 //2D polygon volume
-static real polyVol(const std::vector<vec>& vs) {
+static real polyVol(const std::vector<real3>& vs) {
 	size_t n = vs.size();
 	real v = 0;
 	for (size_t i = 0; i < n; ++i) {
-		vec pi = vs[i];
-		vec pj = vs[(i+1)%n];
+		real3 pi = vs[i];
+		real3 pj = vs[(i+1)%n];
 		v += pi(0) * pj(1) - pi(1) * pj(0);
 	}
 	return .5 * v;
 }
 
-static bool contains(const vec pos, std::vector<vec> vtxs) {
+static bool contains(const real3 pos, std::vector<real3> vtxs) {
 	size_t n = vtxs.size();
 	for (size_t i = 0; i < n; ++i) {
-		vec pi = vtxs[i] - pos;
-		vec pj = vtxs[(i+1)%n] - pos;
+		real3 pi = vtxs[i] - pos;
+		real3 pj = vtxs[(i+1)%n] - pos;
 		real vz = pi(0) * pj(1) - pi(1) * pj(0);
 		if (vz < 0) return false;
 	}
