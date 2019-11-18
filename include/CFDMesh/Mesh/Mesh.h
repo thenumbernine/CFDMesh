@@ -11,12 +11,10 @@
 
 namespace CFDMesh {
 
-template<typename MeshConfig>
+template<typename real, typename Cons>
 struct MeshNamespace {
-using real = typename MeshConfig::real;
-using real2 = typename MeshConfig::real2;
-using real3 = typename MeshConfig::real3;
-using Cons = typename MeshConfig::Cons;
+using real2 = Tensor::Vector<real, 2>;
+using real3 = Tensor::Vector<real, 3>;
 
 
 struct Vertex;

@@ -30,276 +30,270 @@ using namespace CFDMesh;
 using real = double;
 //using real = float;
 
-
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
-//using ThisEquation = Equation::EulerNamespace<real>::Euler;
-using ThisEquation = Equation::GLMMaxwellNamespace<real>::GLMMaxwell;
-
-using WaveVec = ThisEquation::WaveVec;
-using Cons = ThisEquation::Cons;
-
-struct MeshConfig {
-	using real = ::real;
-	using real2 = ::real2;
-	using real3 = ::real3;
-	using Cons = ThisEquation::Cons;
-};
-
-using ThisMeshNamespace = CFDMesh::MeshNamespace<MeshConfig>;
-using Mesh = ThisMeshNamespace::Mesh;
-using MeshFactory = ThisMeshNamespace::MeshFactory;
-using Cell = ThisMeshNamespace::Cell;
-using Face = ThisMeshNamespace::Face;
-
-
-
 static Parallel::Parallel parallel;
-static ThisEquation eqn;
 
 template<typename T> void glVertex2v(const T* v);
 template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
 template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
 
 
-struct FileMeshFactory : public MeshFactory {
-	std::string filename = {"grids/n0012_113-33.p2dfmt"};
-	
-	FileMeshFactory() : MeshFactory("p2dfmt mesh") {}
-
-	virtual std::shared_ptr<Mesh> createMesh() const {
-		std::shared_ptr<Mesh> mesh = createMeshSuper();
-		
-		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(filename), "\n");
-	
-		std::string first = ls.front();
-		ls.pop_front();
-		std::vector<std::string> m_n = split<std::vector<std::string>>(ls.front(), "\\s+");
-		ls.pop_front();
-		int m = std::stoi(m_n[0]);
-		int n = std::stoi(m_n[1]);
-		std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
-		if (_x.front() == "") _x.pop_front();
-		if (_x.back() == "") _x.pop_back();
-		std::function<real(const std::string&)> f = [](const std::string& s) -> real { return std::stod(s); };
-		std::vector<real> x = map<std::list<std::string>, std::vector<real>>(_x, f);
-		assert(x.size() == (size_t)(2 * m * n));
-	
-		auto us = std::vector(x.begin(), x.begin() + m*n);
-		auto vs = std::vector(x.begin() + m*n, x.end());
-		assert(us.size() == vs.size());
-
-		mesh->vtxs.resize(m*n);
-		for (int i = 0; i < (int)us.size(); ++i) {
-			mesh->vtxs[i].pos = real3(us[i], vs[i]);
-		}
-	
-		for (int j = 0; j < n-1; ++j) {
-			for (int i = 0; i < m-1; ++i) {
-				mesh->addCell(std::vector<int>{i + m * j, i + m * (j+1), i+1 + m * (j+1), i+1 + m * j});
-			}
-		}
-	
-		mesh->calcAux();
-		return mesh;
-	}
-
-	virtual void updateGUI() {
-		//TODO filename popup
-	}
-};
-
-struct ChartMeshFactory : public MeshFactory {
-	int2 size = int2(101, 101);
-	float2 mins = real2(-1, -1);
-	float2 maxs = real2(1, 1);
-	int2 repeat = int2(0, 0);
-	int2 capmin = int2(0, 0);
-
-	ChartMeshFactory(const char* name_) : MeshFactory(name_) {}
-
-	virtual real2 grid(real2 x) const { return x; }
-	
-	virtual void updateGUI() {
-		igInputInt2("size", size.v, 0);
-		igInputFloat2("mins", mins.v, "%f", 0);
-		igInputFloat2("maxs", maxs.v, "%f", 0);
-		igInputInt2("repeat", repeat.v, 0);
-		igInputInt2("capmin", capmin.v, 0);
-	}
-};
-
-struct TriUnitMeshFactory : public ChartMeshFactory {
-	TriUnitMeshFactory() : ChartMeshFactory("unit square of triangles") {}
-	
-	virtual std::shared_ptr<Mesh> createMesh() const {
-		std::shared_ptr<Mesh> mesh = createMeshSuper();
-		
-		int m = size(0);
-		int n = size(1);
-	
-		mesh->vtxs.resize(m * n);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
-					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
-				
-				real2 u = grid(x);
-				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh->vtxs[i + m * j].pos = real3(f);
-			}
-		}
-		
-		int imax = repeat(0) ? m : m-1;
-		int jmax = repeat(1) ? n : n-1;
-		for (int j = 0; j < jmax; ++j) {
-			int jn = (j + 1) % n;
-			for (int i = 0; i < imax; ++i) {
-				int in = (i + 1) % m;
-				mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn});
-				mesh->addCell(std::vector<int>{in + m * jn, i + m * jn, i + m * j});
-			}
-		}
-	
-		mesh->calcAux();
-		return mesh;
-	}
-};
-
-struct QuadUnitMeshFactory : public ChartMeshFactory {
-	QuadUnitMeshFactory(const char* name_ = "unit square of quads") : ChartMeshFactory(name_) {}
-	
-	virtual std::shared_ptr<Mesh> createMesh() const {
-		std::shared_ptr<Mesh> mesh = createMeshSuper();
-
-		int m = size(0);
-		int n = size(1);
-
-		int vtxsize = m * n;
-		if (capmin(0)) vtxsize++;
-		mesh->vtxs.resize(vtxsize);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					((real)i + .5) / (real)size(0) * (maxs(0) - mins(0)) + mins(0),
-					((real)j + .5) / (real)size(1) * (maxs(1) - mins(1)) + mins(1));
-				
-				real2 u = grid(x);
-				std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-				mesh->vtxs[i + m * j].pos = real3(f);
-			}
-		}
-		
-		int capindex = m * n;
-		if (capmin(0)) {
-			real3 sum;
-			for (int j = 0; j < n; ++j) {
-				sum += mesh->vtxs[0 + m * j].pos;
-			}
-			mesh->vtxs[capindex].pos = sum / (real)n;
-		}
-
-		int imax = repeat(0) ? m : m-1;
-		int jmax = repeat(1) ? n : n-1;
-		for (int j = 0; j < jmax; ++j) {
-			int jn = (j + 1) % n;
-			for (int i = 0; i < imax; ++i) {
-				int in = (i + 1) % m;
-				mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
-			}
-		}
-
-		if (capmin(0)) {
-			for (int j = 0; j < jmax; ++j) {
-				int jn = (j + 1) % n;
-				mesh->addCell(std::vector<int>{ 0 + m * j, 0 + m * jn, capindex });
-			}
-		}
-
-		mesh->calcAux();
-		return mesh;
-	}
-};
-
-struct QuadUnitCbrtMeshFactory : public QuadUnitMeshFactory {
-	QuadUnitCbrtMeshFactory() : QuadUnitMeshFactory("unit square of quads, cbrt mapping") {}
-	virtual real2 grid(real2 v) const {
-		return real2(cbrt(v(0)), cbrt(v(1)));
-	}
-};
-
 template<typename T> T cubed(const T& t) { return t * t * t; }
 
-struct QuadUnitCubedMeshFactory : public QuadUnitMeshFactory {
-	QuadUnitCubedMeshFactory() : QuadUnitMeshFactory("unit square of quads, cubed mapping") {}
-	virtual real2 grid(real2 v) const {
-		return real2(cubed(v(0)), cubed(v(1)));
-	}
+
+struct CFDMeshApp;
+
+struct ISimulation {
+	//written by app SDL events:
+	bool running = {};
+	bool singleStep = {};
+	float2 mousepos;
+
+	CFDMeshApp* app = {};
+
+	ISimulation(CFDMeshApp* app_) : app(app_) {}
+
+	virtual void draw() = 0;
+	virtual void updateGUI() = 0;
+	virtual void onUpdate() = 0;
+	virtual void resetState() = 0;
 };
 
-struct TwistQuadUnitMeshFactory : public QuadUnitMeshFactory {
-	TwistQuadUnitMeshFactory() : QuadUnitMeshFactory("unit square of quads, twist in the middle") {}
-	virtual real2 grid(real2 v) const {
-		real r = real2::length(v);
-		//real theta = std::max(0., 1. - r);
-		real sigma = 3.;	//almost 0 at r=1
-		const real rotationAmplitude = 3.;
-		real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
-		real costh = cos(theta), sinth = sin(theta);
-		return real2(
-			costh * v(0) - sinth * v(1),
-			sinth * v(0) + costh * v(1));	
-	}
-};
+template<typename real, typename ThisEquation>
+struct Simulation : public ISimulation {
+	using Parent = ISimulation;
 
-struct DonutQuadUnitMeshFactory : public QuadUnitMeshFactory {
-	DonutQuadUnitMeshFactory() : QuadUnitMeshFactory("polar") {
-		size = int2(51, 201);
-		mins = real2(.5, 0);
-		maxs = real2(1, 2*M_PI);
-		repeat = int2(0, 1);
-		//capmin = int2(1, 0);
-	}
-	virtual real2 grid(real2 v) const {
-		return real2(cos(v(1)), sin(v(1))) * v(0);
-	}
-};
+	using WaveVec = typename ThisEquation::WaveVec;
+	using Cons = typename ThisEquation::Cons;
 
-std::vector<std::shared_ptr<MeshFactory>> meshGenerators = {
-	std::make_shared<FileMeshFactory>(),
-	std::make_shared<QuadUnitMeshFactory>(),
-	std::make_shared<TriUnitMeshFactory>(),
-	std::make_shared<QuadUnitCbrtMeshFactory>(),
-	std::make_shared<QuadUnitCubedMeshFactory>(),
-	std::make_shared<TwistQuadUnitMeshFactory>(),
-	std::make_shared<DonutQuadUnitMeshFactory>(),
-};
-
-std::vector<const char*> meshGenerationNames = map<
-	decltype(meshGenerators),
-	std::vector<const char*>
->(
-	meshGenerators,
-	[](const std::shared_ptr<MeshFactory>& m) -> const char* { return m->name; }
-);
+	using ThisMeshNamespace = CFDMesh::MeshNamespace<real, Cons>;
+	using Mesh = typename ThisMeshNamespace::Mesh;
+	using MeshFactory = typename ThisMeshNamespace::MeshFactory;
+	using Cell = typename ThisMeshNamespace::Cell;
+	using Face = typename ThisMeshNamespace::Face;
 
 
-struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
-	using Parent = ::GLApp::ViewBehavior<::GLApp::GLApp>;
-	
+	struct FileMeshFactory : public MeshFactory {
+		std::string filename = {"grids/n0012_113-33.p2dfmt"};
+		
+		FileMeshFactory() : MeshFactory("p2dfmt mesh") {}
+
+		virtual std::shared_ptr<Mesh> createMesh() const {
+			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+			
+			std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(filename), "\n");
+		
+			std::string first = ls.front();
+			ls.pop_front();
+			std::vector<std::string> m_n = split<std::vector<std::string>>(ls.front(), "\\s+");
+			ls.pop_front();
+			int m = std::stoi(m_n[0]);
+			int n = std::stoi(m_n[1]);
+			std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
+			if (_x.front() == "") _x.pop_front();
+			if (_x.back() == "") _x.pop_back();
+			std::function<real(const std::string&)> f = [](const std::string& s) -> real { return std::stod(s); };
+			std::vector<real> x = map<std::list<std::string>, std::vector<real>>(_x, f);
+			assert(x.size() == (size_t)(2 * m * n));
+		
+			auto us = std::vector(x.begin(), x.begin() + m*n);
+			auto vs = std::vector(x.begin() + m*n, x.end());
+			assert(us.size() == vs.size());
+
+			mesh->vtxs.resize(m*n);
+			for (int i = 0; i < (int)us.size(); ++i) {
+				mesh->vtxs[i].pos = real3(us[i], vs[i]);
+			}
+		
+			for (int j = 0; j < n-1; ++j) {
+				for (int i = 0; i < m-1; ++i) {
+					mesh->addCell(std::vector<int>{i + m * j, i + m * (j+1), i+1 + m * (j+1), i+1 + m * j});
+				}
+			}
+		
+			mesh->calcAux();
+			return mesh;
+		}
+
+		virtual void updateGUI() {
+			//TODO filename popup
+		}
+	};
+
+	struct ChartMeshFactory : public MeshFactory {
+		int2 size = int2(101, 101);
+		float2 mins = real2(-1, -1);
+		float2 maxs = real2(1, 1);
+		int2 repeat = int2(0, 0);
+		int2 capmin = int2(0, 0);
+
+		ChartMeshFactory(const char* name_) : MeshFactory(name_) {}
+
+		virtual real2 grid(real2 x) const { return x; }
+		
+		virtual void updateGUI() {
+			igInputInt2("size", size.v, 0);
+			igInputFloat2("mins", mins.v, "%f", 0);
+			igInputFloat2("maxs", maxs.v, "%f", 0);
+			igInputInt2("repeat", repeat.v, 0);
+			igInputInt2("capmin", capmin.v, 0);
+		}
+	};
+
+	struct TriUnitMeshFactory : public ChartMeshFactory {
+		using Parent = ChartMeshFactory;
+		TriUnitMeshFactory() : Parent("unit square of triangles") {}
+		
+		virtual std::shared_ptr<Mesh> createMesh() const {
+			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+			
+			int m = Parent::size(0);
+			int n = Parent::size(1);
+		
+			mesh->vtxs.resize(m * n);
+			for (int j = 0; j < n; ++j) {
+				for (int i = 0; i < m; ++i) {
+					real2 x = real2(
+						((real)i + .5) / (real)Parent::size(0) * (Parent::maxs(0) - Parent::mins(0)) + Parent::mins(0),
+						((real)j + .5) / (real)Parent::size(1) * (Parent::maxs(1) - Parent::mins(1)) + Parent::mins(1));
+					
+					real2 u = Parent::grid(x);
+					std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
+					mesh->vtxs[i + m * j].pos = real3(f);
+				}
+			}
+			
+			int imax = Parent::repeat(0) ? m : m-1;
+			int jmax = Parent::repeat(1) ? n : n-1;
+			for (int j = 0; j < jmax; ++j) {
+				int jn = (j + 1) % n;
+				for (int i = 0; i < imax; ++i) {
+					int in = (i + 1) % m;
+					mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn});
+					mesh->addCell(std::vector<int>{in + m * jn, i + m * jn, i + m * j});
+				}
+			}
+		
+			mesh->calcAux();
+			return mesh;
+		}
+	};
+
+	struct QuadUnitMeshFactory : public ChartMeshFactory {
+		using Parent = ChartMeshFactory;
+		QuadUnitMeshFactory(const char* name_ = "unit square of quads") : Parent(name_) {}
+		
+		virtual std::shared_ptr<Mesh> createMesh() const {
+			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+
+			int m = Parent::size(0);
+			int n = Parent::size(1);
+
+			int vtxsize = m * n;
+			if (Parent::capmin(0)) vtxsize++;
+			mesh->vtxs.resize(vtxsize);
+			for (int j = 0; j < n; ++j) {
+				for (int i = 0; i < m; ++i) {
+					real2 x = real2(
+						((real)i + .5) / (real)Parent::size(0) * (Parent::maxs(0) - Parent::mins(0)) + Parent::mins(0),
+						((real)j + .5) / (real)Parent::size(1) * (Parent::maxs(1) - Parent::mins(1)) + Parent::mins(1));
+					
+					real2 u = Parent::grid(x);
+					std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
+					mesh->vtxs[i + m * j].pos = real3(f);
+				}
+			}
+			
+			int capindex = m * n;
+			if (Parent::capmin(0)) {
+				real3 sum;
+				for (int j = 0; j < n; ++j) {
+					sum += mesh->vtxs[0 + m * j].pos;
+				}
+				mesh->vtxs[capindex].pos = sum / (real)n;
+			}
+
+			int imax = Parent::repeat(0) ? m : m-1;
+			int jmax = Parent::repeat(1) ? n : n-1;
+			for (int j = 0; j < jmax; ++j) {
+				int jn = (j + 1) % n;
+				for (int i = 0; i < imax; ++i) {
+					int in = (i + 1) % m;
+					mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
+				}
+			}
+
+			if (Parent::capmin(0)) {
+				for (int j = 0; j < jmax; ++j) {
+					int jn = (j + 1) % n;
+					mesh->addCell(std::vector<int>{ 0 + m * j, 0 + m * jn, capindex });
+				}
+			}
+
+			mesh->calcAux();
+			return mesh;
+		}
+	};
+
+	struct QuadUnitCbrtMeshFactory : public QuadUnitMeshFactory {
+		QuadUnitCbrtMeshFactory() : QuadUnitMeshFactory("unit square of quads, cbrt mapping") {}
+		virtual real2 grid(real2 v) const {
+			return real2(cbrt(v(0)), cbrt(v(1)));
+		}
+	};
+
+	struct QuadUnitCubedMeshFactory : public QuadUnitMeshFactory {
+		QuadUnitCubedMeshFactory() : QuadUnitMeshFactory("unit square of quads, cubed mapping") {}
+		virtual real2 grid(real2 v) const {
+			return real2(cubed(v(0)), cubed(v(1)));
+		}
+	};
+
+	struct TwistQuadUnitMeshFactory : public QuadUnitMeshFactory {
+		TwistQuadUnitMeshFactory() : QuadUnitMeshFactory("unit square of quads, twist in the middle") {}
+		virtual real2 grid(real2 v) const {
+			real r = real2::length(v);
+			//real theta = std::max(0., 1. - r);
+			real sigma = 3.;	//almost 0 at r=1
+			const real rotationAmplitude = 3.;
+			real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
+			real costh = cos(theta), sinth = sin(theta);
+			return real2(
+				costh * v(0) - sinth * v(1),
+				sinth * v(0) + costh * v(1));	
+		}
+	};
+
+	struct DonutQuadUnitMeshFactory : public QuadUnitMeshFactory {
+		using Parent = QuadUnitMeshFactory;
+		DonutQuadUnitMeshFactory() : Parent("polar") {
+			Parent::size = int2(51, 201);
+			Parent::mins = real2(.5, 0);
+			Parent::maxs = real2(1, 2*M_PI);
+			Parent::repeat = int2(0, 1);
+			//Parent::capmin = int2(1, 0);
+		}
+		virtual real2 grid(real2 v) const {
+			return real2(cos(v(1)), sin(v(1))) * v(0);
+		}
+	};
+
+	std::vector<std::shared_ptr<MeshFactory>> meshGenerators;
+	std::vector<const char*> meshGenerationNames;
+
 	std::shared_ptr<Mesh> m;
 	std::function<Cons(real3)> initcond;
 
+	ThisEquation eqn;
+
 	double time = 0;
-	bool running = false;
-	bool singleStep = false;
 	
 	bool showVtxs = false;
 	bool showEdges = false;
 	bool showCellCenters = false;
-	Cell* selectedCell = nullptr;
+	int selectedCellIndex = -1;
 
 	bool displayAutomaticRange = true;
 	int displayMethodIndex = 0;
@@ -311,61 +305,31 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 	//1 = mirror boundary, -1 = freeflow boundary
 	float restitution = 1;
-
-	float2 mousepos;
 		
 	float cfl = .5;
 
 	int meshGenerationIndex = 1;
-	
-	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 
-	virtual const char* getTitle() {
-		return "CFD Mesh";
-	}
-
-	GLuint gradientTex = {};
-
-	CFDMeshApp(const Init& args) : Parent(args) {
-		view = viewOrtho;
-		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
-
-		glClearColor(.5, .75, .75, 1);
-
-		std::vector<float4> gradientColors = {
-			{1,0,0,1},
-			{1,1,0,1},
-			{0,1,0,1},
-			{0,1,1,1},
-			{0,0,1,1},
-			{1,0,1,1},
+	Simulation(CFDMeshApp* app_) : Parent(app_) {
+		
+		meshGenerators = {
+			std::make_shared<FileMeshFactory>(),
+			std::make_shared<QuadUnitMeshFactory>(),
+			std::make_shared<TriUnitMeshFactory>(),
+			std::make_shared<QuadUnitCbrtMeshFactory>(),
+			std::make_shared<QuadUnitCubedMeshFactory>(),
+			std::make_shared<TwistQuadUnitMeshFactory>(),
+			std::make_shared<DonutQuadUnitMeshFactory>(),
 		};
 
-		int gradientTexWidth = 256;
-		std::vector<uchar4> gradientTexData(gradientTexWidth );
-		for (int i = 0; i < gradientTexWidth ; ++i) {
-			float f = (float)(i+.5)/(float)gradientTexWidth * (1 - 1e-7);
-			f *= (float)gradientColors.size();
-			int ip = (int)floor(f);
-			float fn = f - (float)ip;
-			float fp = 1 - fn;
-			int n1 = ip;
-			int n2 = (n1 + 1) % gradientColors.size();
-			const float4& c1 = gradientColors[n1];
-			const float4& c2 = gradientColors[n2];
-			float4 c = (c1 * fp + c2 * fn) * 255;
-			for (int j = 0; j < 4; ++j) {
-				c(j) = std::clamp<float>(c(j), 0, 255);
-			}
-			gradientTexData[i] = (uchar4)c;
-		}
-		glGenTextures(1, &gradientTex);
-		glBindTexture(GL_TEXTURE_1D, gradientTex);
-		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA, gradientTexData.size(), 0, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->v);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glBindTexture(GL_TEXTURE_1D, 0);
+		meshGenerationNames = map<
+			decltype(meshGenerators),
+			std::vector<const char*>
+		>(
+			meshGenerators,
+			[](const std::shared_ptr<MeshFactory>& m) -> const char* { return m->name; }
+		);
+	
 
 		resetMesh();	//which calls resetState()
 	}
@@ -375,7 +339,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		resetState();
 	}
 
-	void resetState() {
+	virtual void resetState() {
 		running = false;
 		singleStep = false;
 		time = 0;
@@ -392,66 +356,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		refreshDisplayValues();
 	}
 
-	void draw() {
-		glClear(GL_COLOR_BUFFER_BIT);
-
-		glEnable(GL_TEXTURE_1D);
-		glBindTexture(GL_TEXTURE_1D, gradientTex);
-
-		for (const auto& c : m->cells) {
-			real f = (c.displayValue - displayValueRange.first) / (displayValueRange.second - displayValueRange.first);
-			glTexCoord1f(f);
-			glBegin(GL_POLYGON);
-			for (int vi = 0; vi < c.vtxCount; ++vi) {
-				glVertex2v(m->vtxs[m->cellVtxIndexes[vi + c.vtxOffset]].pos.v);
-			}
-			glEnd();
-		}
-		
-		glBindTexture(GL_TEXTURE_1D, 0);
-		glDisable(GL_TEXTURE_1D);
-		
-		if (selectedCell) {
-			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-			glLineWidth(3);
-			glColor3f(1,1,0);
-			glBegin(GL_POLYGON);
-			for (int vi = 0; vi < selectedCell->vtxCount; ++vi) {
-				glVertex2v(m->vtxs[m->cellVtxIndexes[vi + selectedCell->vtxOffset]].pos.v);
-			}
-			glEnd();
-			glLineWidth(1);
-			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-		}
-
-		if (showVtxs || showCellCenters) {
-			glColor3f(1,1,1);
-			glPointSize(3);
-			glBegin(GL_POINTS);
-			if (showVtxs) {
-				for (const auto& v : m->vtxs) {
-					glVertex2v(v.pos.v);
-				}
-			}
-			if (showCellCenters) {
-				for (const auto& c : m->cells) {
-					glVertex2v(c.pos.v);
-				}
-			}
-			glEnd();
-			glPointSize(1);
-		}
-		if (showEdges) {
-			glColor3f(1,1,1);
-			glBegin(GL_LINES);
-			for (const auto& e : m->faces) {
-				for (int vi : e.vtxs) {
-					glVertex2v(m->vtxs[vi].pos.v);
-				}
-			}
-			glEnd();
-		}
-	}
+	virtual void draw();
 
 	std::pair<Cons, Cons> getEdgeStates(const Face* e) {
 		Cell* cL = e->cells[0] == -1 ? nullptr : &m->cells[e->cells[0]];
@@ -466,6 +371,9 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		throw Common::Exception() << "here";
 	}
 
+	using CalcLambdaVars = typename ThisEquation::CalcLambdaVars;
+	using Eigen = typename ThisEquation::Eigen;
+
 	real calcDT() {
 		//for (auto& c : m->cells) {
 		real result = parallel.reduce(
@@ -478,7 +386,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
 					
 					Cons U = eqn.rotateTo(c.U, e->normal);
-					ThisEquation::CalcLambdaVars vars(eqn, U);
+					CalcLambdaVars vars(eqn, U);
 					
 					real lambdaMin, lambdaMax;
 					std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(vars);
@@ -503,7 +411,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	}
 
 	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt) {
-		ThisEquation::Eigen vars = eqn.calcRoeAvg(UL, UR);
+		Eigen vars = eqn.calcRoeAvg(UL, UR);
 
 		WaveVec lambdas = eqn.getEigenvalues(vars);
 
@@ -530,12 +438,12 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	}
 
 	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt) {
-		real lambdaMinL = eqn.calcLambdaMin(ThisEquation::CalcLambdaVars(eqn, UL));
+		real lambdaMinL = eqn.calcLambdaMin(CalcLambdaVars(eqn, UL));
 		
-		real lambdaMaxR = eqn.calcLambdaMax(ThisEquation::CalcLambdaVars(eqn, UR));
+		real lambdaMaxR = eqn.calcLambdaMax(CalcLambdaVars(eqn, UR));
 		
-		ThisEquation::Eigen vars = eqn.calcRoeAvg(UL, UR);
-		std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(ThisEquation::CalcLambdaVars(vars));
+		Eigen vars = eqn.calcRoeAvg(UL, UR);
+		std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(CalcLambdaVars(vars));
 		real lambdaMin = lambdaMinMax.first;
 		real lambdaMax = lambdaMinMax.second;
 
@@ -568,11 +476,11 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		return flux;
 	}
 
-
-	using CalcFluxFunc = Cons (CFDMeshApp::*)(Cons, Cons, real, real);
+	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real);
+	
 	std::vector<CalcFluxFunc> calcFluxes = {
-		&CFDMeshApp::calcFluxRoe,
-		&CFDMeshApp::calcFluxHLL,
+		&Simulation::calcFluxRoe,
+		&Simulation::calcFluxHLL,
 	};
 
 	std::vector<const char*> calcFluxNames = {
@@ -667,147 +575,10 @@ for (int i = 0; i < Cons::size; ++i) {
 			);
 		}
 	}
+
+	virtual void updateGUI();
 	
 	virtual void onUpdate() {
-		Parent::onUpdate();
-		draw();
-		
-		gui->onUpdate([this](){
-			igText("time: %f", time);
-			igCheckbox("running", &running);
-			
-			if (igSmallButton("step")) singleStep = true;
-		
-			igInputFloat("cfl", &cfl, .1, 1, "%f", 0);
-
-			igCheckbox("showVtxs", &showVtxs);
-			igCheckbox("showCellCenters", &showCellCenters);
-			igCheckbox("showEdges", &showEdges);
-			//igCheckbox("ortho", &ortho);
-		
-			igSeparator();
-	
-			if (igCombo("display method", &displayMethodIndex, eqn.displayMethodNames.data(), eqn.displayMethodNames.size(), -1)) {
-				refreshDisplayValues();
-			}
-		
-			igCheckbox("auto display range", &displayAutomaticRange);
-			igInputFloat("display range min", &displayValueRange.first, .1, 1, "%f", 0);
-			igInputFloat("display range max", &displayValueRange.second, .1, 1, "%f", 0);
-			
-			igSeparator();
-			
-			igInputFloat("restitution", &restitution, .1, 1., "%f", 0);
-			
-			igSeparator();
-		
-			igCombo("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
-			
-			igSeparator();
-			
-			eqn.updateGUI();
-			
-			igSeparator();
-			
-			igCombo("init cond", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
-			igPushIDStr("init cond fields");
-			eqn.initConds[initCondIndex]->updateGUI();
-			igPopID();
-			
-			if (igSmallButton("reset state")) {
-				resetState();
-			}
-			
-			igSeparator();
-			
-			if (igCombo("mesh", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
-				resetMesh();
-			}
-			igPushIDStr("mesh generation fields");
-			meshGenerators[meshGenerationIndex]->updateGUI();
-			igPopID();
-			if (igSmallButton("reset mesh")) {
-				resetMesh();
-			}
-			
-			igSeparator();
-
-			if (view == viewOrtho) {
-				//find the view bounds
-				//find the mouse position
-				//find any cells at that position
-				real2 pos2 = (real2)((mousepos - .5f) * float2(1, -1) * float2(aspectRatio, 1) / float2(viewOrtho->zoom(0), viewOrtho->zoom(1)) + viewOrtho->pos);
-				std::function<real(int)> f = [&](int i) -> real { return i >= 2 ? 0 : pos2(i); };
-				real3 pos = real3(f);
-					
-				bool canHandleMouse = !igGetIO()->WantCaptureMouse;
-				
-				if (canHandleMouse) {
-					igBeginTooltip();
-					igText("%f %f\n", pos(0), pos(1));
-					igEndTooltip();
-				}
-
-				selectedCell = nullptr;
-				int selectedCellIndex = -1;
-				for (int i = 0; i < (int)m->cells.size(); ++i) {
-					Cell* c = &m->cells[i];
-					if (ThisMeshNamespace::contains(
-						pos, 
-						map<
-							std::vector<int>, 
-							std::vector<real3>
-						>(
-							//c->vtxs,
-							//TODO change function to use an iterator
-							std::vector<int>(m->cellVtxIndexes.begin() + c->vtxOffset, m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount), 
-							
-							[this](int vi) -> real3 { 
-								return m->vtxs[vi].pos; 
-							}
-						))) {
-						selectedCellIndex = i;
-						break;
-					}
-				}
-
-				if (selectedCellIndex != -1) {
-					Cell* c = &m->cells[selectedCellIndex];
-					selectedCell = c;
-					
-					if (canHandleMouse) {
-						igBeginTooltip();
-						igText("%f", c->displayValue);
-						igEndTooltip();
-					}
-
-#if 0 //erase
-					if (leftButtonDown) {
-						std::vector<int> toRemoveEdges;
-						//remove c...
-						for (int ei : c->faces) {
-							Face* e = &m->faces[ei];
-							if (e->removeCell(i - m->cells.begin())) {
-								//all cells on e are removed
-								toRemoveEdges.push_back(ei);
-							}
-						}
-						m->cells.erase(m->cells.begin() + selectedCellIndex);
-					
-						//sort largest -> smallest
-						std::sort(toRemoveEdges.begin(), toRemoveEdges.end(), [](int a, int b) -> bool { return a > b; });
-						for (int ei : toRemoveEdges) {
-							m->faces.erase(m->faces.begin() + ei);
-						}
-					}
-#endif			
-				}
-			}
-
-
-
-		});
-		
 		if (running || singleStep) {
 			step();
 			if (singleStep) {
@@ -815,7 +586,101 @@ for (int i = 0; i < Cons::size; ++i) {
 				singleStep = false;
 			}
 		}
+	}
+};
+
+std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
+	{"Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::EulerNamespace<real>::Euler>>(app); }},
+	{"GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::GLMMaxwellNamespace<real>::GLMMaxwell>>(app); }},
+};
+
+std::vector<const char*> simGenNames = map<
+	decltype(simGens),
+	std::vector<const char*>
+>(
+	simGens,
+	[](decltype(simGens)::value_type p) -> const char* { return p.first; }
+);
+
+struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
+	using Parent = ::GLApp::ViewBehavior<::GLApp::GLApp>;
+
+	std::shared_ptr<ISimulation> sim;
+
+	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
+
+	GLuint gradientTex = {};
+
+	virtual const char* getTitle() {
+		return "CFD Mesh";
+	}
+
+	CFDMeshApp(const Init& args) : Parent(args) {
+		view = viewOrtho;
+		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
+
+		glClearColor(.5, .75, .75, 1);
+
+		std::vector<float4> gradientColors = {
+			{1,0,0,1},
+			{1,1,0,1},
+			{0,1,0,1},
+			{0,1,1,1},
+			{0,0,1,1},
+			{1,0,1,1},
+		};
+
+		int gradientTexWidth = 256;
+		std::vector<uchar4> gradientTexData(gradientTexWidth );
+		for (int i = 0; i < gradientTexWidth ; ++i) {
+			float f = (float)(i+.5)/(float)gradientTexWidth * (1 - 1e-7);
+			f *= (float)gradientColors.size();
+			int ip = (int)floor(f);
+			float fn = f - (float)ip;
+			float fp = 1 - fn;
+			int n1 = ip;
+			int n2 = (n1 + 1) % gradientColors.size();
+			const float4& c1 = gradientColors[n1];
+			const float4& c2 = gradientColors[n2];
+			float4 c = (c1 * fp + c2 * fn) * 255;
+			for (int j = 0; j < 4; ++j) {
+				c(j) = std::clamp<float>(c(j), 0, 255);
+			}
+			gradientTexData[i] = (uchar4)c;
+		}
+		glGenTextures(1, &gradientTex);
+		glBindTexture(GL_TEXTURE_1D, gradientTex);
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA, gradientTexData.size(), 0, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->v);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glBindTexture(GL_TEXTURE_1D, 0);
+
+		resetSimulation();
+	}
+	
+	int simGenIndex = 0;
+	
+	void resetSimulation() {
+		sim = simGens[simGenIndex].second(this);
+	}
+
+	virtual void onUpdate() {
+		Parent::onUpdate();
 		
+		sim->draw();
+		
+		gui->onUpdate([this](){
+			
+			if (igCombo("simulation", &simGenIndex, simGenNames.data(), simGenNames.size(), -1)) {
+				resetSimulation();
+				return;
+			}	
+			
+			sim->updateGUI();
+		});
+	
+		sim->onUpdate();
 	}
 
 	virtual void onSDLEvent(SDL_Event& event) {
@@ -830,21 +695,217 @@ for (int i = 0; i < Cons::size; ++i) {
 		case SDL_KEYUP:
 			if (canHandleKeyboard) {
 				if (event.key.keysym.sym == SDLK_r) {
-					resetState();
+					sim->resetState();
 				} else if (event.key.keysym.sym == SDLK_u) {
-					singleStep = true;
+					sim->singleStep = true;
 				} else if (event.key.keysym.sym == SDLK_SPACE) {
-					running = !running;
+					sim->running = !sim->running;
 				}
 			}
 			break;
 		case SDL_MOUSEMOTION:
-			mousepos = float2(
+			sim->mousepos = float2(
 				(float)event.motion.x / (float)screenSize(0),
 				(float)event.motion.y / (float)screenSize(1));
 			break;
 		}
 	}
 };
+
+template<typename real, typename Equation>
+void Simulation<real, Equation>::draw() {
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glEnable(GL_TEXTURE_1D);
+	glBindTexture(GL_TEXTURE_1D, app->gradientTex);
+
+	for (const auto& c : m->cells) {
+		real f = (c.displayValue - displayValueRange.first) / (displayValueRange.second - displayValueRange.first);
+		glTexCoord1f(f);
+		glBegin(GL_POLYGON);
+		for (int vi = 0; vi < c.vtxCount; ++vi) {
+			glVertex2v(m->vtxs[m->cellVtxIndexes[vi + c.vtxOffset]].pos.v);
+		}
+		glEnd();
+	}
+	
+	glBindTexture(GL_TEXTURE_1D, 0);
+	glDisable(GL_TEXTURE_1D);
+	
+	if (selectedCellIndex != -1) {
+		Cell* selectedCell = &m->cells[selectedCellIndex];
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glLineWidth(3);
+		glColor3f(1,1,0);
+		glBegin(GL_POLYGON);
+		for (int vi = 0; vi < selectedCell->vtxCount; ++vi) {
+			glVertex2v(m->vtxs[m->cellVtxIndexes[vi + selectedCell->vtxOffset]].pos.v);
+		}
+		glEnd();
+		glLineWidth(1);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	}
+
+	if (showVtxs || showCellCenters) {
+		glColor3f(1,1,1);
+		glPointSize(3);
+		glBegin(GL_POINTS);
+		if (showVtxs) {
+			for (const auto& v : m->vtxs) {
+				glVertex2v(v.pos.v);
+			}
+		}
+		if (showCellCenters) {
+			for (const auto& c : m->cells) {
+				glVertex2v(c.pos.v);
+			}
+		}
+		glEnd();
+		glPointSize(1);
+	}
+	if (showEdges) {
+		glColor3f(1,1,1);
+		glBegin(GL_LINES);
+		for (const auto& e : m->faces) {
+			for (int vi : e.vtxs) {
+				glVertex2v(m->vtxs[vi].pos.v);
+			}
+		}
+		glEnd();
+	}
+}
+
+template<typename real, typename Equation>
+void Simulation<real, Equation>::updateGUI() {
+
+	igText("time: %f", time);
+	igCheckbox("running", &running);
+	
+	if (igSmallButton("step")) singleStep = true;
+
+	igInputFloat("cfl", &cfl, .1, 1, "%f", 0);
+
+	igCheckbox("showVtxs", &showVtxs);
+	igCheckbox("showCellCenters", &showCellCenters);
+	igCheckbox("showEdges", &showEdges);
+	//igCheckbox("ortho", &ortho);
+
+	igSeparator();
+
+	if (igCombo("display method", &displayMethodIndex, eqn.displayMethodNames.data(), eqn.displayMethodNames.size(), -1)) {
+		refreshDisplayValues();
+	}
+
+	igCheckbox("auto display range", &displayAutomaticRange);
+	igInputFloat("display range min", &displayValueRange.first, .1, 1, "%f", 0);
+	igInputFloat("display range max", &displayValueRange.second, .1, 1, "%f", 0);
+	
+	igSeparator();
+	
+	igInputFloat("restitution", &restitution, .1, 1., "%f", 0);
+	
+	igSeparator();
+
+	igCombo("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
+	
+	igSeparator();
+	
+	eqn.updateGUI();
+	
+	igSeparator();
+	
+	igCombo("init cond", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
+	igPushIDStr("init cond fields");
+	eqn.initConds[initCondIndex]->updateGUI();
+	igPopID();
+	
+	if (igSmallButton("reset state")) {
+		resetState();
+	}
+	
+	igSeparator();
+	
+	if (igCombo("mesh", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
+		resetMesh();
+	}
+	igPushIDStr("mesh generation fields");
+	meshGenerators[meshGenerationIndex]->updateGUI();
+	igPopID();
+	if (igSmallButton("reset mesh")) {
+		resetMesh();
+	}
+	
+	igSeparator();
+
+	if (app->view == app->viewOrtho) {
+		//find the view bounds
+		//find the mouse position
+		//find any cells at that position
+		real2 pos2 = (real2)((mousepos - .5f) * float2(1, -1) * float2(app->getAspectRatio(), 1) / float2(app->viewOrtho->zoom(0), app->viewOrtho->zoom(1)) + app->viewOrtho->pos);
+		std::function<real(int)> f = [&](int i) -> real { return i >= 2 ? 0 : pos2(i); };
+		real3 pos = real3(f);
+			
+		bool canHandleMouse = !igGetIO()->WantCaptureMouse;
+		
+		if (canHandleMouse) {
+			igBeginTooltip();
+			igText("%f %f\n", pos(0), pos(1));
+			igEndTooltip();
+		}
+
+		selectedCellIndex = -1;
+		for (int i = 0; i < (int)m->cells.size(); ++i) {
+			Cell* c = &m->cells[i];
+			if (ThisMeshNamespace::contains(
+				pos, 
+				map<
+					std::vector<int>, 
+					std::vector<real3>
+				>(
+					//c->vtxs,
+					//TODO change function to use an iterator
+					std::vector<int>(m->cellVtxIndexes.begin() + c->vtxOffset, m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount), 
+					
+					[this](int vi) -> real3 { 
+						return m->vtxs[vi].pos; 
+					}
+				))) {
+				selectedCellIndex = i;
+				break;
+			}
+		}
+
+		if (selectedCellIndex != -1) {
+			Cell* c = &m->cells[selectedCellIndex];
+			
+			if (canHandleMouse) {
+				igBeginTooltip();
+				igText("%f", c->displayValue);
+				igEndTooltip();
+			}
+
+#if 0 //erase
+			if (leftButtonDown) {
+				std::vector<int> toRemoveEdges;
+				//remove c...
+				for (int ei : c->faces) {
+					Face* e = &m->faces[ei];
+					if (e->removeCell(i - m->cells.begin())) {
+						//all cells on e are removed
+						toRemoveEdges.push_back(ei);
+					}
+				}
+				m->cells.erase(m->cells.begin() + selectedCellIndex);
+			
+				//sort largest -> smallest
+				std::sort(toRemoveEdges.begin(), toRemoveEdges.end(), [](int a, int b) -> bool { return a > b; });
+				for (int ei : toRemoveEdges) {
+					m->faces.erase(m->faces.begin() + ei);
+				}
+			}
+#endif			
+		}
+	}
+}
 
 GLAPP_MAIN(CFDMeshApp)

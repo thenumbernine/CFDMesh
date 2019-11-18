@@ -5,6 +5,7 @@
 #include "Tensor/Vector.h"
 #include <cimgui.h>
 #include <utility>
+#include <tuple>
 #include <cmath>
 #include <cassert>
 
@@ -18,45 +19,121 @@ using real3 = Tensor::Vector<real, 3>;
 
 enum { numCons = 5 };
 
-struct Cons : public Tensor::GenericVector<real, numCons, real, Cons> {
-	using Parent = Tensor::GenericVector<real, numCons, real, Cons>;
-	
-	real& rho() { return Parent::v[0]; }
-	real3& m() { return *(real3*)( Parent::v + 1 ); }
-	real& ETotal() { return Parent::v[Parent::size-1]; }
-	
-	const real& rho() const { return Parent::v[0]; }
-	const real3& m() const { return *(real3*)( Parent::v + 1 ); }
-	const real& ETotal() const { return Parent::v[Parent::size-1]; }
 
-	using Parent::Parent;
+//how can you add correctly-typed ops via crtp to a union?
+//until then...
+#define ADD_OPS(classname)	\
+	real& operator()(int i) { return ptr[i]; }\
+	const real& operator()(int i) const { return ptr[i]; }\
+\
+	classname operator+(const classname& b) const {\
+		classname c;\
+		for (int i = 0; i < size; ++i) {\
+			c.ptr[i] = ptr[i] + b.ptr[i];\
+		}\
+		return c;\
+	}\
+\
+	classname& operator+=(const classname& b) {\
+		for (int i = 0; i < size; ++i) {\
+			ptr[i] += b.ptr[i];\
+		}\
+		return *this;\
+	}\
+\
+	classname operator-(const classname& b) const {\
+		classname c;\
+		for (int i = 0; i < size; ++i) {\
+			c.ptr[i] = ptr[i] - b.ptr[i];\
+		}\
+		return c;\
+	}\
+\
+	classname& operator-=(const classname& b) {\
+		for (int i = 0; i < size; ++i) {\
+			ptr[i] -= b.ptr[i];\
+		}\
+		return *this;\
+	}\
+\
+	classname operator*(real b) const {\
+		classname c;\
+		for (int i = 0; i < size; ++i) {\
+			c.ptr[i] = ptr[i] * b;\
+		}\
+		return c;\
+	}\
+\
+	classname operator*(const classname& b) const {\
+		classname c;\
+		for (int i = 0; i < size; ++i) {\
+			c.ptr[i] = ptr[i] * b.ptr[i];\
+		}\
+		return c;\
+	}\
+\
+
+union Cons {
+	enum { size = numCons };
+	real ptr[size];
+	struct {
+		real rho;
+		real3 m;
+		real ETotal;
+	};
+
+	Cons() {
+		rho = 0;
+		m = real3();
+		ETotal = 0;
+	}
 
 	Cons(real rho_, real3 m_, real ETotal_) {
-		rho() = rho_;
-		m() = m_;
-		ETotal() = ETotal_;
+		rho = rho_;
+		m = m_;
+		ETotal = ETotal_;
 	}
+
+	ADD_OPS(Cons)
+
+	static auto fields = std::make_tuple<
+		&Cons::rho,
+		&Cons::m,
+		&Cons::ETotal
+	>();
 };
 
-struct Prim : public Tensor::GenericVector<real, numCons, real, Prim> {
-	using Parent = Tensor::GenericVector<real, numCons, real, Prim>;
-	
-	real& rho() { return Parent::v[0]; }
-	real3& v() { return *(real3*)( Parent::v + 1 ); }
-	real& P() { return Parent::v[Parent::size-1]; }
+struct Prim {
+	enum { size = numCons };
+	real ptr[size];
+	struct {
+		real rho;
+		real3 v;
+		real P;
+	};
 
-	const real& rho() const { return Parent::v[0]; }
-	const real3& v() const { return *(real3*)( Parent::v + 1 ); }
-	const real& P() const { return Parent::v[Parent::size-1]; }
+	Prim() {
+		rho = 0;
+		v = real3();
+		P = 0;
+	}
 
-	using Parent::Parent;
-	
 	Prim(real rho_, real3 v_, real P_) {
-		rho() = rho_;
-		v() = v_;
-		P() = P_;
+		rho = rho_;
+		v = v_;
+		P = P_;
 	}
+
+	ADD_OPS(Prim)
+
+	static auto fields = std::make_tuple<
+		&Prim::rho,
+		&Prim::v,
+		&Prim::P
+	>();
 };
+
+#undef ADD_OPS
 
 struct Euler : public Equation<real, Cons, Euler> {
 	using Parent = Equation<real, Cons, Euler>;
@@ -138,37 +215,35 @@ struct Euler : public Equation<real, Cons, Euler> {
 		}
 	};
 
+	using Parent::Parent;
 
-	Euler() {
+	void buildInitCondsAndDisplayVars() {
 		Parent::initConds = {
 			std::make_shared<InitCondConst>(),
 			std::make_shared<InitCondSod>(),
 			std::make_shared<InitCondSpiral>(),
 		};
 
-		Parent::addDisplayScalar("rho", [](const Euler* eqn, const Cons& U) -> float { return U.rho(); });
-		Parent::addDisplayVector("m", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)U.m(); });
-		Parent::addDisplayScalar("ETotal", [](const Euler* eqn, const Cons& U) -> float { return U.ETotal(); });
-		Parent::addDisplayVector("v", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)(U.m() / U.rho()); });
-		Parent::addDisplayScalar("P", [](const Euler* eqn, const Cons& U) -> float { return eqn->primFromCons(U).P(); });
-
-
-		Parent::getNames();
+		Parent::addDisplayScalar("rho", [](const Euler* eqn, const Cons& U) -> float { return U.rho; });
+		Parent::addDisplayVector("m", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)U.m; });
+		Parent::addDisplayScalar("ETotal", [](const Euler* eqn, const Cons& U) -> float { return U.ETotal; });
+		Parent::addDisplayVector("v", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)(U.m / U.rho); });
+		Parent::addDisplayScalar("P", [](const Euler* eqn, const Cons& U) -> float { return eqn->primFromCons(U).P; });
 	}
 
 	Cons consFromPrim(const Prim& W) const {
 		Cons U;
-		U.rho() = W.rho();
-		U.m() = W.v() * U.rho();
-		U.ETotal() = W.P() / (heatCapacityRatio - 1.) + .5 * U.rho() * real3::lenSq(W.v());
+		U.rho = W.rho;
+		U.m = W.v * U.rho;
+		U.ETotal = W.P / (heatCapacityRatio - 1.) + .5 * U.rho * real3::lenSq(W.v);
 		return U;
 	}
 
 	Prim primFromCons(const Cons& U) const {
 		Prim W;
-		W.rho() = U.rho();
-		W.v() = U.m() / W.rho();
-		W.P() = (heatCapacityRatio - 1.) * (U.ETotal() - .5 * W.rho() * real3::lenSq(W.v()));
+		W.rho = U.rho;
+		W.v = U.m / W.rho;
+		W.P = (heatCapacityRatio - 1.) * (U.ETotal - .5 * W.rho * real3::lenSq(W.v));
 		return W;
 	}
 
@@ -199,24 +274,24 @@ struct Euler : public Equation<real, Cons, Euler> {
 		Prim& WL = vars.WL;
 		Prim& WR = vars.WR;
 		
-		real ETotalL = UL.ETotal();
+		real ETotalL = UL.ETotal;
 		WL = primFromCons(UL);
-		real rhoL = WL.rho();
+		real rhoL = WL.rho;
 assert(rhoL > 0);			
-		real3 vL = WL.v();
-		real PL = WL.P();
+		real3 vL = WL.v;
+		real PL = WL.P;
 assert(PL > 0);			
 		real hTotalL = calc_hTotal(rhoL, PL, ETotalL);
 assert(hTotalL > 0);			
 		real sqrtRhoL = sqrt(rhoL);
 assert(std::isfinite(sqrtRhoL));
 		
-		real ETotalR = UR.ETotal();
+		real ETotalR = UR.ETotal;
 		WR = primFromCons(UR);
-		real rhoR = WR.rho();
+		real rhoR = WR.rho;
 assert(rhoR > 0);			
-		real3 vR = WR.v();
-		real PR = WR.P();
+		real3 vR = WR.v;
+		real PR = WR.P;
 assert(PR > 0);			
 		real hTotalR = calc_hTotal(rhoR, PR, ETotalR);
 assert(hTotalR > 0);			
@@ -256,8 +331,8 @@ assert(std::isfinite(vars.Cs));
 		
 		CalcLambdaVars(const Euler& eqn, const Cons& U) {
 			Prim W = eqn.primFromCons(U);
-			v = real3::length(W.v());
-			Cs = eqn.calc_Cs_from_P_rho(W.P(), W.rho());
+			v = real3::length(W.v);
+			Cs = eqn.calc_Cs_from_P_rho(W.P, W.rho);
 		}
 	
 		CalcLambdaVars(const Eigen& vars) : v(vars.v(0)), Cs(vars.Cs) {}
@@ -327,13 +402,13 @@ assert(std::isfinite(vars.Cs));
 
 	Cons calcFluxFromCons(Cons U) {
 		Prim W = primFromCons(U);
-		real hTotal = calc_hTotal(W.rho(), W.P(), U.ETotal());
+		real hTotal = calc_hTotal(W.rho, W.P, U.ETotal);
 		Cons flux;
-		flux(0) = U.m()(0);
-		flux(1) = U.m()(0) * W.v()(0) + W.P();
-		flux(2) = U.m()(0) * W.v()(1);
-		flux(3) = U.m()(0) * W.v()(2);
-		flux(4) = U.m()(0) * hTotal;
+		flux(0) = U.m(0);
+		flux(1) = U.m(0) * W.v(0) + W.P;
+		flux(2) = U.m(0) * W.v(1);
+		flux(3) = U.m(0) * W.v(2);
+		flux(4) = U.m(0) * hTotal;
 		return flux;
 	}
 
@@ -346,17 +421,17 @@ assert(std::isfinite(vars.Cs));
 	//also automatically add them as vectors to display vars
 
 	Cons rotateTo(Cons U, real3 normal) {
-		U.m() = CFDMesh::rotateTo<real3>(U.m(), normal);
+		U.m = CFDMesh::rotateTo<real3>(U.m, normal);
 		return U;
 	}
 	
 	Cons rotateFrom(Cons U, real3 normal) {
-		U.m() = CFDMesh::rotateFrom<real3>(U.m(), normal);
+		U.m = CFDMesh::rotateFrom<real3>(U.m, normal);
 		return U;
 	}
 
 	Cons reflect(Cons U, real3 normal, real restitution) const {
-		U.m() = U.m() - normal * ((1 + restitution) * real3::dot(normal, U.m()));
+		U.m = U.m - normal * ((1 + restitution) * real3::dot(normal, U.m));
 		return U;
 	}
 };

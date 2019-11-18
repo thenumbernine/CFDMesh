@@ -2,6 +2,7 @@
 
 #include "CFDMesh/Vector.h"
 #include "CFDMesh/Util.h"
+#include "Common/crtp_cast.h"
 #include <vector>
 #include <memory>
 #include <string>
@@ -35,12 +36,17 @@ struct Equation {
 		DisplayMethod(const std::string& name_, DisplayFunc f_) : name(name_), f(f_) {}
 	};
 
-
 	std::vector<std::shared_ptr<InitCond>> initConds;
 	std::vector<const char*> initCondNames;
 
 	std::vector<std::shared_ptr<DisplayMethod>> displayMethods;
 	std::vector<const char*> displayMethodNames;
+
+	Equation() {
+		crtp_cast<Base>(*this).buildInitCondsAndDisplayVars();
+
+		updateNames();
+	}
 
 	void addDisplayScalar(const std::string& name, DisplayFunc func) {
 		displayMethods.push_back(std::make_shared<DisplayMethod>(name, func));
@@ -53,7 +59,7 @@ struct Equation {
 		}
 	}
 
-	void getNames() {
+	void updateNames() {
 		initCondNames = map<
 			decltype(initConds),
 			std::vector<const char*>
@@ -70,6 +76,8 @@ struct Equation {
 			[](const std::shared_ptr<DisplayMethod>& m) -> const char* { return m->name.c_str(); }
 		);
 	}
+
+	
 };
 
 }

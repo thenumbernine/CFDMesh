@@ -94,19 +94,24 @@ struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 			igInputFloat("BRx", &BR(0), .1, 1, "%f", 0);
 			igInputFloat("BRy", &BR(1), .1, 1, "%f", 0);
 			igInputFloat("BRz", &BR(2), .1, 1, "%f", 0);
-		
 		}
 	};
+	
+	using Parent::Parent;
 
-	GLMMaxwell() {
+	void buildInitCondsAndDisplayVars() {
 		Parent::initConds = {
 			std::make_shared<InitCondDefault>(),
 		};
 
 		Parent::addDisplayVector("D", [](const GLMMaxwell* eqn, const Cons& U) -> real3 { return U.D(); });
 		Parent::addDisplayVector("B", [](const GLMMaxwell* eqn, const Cons& U) -> real3 { return U.B(); });
-
-		Parent::getNames();
+		Parent::addDisplayScalar("phi", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.phi(); });
+		Parent::addDisplayScalar("psi", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.psi(); });
+		Parent::addDisplayScalar("rhoCharge", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.rhoCharge(); });
+		Parent::addDisplayScalar("sigma", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sigma(); });
+		Parent::addDisplayScalar("sqrt_1_eps", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sqrt_1_eps(); });
+		Parent::addDisplayScalar("sqrt_1_mu", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sqrt_1_mu(); });
 	}
 
 	real3 calc_E(const Cons& U) const {
