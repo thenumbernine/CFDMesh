@@ -18,20 +18,18 @@ using real3 = Tensor::Vector<real, 3>;
 
 enum { numCons = 5 };
 
-using StateVec_ = Tensor::Vector<real, numCons>;
-
-struct Cons : public StateVec_ {
-	real& rho() { return StateVec_::v[0]; }
-	real3& m() { return *(real3*)( StateVec_::v + 1 ); }
-	real& ETotal() { return StateVec_::v[StateVec_::size-1]; }
+struct Cons : public Tensor::GenericVector<real, numCons, real, Cons> {
+	using Parent = Tensor::GenericVector<real, numCons, real, Cons>;
 	
-	const real& rho() const { return StateVec_::v[0]; }
-	const real3& m() const { return *(real3*)( StateVec_::v + 1 ); }
-	const real& ETotal() const { return StateVec_::v[StateVec_::size-1]; }
-
-	Cons() {}
+	real& rho() { return Parent::v[0]; }
+	real3& m() { return *(real3*)( Parent::v + 1 ); }
+	real& ETotal() { return Parent::v[Parent::size-1]; }
 	
-	Cons(const StateVec_& v) : StateVec_(v) {}
+	const real& rho() const { return Parent::v[0]; }
+	const real3& m() const { return *(real3*)( Parent::v + 1 ); }
+	const real& ETotal() const { return Parent::v[Parent::size-1]; }
+
+	using Parent::Parent;
 
 	Cons(real rho_, real3 m_, real ETotal_) {
 		rho() = rho_;
@@ -40,20 +38,20 @@ struct Cons : public StateVec_ {
 	}
 };
 
-struct Prim_ : public StateVec_ {
-	real& rho() { return StateVec_::v[0]; }
-	real3& v() { return *(real3*)( StateVec_::v + 1 ); }
-	real& P() { return StateVec_::v[StateVec_::size-1]; }
-
-	const real& rho() const { return StateVec_::v[0]; }
-	const real3& v() const { return *(real3*)( StateVec_::v + 1 ); }
-	const real& P() const { return StateVec_::v[StateVec_::size-1]; }
-
-	Prim_() {}
+struct Prim : public Tensor::GenericVector<real, numCons, real, Prim> {
+	using Parent = Tensor::GenericVector<real, numCons, real, Prim>;
 	
-	Prim_(const StateVec_& v) : StateVec_(v) {}
+	real& rho() { return Parent::v[0]; }
+	real3& v() { return *(real3*)( Parent::v + 1 ); }
+	real& P() { return Parent::v[Parent::size-1]; }
+
+	const real& rho() const { return Parent::v[0]; }
+	const real3& v() const { return *(real3*)( Parent::v + 1 ); }
+	const real& P() const { return Parent::v[Parent::size-1]; }
+
+	using Parent::Parent;
 	
-	Prim_(real rho_, real3 v_, real P_) {
+	Prim(real rho_, real3 v_, real P_) {
 		rho() = rho_;
 		v() = v_;
 		P() = P_;
@@ -61,19 +59,15 @@ struct Prim_ : public StateVec_ {
 };
 
 struct Euler : public Equation<real, Cons, Euler> {
-	using Super = Equation<real, Cons, Euler>;
-
-	using Prim = Prim_;
-
-	using StateVec = StateVec_;
+	using Parent = Equation<real, Cons, Euler>;
 
 	enum { numWaves = numCons };
-	using WaveVec = StateVec;
+	using WaveVec = Cons;
 
-	using InitCond = typename Super::InitCond;
-	using DisplayMethod = typename Super::DisplayMethod;
+	using InitCond = typename Parent::InitCond;
+	using DisplayMethod = typename Parent::DisplayMethod;
 
-	real heatCapacityRatio = 1.4;
+	float heatCapacityRatio = 1.4;
 
 
 	struct InitCondConst : public InitCond {
@@ -85,7 +79,7 @@ struct Euler : public Equation<real, Cons, Euler> {
 
 		virtual const char* name() const { return "constant"; }
 		virtual Cons initCell(const Euler* eqn, real3 x) const {
-			return eqn->consFromPrim(Prim_(rho, real3(vx, vy), P));
+			return eqn->consFromPrim(Prim(rho, real3(vx, vy), P));
 		}
 		
 		virtual void updateGUI() {
@@ -111,7 +105,7 @@ struct Euler : public Equation<real, Cons, Euler> {
 		virtual const char* name() const { return "Sod"; }
 		virtual Cons initCell(const Euler* eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0;
-			return eqn->consFromPrim(Prim_(
+			return eqn->consFromPrim(Prim(
 				lhs ? rhoL : rhoR,
 				lhs ? real3(vxL, vyL, vzL) : real3(vxR, vyR, vzR),
 				lhs ? PL : PR
@@ -136,7 +130,7 @@ struct Euler : public Equation<real, Cons, Euler> {
 		using InitCond::InitCond;
 		virtual const char* name() const { return "Spiral"; }
 		virtual Cons initCell(const Euler* eqn, real3 x) const {
-			return eqn->consFromPrim(Prim_(
+			return eqn->consFromPrim(Prim(
 				1,
 				real3(-x(1), x(0)),
 				1
@@ -146,20 +140,20 @@ struct Euler : public Equation<real, Cons, Euler> {
 
 
 	Euler() {
-		Super::initConds = {
+		Parent::initConds = {
 			std::make_shared<InitCondConst>(),
 			std::make_shared<InitCondSod>(),
 			std::make_shared<InitCondSpiral>(),
 		};
 
-		Super::addDisplayScalar("rho", [](const Euler* eqn, const Cons& U) -> float { return U.rho(); });
-		Super::addDisplayVector("m", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)U.m(); });
-		Super::addDisplayScalar("ETotal", [](const Euler* eqn, const Cons& U) -> float { return U.ETotal(); });
-		Super::addDisplayVector("v", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)(U.m() / U.rho()); });
-		Super::addDisplayScalar("P", [](const Euler* eqn, const Cons& U) -> float { return eqn->primFromCons(U).P(); });
+		Parent::addDisplayScalar("rho", [](const Euler* eqn, const Cons& U) -> float { return U.rho(); });
+		Parent::addDisplayVector("m", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)U.m(); });
+		Parent::addDisplayScalar("ETotal", [](const Euler* eqn, const Cons& U) -> float { return U.ETotal(); });
+		Parent::addDisplayVector("v", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)(U.m() / U.rho()); });
+		Parent::addDisplayScalar("P", [](const Euler* eqn, const Cons& U) -> float { return eqn->primFromCons(U).P(); });
 
 
-		Super::getNames();
+		Parent::getNames();
 	}
 
 	Cons consFromPrim(const Prim& W) const {
@@ -244,10 +238,10 @@ assert(std::isfinite(vars.Cs));
 		return vars;
 	}
 
-	StateVec getEigenvalues(const Eigen& vars) {
+	WaveVec getEigenvalues(const Eigen& vars) {
 		const real& vx = vars.v(0);
 		const real& Cs = vars.Cs;
-		StateVec lambdas;
+		WaveVec lambdas;
 		lambdas(0) = vx - Cs;
 		lambdas(1) = vx;
 		lambdas(2) = vx;
@@ -281,13 +275,13 @@ assert(std::isfinite(vars.Cs));
 		return vars.v + vars.Cs;
 	}
 
-	static StateVec matmul(const real* A, const StateVec& x) {
-		StateVec y;
-		for (int i = 0; i < StateVec::size; ++i) {
+	static Cons matmul(const real* A, const Cons& x) {
+		Cons y;
+		for (int i = 0; i < Cons::size; ++i) {
 			real sum = 0;
-			for (int j = 0; j < StateVec::size; ++j) {
+			for (int j = 0; j < Cons::size; ++j) {
 				//C layout, so row-major
-				sum += A[j + StateVec::size * i] * x(j);
+				sum += A[j + Cons::size * i] * x(j);
 			}
 			y(i) = sum;
 		}
@@ -343,6 +337,14 @@ assert(std::isfinite(vars.Cs));
 		return flux;
 	}
 
+	void updateGUI() {
+		igInputFloat("gamma", &heatCapacityRatio, .1, 1, "%f", 0);
+	}
+
+	//TODO enumerate vectors in Cons struct
+	//automatically rotate and reflect them here
+	//also automatically add them as vectors to display vars
+
 	Cons rotateTo(Cons U, real3 normal) {
 		U.m() = CFDMesh::rotateTo<real3>(U.m(), normal);
 		return U;
@@ -350,6 +352,11 @@ assert(std::isfinite(vars.Cs));
 	
 	Cons rotateFrom(Cons U, real3 normal) {
 		U.m() = CFDMesh::rotateFrom<real3>(U.m(), normal);
+		return U;
+	}
+
+	Cons reflect(Cons U, real3 normal, real restitution) const {
+		U.m() = U.m() - normal * ((1 + restitution) * real3::dot(normal, U.m()));
 		return U;
 	}
 };

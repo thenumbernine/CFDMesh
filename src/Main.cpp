@@ -1,5 +1,5 @@
 #include "CFDMesh/Equation/Euler.h"
-//#include "CFDMesh/Equation/GLMMaxwell.h"
+#include "CFDMesh/Equation/GLMMaxwell.h"
 
 #include "CFDMesh/Mesh/Mesh.h"
 #include "CFDMesh/Util.h"
@@ -34,8 +34,8 @@ using real = double;
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
-using ThisEquation = Equation::EulerNamespace<real>::Euler;
-//using ThisEquation = Equation::GLMMaxwell<real>;
+//using ThisEquation = Equation::EulerNamespace<real>::Euler;
+using ThisEquation = Equation::GLMMaxwellNamespace<real>::GLMMaxwell;
 
 using WaveVec = ThisEquation::WaveVec;
 using Cons = ThisEquation::Cons;
@@ -287,7 +287,7 @@ std::vector<const char*> meshGenerationNames = map<
 
 
 struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
-	using Super = ::GLApp::ViewBehavior<::GLApp::GLApp>;
+	using Parent = ::GLApp::ViewBehavior<::GLApp::GLApp>;
 	
 	std::shared_ptr<Mesh> m;
 	std::function<Cons(real3)> initcond;
@@ -307,7 +307,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	using ValueRange = std::pair<float, float>; //min, max
 	ValueRange displayValueRange = ValueRange(0, 1);
 
-	int initCondIndex = 1;
+	int initCondIndex = 0;
 
 	//1 = mirror boundary, -1 = freeflow boundary
 	float restitution = 1;
@@ -326,7 +326,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 	GLuint gradientTex = {};
 
-	CFDMeshApp(const Init& args) : Super(args) {
+	CFDMeshApp(const Init& args) : Parent(args) {
 		view = viewOrtho;
 		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
 
@@ -459,17 +459,9 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		if (cL && cR) {
 			return std::pair<Cons, Cons>{cL->U, cR->U};
 		} else if (cL) {
-			Cons UL, UR;
-			UL = UR = cL->U;
-			real3 m = UR.m();
-			UR.m() = m - e->normal * ((1 + restitution) * real3::dot(e->normal, m));
-			return std::pair<Cons, Cons>{UL, UR};
+			return std::pair<Cons, Cons>{cL->U, eqn.reflect(cL->U, e->normal, restitution)};
 		} else if (cR) {
-			Cons UL, UR;
-			UL = UR = cR->U;
-			real3 m = UL.m();
-			UL.m() = m - e->normal * ((1 + restitution) * real3::dot(e->normal, m));
-			return std::pair<Cons, Cons>{UL, UR};
+			return std::pair<Cons, Cons>{eqn.reflect(cR->U, e->normal, restitution), cR->U};
 		} 
 		throw Common::Exception() << "here";
 	}
@@ -677,7 +669,7 @@ for (int i = 0; i < Cons::size; ++i) {
 	}
 	
 	virtual void onUpdate() {
-		Super::onUpdate();
+		Parent::onUpdate();
 		draw();
 		
 		gui->onUpdate([this](){
@@ -710,6 +702,10 @@ for (int i = 0; i < Cons::size; ++i) {
 			igSeparator();
 		
 			igCombo("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
+			
+			igSeparator();
+			
+			eqn.updateGUI();
 			
 			igSeparator();
 			
@@ -828,7 +824,7 @@ for (int i = 0; i < Cons::size; ++i) {
 		bool canHandleKeyboard = !igGetIO()->WantCaptureKeyboard;
 		
 		if (canHandleMouse) {
-			Super::onSDLEvent(event);
+			Parent::onSDLEvent(event);
 		}
 		switch (event.type) {
 		case SDL_KEYUP:
