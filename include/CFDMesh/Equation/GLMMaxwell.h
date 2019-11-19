@@ -81,10 +81,10 @@ using Prim_ = Cons_<T>;
 
 
 template<typename real>
-struct GLMMaxwell : public Equation<real, Cons_<real>, GLMMaxwell<real>> {
-	using Parent = Equation<real, Cons_<real>, GLMMaxwell<real>>;
+struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>> {
+	using Parent = Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>>;
 	using Cons = typename Parent::Cons;
-	using Prim = Prim_<real>;
+	using Prim = typename Parent::Prim;
 
 	enum { numWaves = 8 };
 	using WaveVec = Tensor::Vector<real, 8>;
@@ -115,33 +115,6 @@ struct GLMMaxwell : public Equation<real, Cons_<real>, GLMMaxwell<real>> {
 		Parent::initConds = {
 			std::make_shared<InitCondDefault>(),
 		};
-
-		
-		//cycle through the Cons::fields tuple and add each of these
-		tuple_for_each(Cons::fields, [this](auto x, size_t i) constexpr {
-			auto field = x.second;
-			using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
-			Parent::template addDisplayForType<FieldType>(
-				x.first, 
-				[field](const GLMMaxwell* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
-					return U.*field; 
-				}
-			);
-		});
-
-		if constexpr (!std::is_same_v<Cons, Prim>) {
-			tuple_for_each(Prim::fields, [this](auto x, size_t i) constexpr {
-				auto field = x.second;
-				using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
-				Parent::template addDisplayForType<FieldType>(
-					x.first, 
-					[field](const GLMMaxwell* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
-						Prim W = eqn->primFromCons(U);
-						return W.*field; 
-					}
-				);
-			});	
-		}
 	}
 
 	real3 calc_E(const Cons& U) const {
