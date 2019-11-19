@@ -11,15 +11,13 @@
 
 namespace CFDMesh {
 namespace Equation {
-
-template<typename real>
-struct GLMMaxwellNamespace {
-
-using real3 = Tensor::Vector<real, 3>;
+namespace GLMMaxwell {
 
 enum { numCons = 12 };
 
-union Cons {
+template<typename real>
+union Cons_ {
+	using real3 = Tensor::Vector<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
 	struct {
@@ -33,9 +31,9 @@ union Cons {
 		real sqrt_1_mu = {};
 	};
 
-	Cons() {}
+	Cons_() {}
 
-	Cons(real3 D_, real3 B_, real rhoCharge_, real sigma_, real sqrt_1_eps_, real sqrt_1_mu_) {
+	Cons_(real3 D_, real3 B_, real rhoCharge_, real sigma_, real sqrt_1_eps_, real sqrt_1_mu_) {
 		D = D_;
 		B = B_;
 		rhoCharge = rhoCharge_;
@@ -44,65 +42,70 @@ union Cons {
 		sqrt_1_mu = sqrt_1_mu_;
 	}
 	
-	ADD_OPS(Cons)
+	ADD_OPS(Cons_)
 
-	static auto fields = std::make_tuple<
-		&Cons::D,
-		&Cons::B,
-		&Cons::phi,
-		&Cons::psi,
-		&Cons::rhoCharge,
-		&Cons::sigma,
-		&Cons::sqrt_1_eps,
-		&Cons::sqrt_1_mu
-	>();
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("D", &Cons_::D),
+		std::make_pair("B", &Cons_::B),
+		std::make_pair("phi", &Cons_::phi),
+		std::make_pair("psi", &Cons_::psi),
+		std::make_pair("rhoCharge", &Cons_::rhoCharge),
+		std::make_pair("sigma", &Cons_::sigma),
+		std::make_pair("sqrt_1_eps", &Cons_::sqrt_1_eps),
+		std::make_pair("sqrt_1_mu", &Cons_::sqrt_1_mu)
+	);
+
+	//TODO autogen from fields
+	void updateGUI(std::string suffix = {}) {
+		igInputFloat(("Dx" + suffix).c_str(), &D(0), .1, 1, "%f", 0);
+		igInputFloat(("Dy" + suffix).c_str(), &D(1), .1, 1, "%f", 0);
+		igInputFloat(("Dz" + suffix).c_str(), &D(2), .1, 1, "%f", 0);
+		igInputFloat(("Bx" + suffix).c_str(), &B(0), .1, 1, "%f", 0);
+		igInputFloat(("By" + suffix).c_str(), &B(1), .1, 1, "%f", 0);
+		igInputFloat(("Bz" + suffix).c_str(), &B(2), .1, 1, "%f", 0);
+		igInputFloat(("phi" + suffix).c_str(), &phi, .1, 1, "%f", 0);
+		igInputFloat(("psi" + suffix).c_str(), &psi, .1, 1, "%f", 0);
+		igInputFloat(("rhoCharge" + suffix).c_str(), &rhoCharge, .1, 1, "%f", 0);
+		igInputFloat(("sigma" + suffix).c_str(), &sigma, .1, 1, "%f", 0);
+		igInputFloat(("sqrt_1_eps" + suffix).c_str(), &sqrt_1_eps, .1, 1, "%f", 0);
+		igInputFloat(("sqrt_1_mu" + suffix).c_str(), &sqrt_1_mu, .1, 1, "%f", 0);
+	}
 };
 
-using Prim = Cons;
+template<typename T>
+ADD_OSTREAM(Cons_<T>)
 
-struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
-	using Parent = Equation<real, Cons, GLMMaxwell>;
+
+template<typename T>
+using Prim_ = Cons_<T>;
+
+
+template<typename real>
+struct GLMMaxwell : public Equation<real, Cons_<real>, GLMMaxwell<real>> {
+	using Parent = Equation<real, Cons_<real>, GLMMaxwell<real>>;
+	using Cons = typename Parent::Cons;
+	using Prim = Prim_<real>;
 
 	enum { numWaves = 8 };
 	using WaveVec = Tensor::Vector<real, 8>;
 	
 	using InitCond = typename Parent::InitCond;
 	using DisplayMethod = typename Parent::DisplayMethod;
+	
+	using real3 = Tensor::Vector<real, 3>;
 
 	struct InitCondDefault : public InitCond {
-		float3 DL = float3(1, 1, 0);
-		float3 DR = float3(-1, 1, 0);
-		float3 BL = float3(0, -1, 1);
-		float3 BR = float3(0, -1, -1);
-	
+		Cons_<float> UL = Cons_<float>(float3(1, 1, 0), float3(0, -1, 1), 0, 0, 1, 1);
+		Cons_<float> UR = Cons_<float>(float3(-1, 1, 0), float3(0, -1, -1), 0, 0, 1, 1);
+		using InitCond::InitCond;
 		virtual const char* name() const { return "default"; }
 		virtual Cons initCell(const GLMMaxwell* eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0;
-			return Cons(
-				lhs ? DL : DR,
-				lhs ? BL : BR,
-				0,	//rho
-				0,	//sigma
-				1,	//sqrt(1/eps)
-				1	//sqrt(1/mu)
-			);
+			return lhs ? UL : UR;
 		}
 		virtual void updateGUI() {
-			igInputFloat("DLx", &DL(0), .1, 1, "%f", 0);
-			igInputFloat("DLy", &DL(1), .1, 1, "%f", 0);
-			igInputFloat("DLz", &DL(2), .1, 1, "%f", 0);
-		
-			igInputFloat("DRx", &DR(0), .1, 1, "%f", 0);
-			igInputFloat("DRy", &DR(1), .1, 1, "%f", 0);
-			igInputFloat("DRz", &DR(2), .1, 1, "%f", 0);
-		
-			igInputFloat("BLx", &BL(0), .1, 1, "%f", 0);
-			igInputFloat("BLy", &BL(1), .1, 1, "%f", 0);
-			igInputFloat("BLz", &BL(2), .1, 1, "%f", 0);
-		
-			igInputFloat("BRx", &BR(0), .1, 1, "%f", 0);
-			igInputFloat("BRy", &BR(1), .1, 1, "%f", 0);
-			igInputFloat("BRz", &BR(2), .1, 1, "%f", 0);
+			UL.updateGUI("L");
+			UR.updateGUI("R");
 		}
 	};
 	
@@ -113,14 +116,32 @@ struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 			std::make_shared<InitCondDefault>(),
 		};
 
-		Parent::addDisplayVector("D", [](const GLMMaxwell* eqn, const Cons& U) -> real3 { return U.D; });
-		Parent::addDisplayVector("B", [](const GLMMaxwell* eqn, const Cons& U) -> real3 { return U.B; });
-		Parent::addDisplayScalar("phi", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.phi; });
-		Parent::addDisplayScalar("psi", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.psi; });
-		Parent::addDisplayScalar("rhoCharge", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.rhoCharge; });
-		Parent::addDisplayScalar("sigma", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sigma; });
-		Parent::addDisplayScalar("sqrt_1_eps", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sqrt_1_eps; });
-		Parent::addDisplayScalar("sqrt_1_mu", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sqrt_1_mu; });
+		
+		//cycle through the Cons::fields tuple and add each of these
+		tuple_for_each(Cons::fields, [this](auto x, size_t i) constexpr {
+			auto field = x.second;
+			using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+			Parent::template addDisplayForType<FieldType>(
+				x.first, 
+				[field](const GLMMaxwell* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
+					return U.*field; 
+				}
+			);
+		});
+
+		if constexpr (!std::is_same_v<Cons, Prim>) {
+			tuple_for_each(Prim::fields, [this](auto x, size_t i) constexpr {
+				auto field = x.second;
+				using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+				Parent::template addDisplayForType<FieldType>(
+					x.first, 
+					[field](const GLMMaxwell* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
+						Prim W = eqn->primFromCons(U);
+						return W.*field; 
+					}
+				);
+			});	
+		}
 	}
 
 	real3 calc_E(const Cons& U) const {
@@ -260,7 +281,6 @@ struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 
 };
 
-};
-
+}
 }
 }

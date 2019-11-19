@@ -11,6 +11,8 @@ namespace CFDMesh {
 namespace Equation {
 
 
+// reduce any floating point scalar/vector to 32-bit:
+
 template<typename T, typename Enable = void>
 struct FloatTypeForType;
 
@@ -23,6 +25,7 @@ template<typename T>
 struct FloatTypeForType<Tensor::Vector<T, 3>, typename std::enable_if_t<std::is_floating_point_v<T>>> {
 	using Type = float3;
 };
+
 
 template<
 	typename real, 

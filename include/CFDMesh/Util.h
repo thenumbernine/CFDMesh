@@ -71,12 +71,12 @@ inline real3 rotateFrom(real3 v, real3 n) {
 
 // https://stackoverflow.com/a/6894436
 template<std::size_t I = 0, typename FuncT, typename... Tp>
-inline typename std::enable_if<I == sizeof...(Tp), void>::type
+inline typename std::enable_if_t<I == sizeof...(Tp), void>
 tuple_for_each(const std::tuple<Tp...> &, FuncT) // Unused arguments are given no names.
 { }
 
 template<std::size_t I = 0, typename FuncT, typename... Tp>
-inline typename std::enable_if<I < sizeof...(Tp), void>::type
+inline typename std::enable_if_t<I < sizeof...(Tp), void>
 tuple_for_each(const std::tuple<Tp...>& t, FuncT f)
 {
 	f(std::get<I>(t), I);

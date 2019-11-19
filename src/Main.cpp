@@ -350,12 +350,14 @@ struct Simulation : public ISimulation {
 			m->cells.end(),
 			[this, ic](auto& c) {
 				c.U = ic->initCell(&eqn, c.pos);
-				
-				assert(std::isfinite(c.U.rho) && c.U.rho > 0);
-				assert(std::isfinite(c.U.m(0)));
-				assert(std::isfinite(c.U.m(1)));
-				assert(std::isfinite(c.U.m(2)));
-				assert(std::isfinite(c.U.ETotal) && c.U.ETotal > 0);
+			
+				if constexpr (std::is_same_v<ThisEquation, CFDMesh::Equation::Euler::Euler<real>>) {
+					assert(std::isfinite(c.U.rho) && c.U.rho > 0);
+					assert(std::isfinite(c.U.m(0)));
+					assert(std::isfinite(c.U.m(1)));
+					assert(std::isfinite(c.U.m(2)));
+					assert(std::isfinite(c.U.ETotal) && c.U.ETotal > 0);
+				}
 			}
 		);
 		
@@ -599,7 +601,7 @@ for (int i = 0; i < Cons::size; ++i) {
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
 	{"Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::Euler::Euler<real>>>(app); }},
-//	{"GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::GLMMaxwellNamespace<real>::GLMMaxwell>>(app); }},
+	{"GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<

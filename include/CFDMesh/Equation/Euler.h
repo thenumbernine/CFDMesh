@@ -26,15 +26,7 @@ union Cons_ {
 		real ETotal = {};
 	};
 
-	Cons_() {
-		rho = 0;
-		m = real3();
-		ETotal = 0;
-	}
-
-	Cons_(const Cons_& src) {
-		*this = src;
-	}
+	Cons_() {}
 
 	Cons_(real rho_, real3 m_, real ETotal_) {
 		rho = rho_;
@@ -52,15 +44,8 @@ union Cons_ {
 };
 
 template<typename T>
-std::ostream& operator<<(std::ostream& o, const Cons_<T>& U) {
-	o << "[";
-	const char* sep = "";
-	for (int i = 0; i < Cons_<T>::size; ++i) {
-		o << sep << U.ptr[i];
-		sep = ", ";
-	}
-	return o << "]";
-}
+ADD_OSTREAM(Cons_<T>)
+
 
 template<typename real>
 union Prim_ {
@@ -73,15 +58,7 @@ union Prim_ {
 		real P = {};
 	};
 
-	Prim_() {
-		rho = 0;
-		v = real3();
-		P = 0;
-	}
-
-	Prim_(const Prim_& src) {
-		*this = src;
-	}
+	Prim_() {}
 
 	Prim_(real rho_, real3 v_, real P_) {
 		rho = rho_;
@@ -91,21 +68,13 @@ union Prim_ {
 
 	ADD_OPS(Prim_)
 
-	template<typename T>
-	operator Prim_<T>() const {
-		Prim_<T> res;
-		for (int i = 0; i < size; ++i) {
-			res.ptr[i] = (T)ptr[i];
-		}
-		return res;
-	}
-
+	//TODO autogen from fields
 	void updateGUI(std::string suffix = {}) {
-		igInputFloat((std::string("rho") + suffix).c_str(), &rho, .1, 1, "%f", 0);
-		igInputFloat((std::string("vx") + suffix).c_str(), &v(0), .1, 1, "%f", 0);
-		igInputFloat((std::string("vy") + suffix).c_str(), &v(1), .1, 1, "%f", 0);
-		igInputFloat((std::string("vz") + suffix).c_str(), &v(2), .1, 1, "%f", 0);
-		igInputFloat((std::string("P") + suffix).c_str(), &P, .1, 1, "%f", 0);
+		igInputFloat(("rho" + suffix).c_str(), &rho, .1, 1, "%f", 0);
+		igInputFloat(("vx" + suffix).c_str(), &v(0), .1, 1, "%f", 0);
+		igInputFloat(("vy" + suffix).c_str(), &v(1), .1, 1, "%f", 0);
+		igInputFloat(("vz" + suffix).c_str(), &v(2), .1, 1, "%f", 0);
+		igInputFloat(("P" + suffix).c_str(), &P, .1, 1, "%f", 0);
 	}
 
 	static constexpr auto fields = std::make_tuple(
@@ -116,15 +85,8 @@ union Prim_ {
 };
 
 template<typename T>
-std::ostream& operator<<(std::ostream& o, const Prim_<T>& U) {
-	o << "[";
-	const char* sep = "";
-	for (int i = 0; i < Prim_<T>::size; ++i) {
-		o << sep << U.ptr[i];
-		sep = ", ";
-	}
-	return o << "]";
-}
+ADD_OSTREAM(Prim_<T>)
+
 
 template<typename real>
 struct Euler : public Equation<real, Cons_<real>, Euler<real>> {
