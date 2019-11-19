@@ -235,7 +235,7 @@ struct MeshFactory {
 	MeshFactory(const char* name_) : name(name_) {}
 	virtual ~MeshFactory() {}
 	virtual void updateGUI() {}
-	virtual std::shared_ptr<Mesh> createMesh() const = 0;
+	virtual std::shared_ptr<Mesh> createMesh() = 0;
 protected:
 	virtual std::shared_ptr<Mesh> createMeshSuper() const {
 		return Mesh::create();

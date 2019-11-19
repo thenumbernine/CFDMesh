@@ -10,8 +10,13 @@
 #include "GLApp/ViewBehavior.h"
 
 #include "ImGuiCommon/ImGuiCommon.h"
+
+#include "Image/Image.h"
+
 #include "Parallel/Parallel.h"
+
 #include "Tensor/Tensor.h"
+
 #include "Common/File.h"
 
 #include <algorithm>
@@ -80,7 +85,7 @@ struct Simulation : public ISimulation {
 		
 		FileMeshFactory() : MeshFactory("p2dfmt mesh") {}
 
-		virtual std::shared_ptr<Mesh> createMesh() const {
+		virtual std::shared_ptr<Mesh> createMesh() {
 			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 			
 			std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(filename), "\n");
@@ -146,7 +151,7 @@ struct Simulation : public ISimulation {
 		using Super = ChartMeshFactory;
 		TriUnitMeshFactory() : Super("unit square of triangles") {}
 		
-		virtual std::shared_ptr<Mesh> createMesh() const {
+		virtual std::shared_ptr<Mesh> createMesh() {
 			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 			
 			int m = Super::size(0);
@@ -185,7 +190,7 @@ struct Simulation : public ISimulation {
 		using Super = ChartMeshFactory;
 		QuadUnitMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
 		
-		virtual std::shared_ptr<Mesh> createMesh() const {
+		virtual std::shared_ptr<Mesh> createMesh() {
 			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 
 			int m = Super::size(0);
@@ -280,6 +285,69 @@ struct Simulation : public ISimulation {
 		}
 	};
 
+	//not inheriting from QuadUnitMeshFactory because it has variable size and we want fixed size (based on image size)
+	struct QuadUnitBasedOnImageMeshFactory : public ChartMeshFactory {
+		using Super = ChartMeshFactory;
+		QuadUnitBasedOnImageMeshFactory() : Super("unit based on image") {}
+
+		std::string imageFilename = "layout.png";
+		//std::string imageFilename = "layout.bmp";
+		//std::string imageFilename = "layout.tiff";
+
+		virtual std::shared_ptr<Mesh> createMesh() {
+			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+			
+			//auto iimg = ::Image::system->read(imageFilename);	//TODO fixme, it's not working
+			auto iimg = ::Image::pngIO->read(imageFilename);
+			
+			auto img = std::dynamic_pointer_cast<Image::Image>(iimg);
+
+			Super::size = img->getSize();
+			
+			int m = Super::size(0) + 1;
+			int n = Super::size(1) + 1;
+		
+			mesh->vtxs.resize(m * n);
+			for (int j = 0; j < n; ++j) {
+				for (int i = 0; i < m; ++i) {
+					real2 x = real2(
+						((real)i + .5) / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
+						((real)j + .5) / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
+					
+					real2 u = Super::grid(x);
+					std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
+					mesh->vtxs[i + m * j].pos = real3(f);
+				}
+			}
+
+			int imax = m-1;
+			int jmax = n-1;
+			for (int j = 0; j < jmax; ++j) {
+				int jn = (j + 1) % n;
+				for (int i = 0; i < imax; ++i) {
+					int in = (i + 1) % m;
+					if ((*img)(i, jmax-1-j)) {
+						mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
+					}
+				}
+			}
+
+			mesh->calcAux();
+			return mesh;
+		}
+
+		//override ChartMeshFactory and get rid of size
+		//TODO add in imageFilename
+		virtual void updateGUI() {
+			//igInputInt2("size", size.v, 0);
+			igInputFloat2("mins", Super::mins.v, "%f", 0);
+			igInputFloat2("maxs", Super::maxs.v, "%f", 0);
+			igInputInt2("repeat", Super::repeat.v, 0);
+			igInputInt2("capmin", Super::capmin.v, 0);
+		}
+
+	};
+
 	std::vector<std::shared_ptr<MeshFactory>> meshGenerators;
 	std::vector<const char*> meshGenerationNames;
 
@@ -308,18 +376,19 @@ struct Simulation : public ISimulation {
 		
 	float cfl = .5;
 
-	int meshGenerationIndex = 1;
+	int meshGenerationIndex = 0;
 
 	Simulation(CFDMeshApp* app_) : Super(app_) {
 		
 		meshGenerators = {
-			std::make_shared<FileMeshFactory>(),
 			std::make_shared<QuadUnitMeshFactory>(),
 			std::make_shared<TriUnitMeshFactory>(),
 			std::make_shared<QuadUnitCbrtMeshFactory>(),
 			std::make_shared<QuadUnitCubedMeshFactory>(),
 			std::make_shared<TwistQuadUnitMeshFactory>(),
 			std::make_shared<DonutQuadUnitMeshFactory>(),
+			std::make_shared<QuadUnitBasedOnImageMeshFactory>(),
+			std::make_shared<FileMeshFactory>(),
 		};
 
 		meshGenerationNames = map<
@@ -644,7 +713,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		std::vector<uchar4> gradientTexData(gradientTexWidth );
 		for (int i = 0; i < gradientTexWidth ; ++i) {
 			float f = (float)(i+.5)/(float)gradientTexWidth * (1 - 1e-7);
-			f *= (float)gradientColors.size();
+			f *= (float)(gradientColors.size()-1);
 			int ip = (int)floor(f);
 			float fn = f - (float)ip;
 			float fp = 1 - fn;
@@ -840,7 +909,7 @@ void Simulation<real, Equation>::updateGUI() {
 	
 	igSeparator();
 	
-	igPushIDStr("init cond");
+	igPushIDStr("mesh generation");
 	if (igCombo("", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
 		resetMesh();
 	}

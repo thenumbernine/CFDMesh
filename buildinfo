@@ -6,4 +6,5 @@ depends:append{
 	'../Parallel',
 	'../GLApp',
 	'../ImGuiCommon',
+	'../Image',
 }

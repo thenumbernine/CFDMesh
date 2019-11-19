@@ -6,3 +6,4 @@ include ../Tensor/Include.mk
 include ../Parallel/Include.mk
 include ../GLApp/Include.mk
 include ../ImGuiCommon/Include.mk
+include ../Image/Include.mk
