@@ -5,6 +5,7 @@
 #include "Tensor/Vector.h"
 #include "cimgui.h"
 #include <utility>
+#include <tuple>
 #include <cmath>
 #include <cassert>
 
@@ -18,38 +19,46 @@ using real3 = Tensor::Vector<real, 3>;
 
 enum { numCons = 12 };
 
-struct Cons : public Tensor::GenericVector<real, numCons, real, Cons> {
-	using Parent = Tensor::GenericVector<real, numCons, real, Cons>;
-	
-	real3& D() { return *(real3*)(Parent::v); }
-	real3& B() { return *(real3*)(Parent::v + 3); }
-	real& phi() { return Parent::v[6]; }
-	real& psi() { return Parent::v[7]; }
-	real& rhoCharge() { return Parent::v[8]; }
-	real& sigma() { return Parent::v[9]; }
-	real& sqrt_1_eps() { return Parent::v[10]; }
-	real& sqrt_1_mu() { return Parent::v[11]; }
+union Cons {
+	enum { size = numCons };
+	real ptr[size];
+	struct {
+		real3 D = {};
+		real3 B = {};
+		real phi = {};
+		real psi = {};
+		real rhoCharge = {};
+		real sigma = {};
+		real sqrt_1_eps = {};
+		real sqrt_1_mu = {};
+	};
 
-	const real3& D() const { return *(real3*)(Parent::v); }
-	const real3& B() const { return *(real3*)(Parent::v + 3); }
-	const real& phi() const { return Parent::v[6]; }
-	const real& psi() const { return Parent::v[7]; }
-	const real& rhoCharge() const { return Parent::v[8]; }
-	const real& sigma() const { return Parent::v[9]; }
-	const real& sqrt_1_eps() const { return Parent::v[10]; }
-	const real& sqrt_1_mu() const { return Parent::v[11]; }
-
-	using Parent::Parent;
+	Cons() {}
 
 	Cons(real3 D_, real3 B_, real rhoCharge_, real sigma_, real sqrt_1_eps_, real sqrt_1_mu_) {
-		D() = D_;
-		B() = B_;
-		rhoCharge() = rhoCharge_;
-		sigma() = sigma_;
-		sqrt_1_eps() = sqrt_1_eps_;
-		sqrt_1_mu() = sqrt_1_mu_;
+		D = D_;
+		B = B_;
+		rhoCharge = rhoCharge_;
+		sigma = sigma_;
+		sqrt_1_eps = sqrt_1_eps_;
+		sqrt_1_mu = sqrt_1_mu_;
 	}
+	
+	ADD_OPS(Cons)
+
+	static auto fields = std::make_tuple<
+		&Cons::D,
+		&Cons::B,
+		&Cons::phi,
+		&Cons::psi,
+		&Cons::rhoCharge,
+		&Cons::sigma,
+		&Cons::sqrt_1_eps,
+		&Cons::sqrt_1_mu
+	>();
 };
+
+using Prim = Cons;
 
 struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 	using Parent = Equation<real, Cons, GLMMaxwell>;
@@ -104,25 +113,23 @@ struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 			std::make_shared<InitCondDefault>(),
 		};
 
-		Parent::addDisplayVector("D", [](const GLMMaxwell* eqn, const Cons& U) -> real3 { return U.D(); });
-		Parent::addDisplayVector("B", [](const GLMMaxwell* eqn, const Cons& U) -> real3 { return U.B(); });
-		Parent::addDisplayScalar("phi", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.phi(); });
-		Parent::addDisplayScalar("psi", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.psi(); });
-		Parent::addDisplayScalar("rhoCharge", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.rhoCharge(); });
-		Parent::addDisplayScalar("sigma", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sigma(); });
-		Parent::addDisplayScalar("sqrt_1_eps", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sqrt_1_eps(); });
-		Parent::addDisplayScalar("sqrt_1_mu", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sqrt_1_mu(); });
+		Parent::addDisplayVector("D", [](const GLMMaxwell* eqn, const Cons& U) -> real3 { return U.D; });
+		Parent::addDisplayVector("B", [](const GLMMaxwell* eqn, const Cons& U) -> real3 { return U.B; });
+		Parent::addDisplayScalar("phi", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.phi; });
+		Parent::addDisplayScalar("psi", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.psi; });
+		Parent::addDisplayScalar("rhoCharge", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.rhoCharge; });
+		Parent::addDisplayScalar("sigma", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sigma; });
+		Parent::addDisplayScalar("sqrt_1_eps", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sqrt_1_eps; });
+		Parent::addDisplayScalar("sqrt_1_mu", [](const GLMMaxwell* eqn, const Cons& U) -> real { return U.sqrt_1_mu; });
 	}
 
 	real3 calc_E(const Cons& U) const {
-		return U.D() * (U.sqrt_1_eps() * U.sqrt_1_eps());
+		return U.D * (U.sqrt_1_eps * U.sqrt_1_eps);
 	}
 
 	real3 calc_H(const Cons& U) const {
-		return U.B() * (U.sqrt_1_mu() * U.sqrt_1_mu());
+		return U.B * (U.sqrt_1_mu * U.sqrt_1_mu);
 	}
-
-	using Prim = Cons;
 
 	const Cons& consFromPrim(const Prim& W) { return W; }
 	const Prim& primFromCons(const Cons& U) { return U; }
@@ -135,8 +142,8 @@ struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 
 	Eigen calcRoeAvg(Cons UL, Cons UR) {
 		Eigen vars;
-		vars.sqrt_1_eps = .5 * (UL.sqrt_1_eps() + UR.sqrt_1_eps());
-		vars.sqrt_1_mu = .5 * (UL.sqrt_1_mu() + UR.sqrt_1_mu());
+		vars.sqrt_1_eps = .5 * (UL.sqrt_1_eps + UR.sqrt_1_eps);
+		vars.sqrt_1_mu = .5 * (UL.sqrt_1_mu + UR.sqrt_1_mu);
 		return vars;
 	}
 
@@ -162,8 +169,8 @@ struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 
 	struct CalcLambdaVars : public Eigen {
 		CalcLambdaVars(const GLMMaxwell& eqn, const Cons& U) {
-			Eigen::sqrt_1_eps = U.sqrt_1_eps();
-			Eigen::sqrt_1_mu = U.sqrt_1_mu();
+			Eigen::sqrt_1_eps = U.sqrt_1_eps;
+			Eigen::sqrt_1_mu = U.sqrt_1_mu;
 		}
 
 		CalcLambdaVars(const Eigen& vars) : Eigen(vars) {}
@@ -221,10 +228,10 @@ struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 		real3 E = calc_E(U);
 		real3 H = calc_H(U);
 		Cons F;
-		F.D() = real3(U.phi() * divPhiWavespeed,  H(2), -H(1));
-		F.B() = real3(U.psi() * divPsiWavespeed, -E(2),  E(1));
-		F.phi() = U.D()(0) * divPhiWavespeed;
-		F.psi() = U.B()(0) * divPsiWavespeed;
+		F.D = real3(U.phi * divPhiWavespeed,  H(2), -H(1));
+		F.B = real3(U.psi * divPsiWavespeed, -E(2),  E(1));
+		F.phi = U.D(0) * divPhiWavespeed;
+		F.psi = U.B(0) * divPsiWavespeed;
 		return F;
 	}
 	
@@ -234,20 +241,20 @@ struct GLMMaxwell : public Equation<real, Cons, GLMMaxwell> {
 	}
 
 	Cons rotateTo(Cons U, real3 normal) {
-		U.D() = CFDMesh::rotateTo<real3>(U.D(), normal);
-		U.B() = CFDMesh::rotateTo<real3>(U.B(), normal);
+		U.D = CFDMesh::rotateTo<real3>(U.D, normal);
+		U.B = CFDMesh::rotateTo<real3>(U.B, normal);
 		return U;
 	}
 	
 	Cons rotateFrom(Cons U, real3 normal) {
-		U.D() = CFDMesh::rotateFrom<real3>(U.D(), normal);
-		U.B() = CFDMesh::rotateFrom<real3>(U.B(), normal);
+		U.D = CFDMesh::rotateFrom<real3>(U.D, normal);
+		U.B = CFDMesh::rotateFrom<real3>(U.B, normal);
 		return U;
 	}
 
 	Cons reflect(Cons U, real3 normal, real restitution) const {
-		U.D() = U.D() - normal * ((1 + restitution) * real3::dot(normal, U.D()));
-		U.B() = U.B() - normal * ((1 + restitution) * real3::dot(normal, U.B()));
+		U.D = U.D - normal * ((1 + restitution) * real3::dot(normal, U.D));
+		U.B = U.B - normal * ((1 + restitution) * real3::dot(normal, U.B));
 		return U;
 	}
 

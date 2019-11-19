@@ -11,15 +11,13 @@
 
 namespace CFDMesh {
 namespace Equation {
-
-template<typename real>
-struct EulerNamespace {
-
-using real3 = Tensor::Vector<real, 3>;
+namespace Euler {
 
 enum { numCons = 5 };
 
-union Cons {
+template<typename real>
+union Cons_ {
+	using real3 = Tensor::Vector<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
 	struct {
@@ -28,24 +26,45 @@ union Cons {
 		real ETotal = {};
 	};
 
-	Cons() {}
+	Cons_() {
+		rho = 0;
+		m = real3();
+		ETotal = 0;
+	}
 
-	Cons(real rho_, real3 m_, real ETotal_) {
+	Cons_(const Cons_& src) {
+		*this = src;
+	}
+
+	Cons_(real rho_, real3 m_, real ETotal_) {
 		rho = rho_;
 		m = m_;
 		ETotal = ETotal_;
 	}
 
-	ADD_OPS(Cons)
+	ADD_OPS(Cons_)
 
-	static auto fields = std::make_tuple<
-		&Cons::rho,
-		&Cons::m,
-		&Cons::ETotal
-	>();
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("rho", &Cons_::rho),
+		std::make_pair("m", &Cons_::m),
+		std::make_pair("ETotal", &Cons_::ETotal)
+	);
 };
 
-struct Prim {
+template<typename T>
+std::ostream& operator<<(std::ostream& o, const Cons_<T>& U) {
+	o << "[";
+	const char* sep = "";
+	for (int i = 0; i < Cons_<T>::size; ++i) {
+		o << sep << U.ptr[i];
+		sep = ", ";
+	}
+	return o << "]";
+}
+
+template<typename real>
+union Prim_ {
+	using real3 = Tensor::Vector<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
 	struct {
@@ -54,88 +73,117 @@ struct Prim {
 		real P = {};
 	};
 
-	Prim() {}
+	Prim_() {
+		rho = 0;
+		v = real3();
+		P = 0;
+	}
 
-	Prim(real rho_, real3 v_, real P_) {
+	Prim_(const Prim_& src) {
+		*this = src;
+	}
+
+	Prim_(real rho_, real3 v_, real P_) {
 		rho = rho_;
 		v = v_;
 		P = P_;
 	}
 
-	ADD_OPS(Prim)
+	ADD_OPS(Prim_)
 
-	static auto fields = std::make_tuple<
-		&Prim::rho,
-		&Prim::v,
-		&Prim::P
-	>();
+	template<typename T>
+	operator Prim_<T>() const {
+		Prim_<T> res;
+		for (int i = 0; i < size; ++i) {
+			res.ptr[i] = (T)ptr[i];
+		}
+		return res;
+	}
+
+	void updateGUI(std::string suffix = {}) {
+		igInputFloat((std::string("rho") + suffix).c_str(), &rho, .1, 1, "%f", 0);
+		igInputFloat((std::string("vx") + suffix).c_str(), &v(0), .1, 1, "%f", 0);
+		igInputFloat((std::string("vy") + suffix).c_str(), &v(1), .1, 1, "%f", 0);
+		igInputFloat((std::string("vz") + suffix).c_str(), &v(2), .1, 1, "%f", 0);
+		igInputFloat((std::string("P") + suffix).c_str(), &P, .1, 1, "%f", 0);
+	}
+
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("rho", &Prim_::rho),
+		std::make_pair("v", &Prim_::v),
+		std::make_pair("P", &Prim_::P)
+	);
 };
 
-struct Euler : public Equation<real, Cons, Euler> {
-	using Parent = Equation<real, Cons, Euler>;
+template<typename T>
+std::ostream& operator<<(std::ostream& o, const Prim_<T>& U) {
+	o << "[";
+	const char* sep = "";
+	for (int i = 0; i < Prim_<T>::size; ++i) {
+		o << sep << U.ptr[i];
+		sep = ", ";
+	}
+	return o << "]";
+}
+
+template<typename real>
+struct Euler : public Equation<real, Cons_<real>, Euler<real>> {
+	using Parent = Equation<real, Cons_<real>, Euler<real>>;
+	using Cons = typename Parent::Cons;
+	using Prim = Prim_<real>;
 
 	enum { numWaves = numCons };
 	using WaveVec = Cons;
 
 	using InitCond = typename Parent::InitCond;
 	using DisplayMethod = typename Parent::DisplayMethod;
+	
+	using real3 = Tensor::Vector<real, 3>;
 
 	float heatCapacityRatio = 1.4;
 
-
 	struct InitCondConst : public InitCond {
+		Prim_<float> W = Prim_<float>(1, float3(), 1);
 		using InitCond::InitCond;
-		float rho = 1;
-		float P = 1;
-		float vx = 0;
-		float vy = 0;
-
 		virtual const char* name() const { return "constant"; }
-		virtual Cons initCell(const Euler* eqn, real3 x) const {
-			return eqn->consFromPrim(Prim(rho, real3(vx, vy), P));
+		virtual Cons initCell(const Euler* eqn, real3 x) const {	
+			
+			assert(std::isfinite(W.rho) && W.rho > 0);
+			assert(std::isfinite(W.v(0)));
+			assert(std::isfinite(W.v(1)));
+			assert(std::isfinite(W.v(2)));
+			assert(std::isfinite(W.P) && W.P > 0);
+			
+			Cons U = eqn->consFromPrim((Prim)W);
+			
+			assert(std::isfinite(U.rho) && U.rho > 0);
+			assert(std::isfinite(U.m(0)));
+			assert(std::isfinite(U.m(1)));
+			assert(std::isfinite(U.m(2)));
+			assert(std::isfinite(U.ETotal) && U.ETotal > 0);
+			
+			return U;
 		}
 		
 		virtual void updateGUI() {
-			igInputFloat("rho", &rho, .1, 1, "%f", 0);
-			igInputFloat("vx", &vx, .1, 1, "%f", 0);
-			igInputFloat("vy", &vy, .1, 1, "%f", 0);
-			igInputFloat("P", &P, .1, 1, "%f", 0);
+			W.updateGUI();
 		}
 	};
 
 	struct InitCondSod : public InitCond {
 		using InitCond::InitCond;
-		float rhoL = 1;
-		float vxL = 0;
-		float vyL = 0;
-		float vzL = 0;
-		float PL = 1;
-		float rhoR = .125;
-		float vxR = 0;
-		float vyR = 0;
-		float vzR = 0;
-		float PR = .1;
+		Prim_<float> WL = Prim_<float>(1, float3(), 1);
+		Prim_<float> WR = Prim_<float>(.125, float3(), .1);
+		
 		virtual const char* name() const { return "Sod"; }
 		virtual Cons initCell(const Euler* eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0;
-			return eqn->consFromPrim(Prim(
-				lhs ? rhoL : rhoR,
-				lhs ? real3(vxL, vyL, vzL) : real3(vxR, vyR, vzR),
-				lhs ? PL : PR
-			));
+			return eqn->consFromPrim(lhs ? WL : WR);
 		}
 
 		virtual void updateGUI() {
-			igInputFloat("rhoL", &rhoL, .1, 1, "%f", 0);
-			igInputFloat("vxL", &vxL, .1, 1, "%f", 0);
-			igInputFloat("vyL", &vyL, .1, 1, "%f", 0);
-			igInputFloat("vzL", &vzL, .1, 1, "%f", 0);
-			igInputFloat("PL", &PL, .1, 1, "%f", 0);
-			igInputFloat("rhoR", &rhoR, .1, 1, "%f", 0);
-			igInputFloat("vxR", &vxR, .1, 1, "%f", 0);
-			igInputFloat("vyR", &vyR, .1, 1, "%f", 0);
-			igInputFloat("vzR", &vzR, .1, 1, "%f", 0);
-			igInputFloat("PR", &PR, .1, 1, "%f", 0);
+			WL.updateGUI("L");
+			WR.updateGUI("R");
 		}
 	};
 
@@ -143,11 +191,7 @@ struct Euler : public Equation<real, Cons, Euler> {
 		using InitCond::InitCond;
 		virtual const char* name() const { return "Spiral"; }
 		virtual Cons initCell(const Euler* eqn, real3 x) const {
-			return eqn->consFromPrim(Prim(
-				1,
-				real3(-x(1), x(0)),
-				1
-			));
+			return eqn->consFromPrim(Prim(1, real3(-x(1), x(0)), 1));
 		}
 	};
 
@@ -160,11 +204,32 @@ struct Euler : public Equation<real, Cons, Euler> {
 			std::make_shared<InitCondSpiral>(),
 		};
 
-		Parent::addDisplayScalar("rho", [](const Euler* eqn, const Cons& U) -> float { return U.rho; });
-		Parent::addDisplayVector("m", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)U.m; });
-		Parent::addDisplayScalar("ETotal", [](const Euler* eqn, const Cons& U) -> float { return U.ETotal; });
-		Parent::addDisplayVector("v", [](const Euler* eqn, const Cons& U) -> float3 { return (float3)(U.m / U.rho); });
-		Parent::addDisplayScalar("P", [](const Euler* eqn, const Cons& U) -> float { return eqn->primFromCons(U).P; });
+		
+		//cycle through the Cons::fields tuple and add each of these
+		tuple_for_each(Cons::fields, [this](auto x, size_t i) constexpr {
+			auto field = x.second;
+			using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+			Parent::template addDisplayForType<FieldType>(
+				x.first, 
+				[field](const Euler* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
+					return U.*field; 
+				}
+			);
+		});
+
+		if constexpr (!std::is_same_v<Cons, Prim>) {
+			tuple_for_each(Prim::fields, [this](auto x, size_t i) constexpr {
+				auto field = x.second;
+				using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+				Parent::template addDisplayForType<FieldType>(
+					x.first, 
+					[field](const Euler* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
+						Prim W = eqn->primFromCons(U);
+						return W.*field; 
+					}
+				);
+			});	
+		}
 	}
 
 	Cons consFromPrim(const Prim& W) const {
@@ -213,38 +278,25 @@ struct Euler : public Equation<real, Cons, Euler> {
 		real ETotalL = UL.ETotal;
 		WL = primFromCons(UL);
 		real rhoL = WL.rho;
-assert(rhoL > 0);			
 		real3 vL = WL.v;
 		real PL = WL.P;
-assert(PL > 0);			
 		real hTotalL = calc_hTotal(rhoL, PL, ETotalL);
-assert(hTotalL > 0);			
 		real sqrtRhoL = sqrt(rhoL);
-assert(std::isfinite(sqrtRhoL));
 		
 		real ETotalR = UR.ETotal;
 		WR = primFromCons(UR);
 		real rhoR = WR.rho;
-assert(rhoR > 0);			
 		real3 vR = WR.v;
 		real PR = WR.P;
-assert(PR > 0);			
 		real hTotalR = calc_hTotal(rhoR, PR, ETotalR);
-assert(hTotalR > 0);			
 		real sqrtRhoR = sqrt(rhoR);
-assert(std::isfinite(sqrtRhoR));
 		
 		real invDenom = 1. / (sqrtRhoL + sqrtRhoR);
 
 		vars.v = (vL * sqrtRhoL + vR * sqrtRhoR) * invDenom;
-assert(std::isfinite(vars.v(0)));
-assert(std::isfinite(vars.v(1)));
-assert(std::isfinite(vars.v(2)));
 		vars.vSq = real3::lenSq(vars.v);
 		vars.hTotal = (sqrtRhoL * hTotalL + sqrtRhoR * hTotalR) * invDenom;
-assert(std::isfinite(vars.hTotal));
 		vars.Cs = calc_Cs_from_vSq_hTotal(vars.vSq, vars.hTotal);
-assert(std::isfinite(vars.Cs));
 		vars.CsSq = vars.Cs * vars.Cs;
 		return vars;
 	}
@@ -372,7 +424,6 @@ assert(std::isfinite(vars.Cs));
 	}
 };
 
-};
-
+}
 }
 }

@@ -350,6 +350,12 @@ struct Simulation : public ISimulation {
 			m->cells.end(),
 			[this, ic](auto& c) {
 				c.U = ic->initCell(&eqn, c.pos);
+				
+				assert(std::isfinite(c.U.rho) && c.U.rho > 0);
+				assert(std::isfinite(c.U.m(0)));
+				assert(std::isfinite(c.U.m(1)));
+				assert(std::isfinite(c.U.m(2)));
+				assert(std::isfinite(c.U.ETotal) && c.U.ETotal > 0);
 			}
 		);
 		
@@ -506,19 +512,21 @@ struct Simulation : public ISimulation {
 				Cons UL = eqn.rotateTo(ULR.first, e.normal);
 				Cons UR = eqn.rotateTo(ULR.second, e.normal);
 
+#ifdef DEBUG
 for (int i = 0; i < Cons::size; ++i) {
 	assert(std::isfinite(UL(i)));	
 	assert(std::isfinite(UR(i)));	
 }	
-			
+#endif
 				Cons F = (this->*calcFluxes[calcFluxIndex])(UL, UR, e.cellDist, dt);
 		
 				// rotate back to normal
 				e.flux = eqn.rotateFrom(F, e.normal);
-
+#ifdef DEBUG
 for (int i = 0; i < Cons::size; ++i) {
 	assert(std::isfinite(e.flux(i)));
-}		
+}
+#endif
 			}
 		);
 
@@ -590,8 +598,8 @@ for (int i = 0; i < Cons::size; ++i) {
 };
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
-	{"Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::EulerNamespace<real>::Euler>>(app); }},
-	{"GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::GLMMaxwellNamespace<real>::GLMMaxwell>>(app); }},
+	{"Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::Euler::Euler<real>>>(app); }},
+//	{"GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::GLMMaxwellNamespace<real>::GLMMaxwell>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<
@@ -611,9 +619,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 	GLuint gradientTex = {};
 
-	virtual const char* getTitle() {
-		return "CFD Mesh";
-	}
+	virtual const char* getTitle() { return "CFD Mesh"; }
 
 	CFDMeshApp(const Init& args) : Parent(args) {
 		view = viewOrtho;
@@ -814,9 +820,14 @@ void Simulation<real, Equation>::updateGUI() {
 	
 	igSeparator();
 	
-	igCombo("init cond", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
+	igPushIDStr("init cond");
+	igCombo("", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
+	igPopID();
 	igPushIDStr("init cond fields");
-	eqn.initConds[initCondIndex]->updateGUI();
+	igSameLine(0, 0);
+	if (igCollapsingHeader("", 0)) {
+		eqn.initConds[initCondIndex]->updateGUI();
+	}
 	igPopID();
 	
 	if (igSmallButton("reset state")) {
@@ -825,11 +836,16 @@ void Simulation<real, Equation>::updateGUI() {
 	
 	igSeparator();
 	
-	if (igCombo("mesh", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
+	igPushIDStr("init cond");
+	if (igCombo("", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
 		resetMesh();
 	}
+	igPopID();
+	igSameLine(0, 0);
 	igPushIDStr("mesh generation fields");
-	meshGenerators[meshGenerationIndex]->updateGUI();
+	if (igCollapsingHeader("", 0)) {
+		meshGenerators[meshGenerationIndex]->updateGUI();
+	}
 	igPopID();
 	if (igSmallButton("reset mesh")) {
 		resetMesh();

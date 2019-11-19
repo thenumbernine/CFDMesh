@@ -2,13 +2,21 @@
 
 #include "Tensor/Vector.h"
 
+using uchar2 = Tensor::Vector<unsigned char, 2>;
+using uchar3 = Tensor::Vector<unsigned char, 3>;
 using uchar4 = Tensor::Vector<unsigned char, 4>;
 
 using int2 = Tensor::Vector<int, 2>;
+using int3 = Tensor::Vector<int, 3>;
+using int4 = Tensor::Vector<int, 4>;
 
 using float2 = Tensor::Vector<float, 2>;
 using float3 = Tensor::Vector<float, 3>;
 using float4 = Tensor::Vector<float, 4>;
+
+using double2 = Tensor::Vector<double, 2>;
+using double3 = Tensor::Vector<double, 3>;
+using double4 = Tensor::Vector<double, 4>;
 
 
 //for giving operators to the Cons and Prim vector classes
@@ -44,13 +52,6 @@ using float4 = Tensor::Vector<float, 4>;
 	real& operator()(int i) { return ptr[i]; }\
 	const real& operator()(int i) const { return ptr[i]; }\
 \
-	classname& operator=(const classname& o) {\
-		for (int i = 0; i < size; ++i) {\
-			ptr[i] = o.ptr[i];\
-		}\
-		return *this;\
-	}\
-\
 	ADD_VECTOR_OP(classname, +)\
 	ADD_VECTOR_OP(classname, -)\
 	ADD_VECTOR_OP(classname, *)\
@@ -58,3 +59,11 @@ using float4 = Tensor::Vector<float, 4>;
 	ADD_VECTOR_OP_EQ(classname, +=)\
 	ADD_VECTOR_OP_EQ(classname, -=)
 
+#if 0	//hmm, why isn't this working
+	classname& operator=(const classname& o) {\
+		for (int i = 0; i < size; ++i) {\
+			ptr[i] = o.ptr[i];\
+		}\
+		return *this;\
+	}
+#endif

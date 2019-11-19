@@ -10,6 +10,20 @@
 namespace CFDMesh {
 namespace Equation {
 
+
+template<typename T, typename Enable = void>
+struct FloatTypeForType;
+
+template<typename T>
+struct FloatTypeForType<T, typename std::enable_if_t<std::is_floating_point_v<T>>> { 
+	using Type = float;
+};
+
+template<typename T>
+struct FloatTypeForType<Tensor::Vector<T, 3>, typename std::enable_if_t<std::is_floating_point_v<T>>> {
+	using Type = float3;
+};
+
 template<
 	typename real, 
 	typename Cons_,
@@ -59,6 +73,15 @@ struct Equation {
 		}
 	}
 
+	template<typename Type>
+	void addDisplayForType(const std::string& name, std::function<typename FloatTypeForType<Type>::Type(const Base*, const Cons&)> func) {
+		if constexpr (std::is_same_v<Type, real>) {
+			addDisplayScalar(name, func);
+		} else if constexpr (std::is_same_v<Type, real3>) {
+			addDisplayVector(name, func);
+		}
+	}
+
 	void updateNames() {
 		initCondNames = map<
 			decltype(initConds),
@@ -76,8 +99,6 @@ struct Equation {
 			[](const std::shared_ptr<DisplayMethod>& m) -> const char* { return m->name.c_str(); }
 		);
 	}
-
-	
 };
 
 }
