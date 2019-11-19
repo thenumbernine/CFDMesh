@@ -255,15 +255,34 @@ static real polyVol(const std::vector<real3>& vs) {
 	return .5 * v;
 }
 
-static bool contains(const real3 pos, std::vector<real3> vtxs) {
-	size_t n = vtxs.size();
-	for (size_t i = 0; i < n; ++i) {
-		real3 pi = vtxs[i] - pos;
-		real3 pj = vtxs[(i+1)%n] - pos;
+template<typename I, typename F>
+static bool contains(
+	real3 pos,
+	I begin,
+	I end,
+	F f
+) {
+	I i = begin;
+	using V = decltype(f(*i));
+	V first = f(*i);
+	V prev = first;
+
+	auto check = [pos](V prev, V cur) -> bool {
+		real3 pi = prev - pos;
+		real3 pj = cur - pos;
 		real vz = pi(0) * pj(1) - pi(1) * pj(0);
-		if (vz < 0) return false;
+		return vz < 0;
+	};
+	if (i != end) {
+		for (++i; i != end; ++i) {
+			V cur = f(*i);
+			if (!check(prev, cur)) return false;
+			prev = cur;
+		}
 	}
+	check(prev, first);
 	return true;
+
 }
 
 };

@@ -42,11 +42,13 @@ void updateGUIForFields(T* ptr, std::string prefix = {}) {
 			updateGUIForFields<FieldType>(&(ptr->*field), prefix + name);
 		});
 	
-	//only overload float types
-	//double types can't be handled by imgui
-	//maybe I'll make a wrapping var to handle them?
-	} else if constexpr (std::is_same_v<T, float>) {
-		igInputFloat(prefix.c_str(), ptr, .1, 1, "%f", 0);
+	} else if constexpr (std::is_floating_point_v<T>) {
+		float f = *ptr;
+		if (igInputFloat(prefix.c_str(), &f, .1, 1, "%f", 0)) {
+			*ptr = f;
+		}
+	
+	//TODO handle all floatN, doubleN, etc types
 	} else if constexpr (std::is_same_v<T, float3>) {
 		updateGUIForFields<float>(ptr->v+0, prefix + ".x");
 		updateGUIForFields<float>(ptr->v+1, prefix + ".y");

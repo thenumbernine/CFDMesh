@@ -66,15 +66,15 @@ using Prim_ = Cons_<T>;
 
 template<typename real>
 struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>> {
-	using Parent = Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>>;
-	using Cons = typename Parent::Cons;
-	using Prim = typename Parent::Prim;
+	using Super = Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>>;
+	using Cons = typename Super::Cons;
+	using Prim = typename Super::Prim;
 
 	enum { numWaves = 8 };
 	using WaveVec = Tensor::Vector<real, 8>;
 	
-	using InitCond = typename Parent::InitCond;
-	using DisplayMethod = typename Parent::DisplayMethod;
+	using InitCond = typename Super::InitCond;
+	using DisplayMethod = typename Super::DisplayMethod;
 	
 	using real3 = Tensor::Vector<real, 3>;
 
@@ -93,10 +93,10 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 		}
 	};
 	
-	using Parent::Parent;
+	using Super::Super;
 
 	void buildInitCondsAndDisplayVars() {
-		Parent::initConds = {
+		Super::initConds = {
 			std::make_shared<InitCondDefault>(),
 		};
 	}

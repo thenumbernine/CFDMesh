@@ -63,7 +63,7 @@ struct ISimulation {
 
 template<typename real, typename ThisEquation>
 struct Simulation : public ISimulation {
-	using Parent = ISimulation;
+	using Super = ISimulation;
 
 	using WaveVec = typename ThisEquation::WaveVec;
 	using Cons = typename ThisEquation::Cons;
@@ -143,30 +143,30 @@ struct Simulation : public ISimulation {
 	};
 
 	struct TriUnitMeshFactory : public ChartMeshFactory {
-		using Parent = ChartMeshFactory;
-		TriUnitMeshFactory() : Parent("unit square of triangles") {}
+		using Super = ChartMeshFactory;
+		TriUnitMeshFactory() : Super("unit square of triangles") {}
 		
 		virtual std::shared_ptr<Mesh> createMesh() const {
 			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 			
-			int m = Parent::size(0);
-			int n = Parent::size(1);
+			int m = Super::size(0);
+			int n = Super::size(1);
 		
 			mesh->vtxs.resize(m * n);
 			for (int j = 0; j < n; ++j) {
 				for (int i = 0; i < m; ++i) {
 					real2 x = real2(
-						((real)i + .5) / (real)Parent::size(0) * (Parent::maxs(0) - Parent::mins(0)) + Parent::mins(0),
-						((real)j + .5) / (real)Parent::size(1) * (Parent::maxs(1) - Parent::mins(1)) + Parent::mins(1));
+						((real)i + .5) / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
+						((real)j + .5) / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
 					
-					real2 u = Parent::grid(x);
+					real2 u = Super::grid(x);
 					std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
 					mesh->vtxs[i + m * j].pos = real3(f);
 				}
 			}
 			
-			int imax = Parent::repeat(0) ? m : m-1;
-			int jmax = Parent::repeat(1) ? n : n-1;
+			int imax = Super::repeat(0) ? m : m-1;
+			int jmax = Super::repeat(1) ? n : n-1;
 			for (int j = 0; j < jmax; ++j) {
 				int jn = (j + 1) % n;
 				for (int i = 0; i < imax; ++i) {
@@ -182,32 +182,32 @@ struct Simulation : public ISimulation {
 	};
 
 	struct QuadUnitMeshFactory : public ChartMeshFactory {
-		using Parent = ChartMeshFactory;
-		QuadUnitMeshFactory(const char* name_ = "unit square of quads") : Parent(name_) {}
+		using Super = ChartMeshFactory;
+		QuadUnitMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
 		
 		virtual std::shared_ptr<Mesh> createMesh() const {
 			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 
-			int m = Parent::size(0);
-			int n = Parent::size(1);
+			int m = Super::size(0);
+			int n = Super::size(1);
 
 			int vtxsize = m * n;
-			if (Parent::capmin(0)) vtxsize++;
+			if (Super::capmin(0)) vtxsize++;
 			mesh->vtxs.resize(vtxsize);
 			for (int j = 0; j < n; ++j) {
 				for (int i = 0; i < m; ++i) {
 					real2 x = real2(
-						((real)i + .5) / (real)Parent::size(0) * (Parent::maxs(0) - Parent::mins(0)) + Parent::mins(0),
-						((real)j + .5) / (real)Parent::size(1) * (Parent::maxs(1) - Parent::mins(1)) + Parent::mins(1));
+						((real)i + .5) / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
+						((real)j + .5) / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
 					
-					real2 u = Parent::grid(x);
+					real2 u = Super::grid(x);
 					std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
 					mesh->vtxs[i + m * j].pos = real3(f);
 				}
 			}
 			
 			int capindex = m * n;
-			if (Parent::capmin(0)) {
+			if (Super::capmin(0)) {
 				real3 sum;
 				for (int j = 0; j < n; ++j) {
 					sum += mesh->vtxs[0 + m * j].pos;
@@ -215,8 +215,8 @@ struct Simulation : public ISimulation {
 				mesh->vtxs[capindex].pos = sum / (real)n;
 			}
 
-			int imax = Parent::repeat(0) ? m : m-1;
-			int jmax = Parent::repeat(1) ? n : n-1;
+			int imax = Super::repeat(0) ? m : m-1;
+			int jmax = Super::repeat(1) ? n : n-1;
 			for (int j = 0; j < jmax; ++j) {
 				int jn = (j + 1) % n;
 				for (int i = 0; i < imax; ++i) {
@@ -225,7 +225,7 @@ struct Simulation : public ISimulation {
 				}
 			}
 
-			if (Parent::capmin(0)) {
+			if (Super::capmin(0)) {
 				for (int j = 0; j < jmax; ++j) {
 					int jn = (j + 1) % n;
 					mesh->addCell(std::vector<int>{ 0 + m * j, 0 + m * jn, capindex });
@@ -267,13 +267,13 @@ struct Simulation : public ISimulation {
 	};
 
 	struct DonutQuadUnitMeshFactory : public QuadUnitMeshFactory {
-		using Parent = QuadUnitMeshFactory;
-		DonutQuadUnitMeshFactory() : Parent("polar") {
-			Parent::size = int2(51, 201);
-			Parent::mins = real2(.5, 0);
-			Parent::maxs = real2(1, 2*M_PI);
-			Parent::repeat = int2(0, 1);
-			//Parent::capmin = int2(1, 0);
+		using Super = QuadUnitMeshFactory;
+		DonutQuadUnitMeshFactory() : Super("polar") {
+			Super::size = int2(51, 201);
+			Super::mins = real2(.5, 0);
+			Super::maxs = real2(1, 2*M_PI);
+			Super::repeat = int2(0, 1);
+			//Super::capmin = int2(1, 0);
 		}
 		virtual real2 grid(real2 v) const {
 			return real2(cos(v(1)), sin(v(1))) * v(0);
@@ -310,7 +310,7 @@ struct Simulation : public ISimulation {
 
 	int meshGenerationIndex = 1;
 
-	Simulation(CFDMeshApp* app_) : Parent(app_) {
+	Simulation(CFDMeshApp* app_) : Super(app_) {
 		
 		meshGenerators = {
 			std::make_shared<FileMeshFactory>(),
@@ -613,21 +613,23 @@ std::vector<const char*> simGenNames = map<
 );
 
 struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
-	using Parent = ::GLApp::ViewBehavior<::GLApp::GLApp>;
+	using Super = ::GLApp::ViewBehavior<::GLApp::GLApp>;
 
 	std::shared_ptr<ISimulation> sim;
 
-	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
+	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui;
 
 	GLuint gradientTex = {};
 
 	virtual const char* getTitle() { return "CFD Mesh"; }
 
-	CFDMeshApp(const Init& args) : Parent(args) {
+	virtual void init(const Init& args) {
+		Super::init(args);
+
+		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
+		
 		view = viewOrtho;
 		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
-
-		glClearColor(.5, .75, .75, 1);
 
 		std::vector<float4> gradientColors = {
 			{1,0,0,1},
@@ -674,7 +676,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	}
 
 	virtual void onUpdate() {
-		Parent::onUpdate();
+		Super::onUpdate();
 		
 		sim->draw();
 		
@@ -697,7 +699,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		bool canHandleKeyboard = !igGetIO()->WantCaptureKeyboard;
 		
 		if (canHandleMouse) {
-			Parent::onSDLEvent(event);
+			Super::onSDLEvent(event);
 		}
 		switch (event.type) {
 		case SDL_KEYUP:
@@ -876,18 +878,10 @@ void Simulation<real, Equation>::updateGUI() {
 			Cell* c = &m->cells[i];
 			if (ThisMeshNamespace::contains(
 				pos, 
-				map<
-					std::vector<int>, 
-					std::vector<real3>
-				>(
-					//c->vtxs,
-					//TODO change function to use an iterator
-					std::vector<int>(m->cellVtxIndexes.begin() + c->vtxOffset, m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount), 
-					
-					[this](int vi) -> real3 { 
-						return m->vtxs[vi].pos; 
-					}
-				))) {
+				m->cellVtxIndexes.begin() + c->vtxOffset,
+				m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount,
+				[this](int i) -> real3 { return m->vtxs[i].pos; }
+			)) {
 				selectedCellIndex = i;
 				break;
 			}

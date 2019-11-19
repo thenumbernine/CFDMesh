@@ -81,15 +81,15 @@ ADD_OSTREAM(Prim_<T>)
 
 template<typename real>
 struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
-	using Parent = Equation<Euler<real>, real, Cons_<real>, Prim_<real>>;
-	using Cons = typename Parent::Cons;
-	using Prim = typename Parent::Prim;
+	using Super = Equation<Euler<real>, real, Cons_<real>, Prim_<real>>;
+	using Cons = typename Super::Cons;
+	using Prim = typename Super::Prim;
 
 	enum { numWaves = numCons };
 	using WaveVec = Cons;
 
-	using InitCond = typename Parent::InitCond;
-	using DisplayMethod = typename Parent::DisplayMethod;
+	using InitCond = typename Super::InitCond;
+	using DisplayMethod = typename Super::DisplayMethod;
 	
 	using real3 = Tensor::Vector<real, 3>;
 
@@ -148,10 +148,10 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		}
 	};
 
-	using Parent::Parent;
+	using Super::Super;
 
 	void buildInitCondsAndDisplayVars() {
-		Parent::initConds = {
+		Super::initConds = {
 			std::make_shared<InitCondConst>(),
 			std::make_shared<InitCondSod>(),
 			std::make_shared<InitCondSpiral>(),
