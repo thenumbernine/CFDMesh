@@ -19,74 +19,16 @@ using real3 = Tensor::Vector<real, 3>;
 
 enum { numCons = 5 };
 
-
-//how can you add correctly-typed ops via crtp to a union?
-//until then...
-#define ADD_OPS(classname)	\
-	real& operator()(int i) { return ptr[i]; }\
-	const real& operator()(int i) const { return ptr[i]; }\
-\
-	classname operator+(const classname& b) const {\
-		classname c;\
-		for (int i = 0; i < size; ++i) {\
-			c.ptr[i] = ptr[i] + b.ptr[i];\
-		}\
-		return c;\
-	}\
-\
-	classname& operator+=(const classname& b) {\
-		for (int i = 0; i < size; ++i) {\
-			ptr[i] += b.ptr[i];\
-		}\
-		return *this;\
-	}\
-\
-	classname operator-(const classname& b) const {\
-		classname c;\
-		for (int i = 0; i < size; ++i) {\
-			c.ptr[i] = ptr[i] - b.ptr[i];\
-		}\
-		return c;\
-	}\
-\
-	classname& operator-=(const classname& b) {\
-		for (int i = 0; i < size; ++i) {\
-			ptr[i] -= b.ptr[i];\
-		}\
-		return *this;\
-	}\
-\
-	classname operator*(real b) const {\
-		classname c;\
-		for (int i = 0; i < size; ++i) {\
-			c.ptr[i] = ptr[i] * b;\
-		}\
-		return c;\
-	}\
-\
-	classname operator*(const classname& b) const {\
-		classname c;\
-		for (int i = 0; i < size; ++i) {\
-			c.ptr[i] = ptr[i] * b.ptr[i];\
-		}\
-		return c;\
-	}\
-\
-
 union Cons {
 	enum { size = numCons };
 	real ptr[size];
 	struct {
-		real rho;
-		real3 m;
-		real ETotal;
+		real rho = {};
+		real3 m = {};
+		real ETotal = {};
 	};
 
-	Cons() {
-		rho = 0;
-		m = real3();
-		ETotal = 0;
-	}
+	Cons() {}
 
 	Cons(real rho_, real3 m_, real ETotal_) {
 		rho = rho_;
@@ -107,16 +49,12 @@ struct Prim {
 	enum { size = numCons };
 	real ptr[size];
 	struct {
-		real rho;
-		real3 v;
-		real P;
+		real rho = {};
+		real3 v = {};
+		real P = {};
 	};
 
-	Prim() {
-		rho = 0;
-		v = real3();
-		P = 0;
-	}
+	Prim() {}
 
 	Prim(real rho_, real3 v_, real P_) {
 		rho = rho_;
@@ -132,8 +70,6 @@ struct Prim {
 		&Prim::P
 	>();
 };
-
-#undef ADD_OPS
 
 struct Euler : public Equation<real, Cons, Euler> {
 	using Parent = Equation<real, Cons, Euler>;
