@@ -54,22 +54,6 @@ union Cons_ {
 		std::make_pair("sqrt_1_eps", &Cons_::sqrt_1_eps),
 		std::make_pair("sqrt_1_mu", &Cons_::sqrt_1_mu)
 	);
-
-	//TODO autogen from fields
-	void updateGUI(std::string suffix = {}) {
-		igInputFloat(("Dx" + suffix).c_str(), &D(0), .1, 1, "%f", 0);
-		igInputFloat(("Dy" + suffix).c_str(), &D(1), .1, 1, "%f", 0);
-		igInputFloat(("Dz" + suffix).c_str(), &D(2), .1, 1, "%f", 0);
-		igInputFloat(("Bx" + suffix).c_str(), &B(0), .1, 1, "%f", 0);
-		igInputFloat(("By" + suffix).c_str(), &B(1), .1, 1, "%f", 0);
-		igInputFloat(("Bz" + suffix).c_str(), &B(2), .1, 1, "%f", 0);
-		igInputFloat(("phi" + suffix).c_str(), &phi, .1, 1, "%f", 0);
-		igInputFloat(("psi" + suffix).c_str(), &psi, .1, 1, "%f", 0);
-		igInputFloat(("rhoCharge" + suffix).c_str(), &rhoCharge, .1, 1, "%f", 0);
-		igInputFloat(("sigma" + suffix).c_str(), &sigma, .1, 1, "%f", 0);
-		igInputFloat(("sqrt_1_eps" + suffix).c_str(), &sqrt_1_eps, .1, 1, "%f", 0);
-		igInputFloat(("sqrt_1_mu" + suffix).c_str(), &sqrt_1_mu, .1, 1, "%f", 0);
-	}
 };
 
 template<typename T>
@@ -104,8 +88,8 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 			return lhs ? UL : UR;
 		}
 		virtual void updateGUI() {
-			UL.updateGUI("L");
-			UR.updateGUI("R");
+			updateGUIForFields(&UL, "UL");
+			updateGUIForFields(&UR, "UR");
 		}
 	};
 	
@@ -233,25 +217,6 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 		igInputFloat("divPhiWavespeed", &divPhiWavespeed, .1, 1, "%f", 0);
 		igInputFloat("divPsiWavespeed", &divPsiWavespeed, .1, 1, "%f", 0);
 	}
-
-	Cons rotateTo(Cons U, real3 normal) {
-		U.D = CFDMesh::rotateTo<real3>(U.D, normal);
-		U.B = CFDMesh::rotateTo<real3>(U.B, normal);
-		return U;
-	}
-	
-	Cons rotateFrom(Cons U, real3 normal) {
-		U.D = CFDMesh::rotateFrom<real3>(U.D, normal);
-		U.B = CFDMesh::rotateFrom<real3>(U.B, normal);
-		return U;
-	}
-
-	Cons reflect(Cons U, real3 normal, real restitution) const {
-		U.D = U.D - normal * ((1 + restitution) * real3::dot(normal, U.D));
-		U.B = U.B - normal * ((1 + restitution) * real3::dot(normal, U.B));
-		return U;
-	}
-
 };
 
 }

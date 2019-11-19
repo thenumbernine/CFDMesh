@@ -68,15 +68,6 @@ union Prim_ {
 
 	ADD_OPS(Prim_)
 
-	//TODO autogen from fields
-	void updateGUI(std::string suffix = {}) {
-		igInputFloat(("rho" + suffix).c_str(), &rho, .1, 1, "%f", 0);
-		igInputFloat(("vx" + suffix).c_str(), &v(0), .1, 1, "%f", 0);
-		igInputFloat(("vy" + suffix).c_str(), &v(1), .1, 1, "%f", 0);
-		igInputFloat(("vz" + suffix).c_str(), &v(2), .1, 1, "%f", 0);
-		igInputFloat(("P" + suffix).c_str(), &P, .1, 1, "%f", 0);
-	}
-
 	static constexpr auto fields = std::make_tuple(
 		std::make_pair("rho", &Prim_::rho),
 		std::make_pair("v", &Prim_::v),
@@ -128,7 +119,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		}
 		
 		virtual void updateGUI() {
-			W.updateGUI();
+			updateGUIForFields(&W, "W");
 		}
 	};
 
@@ -144,8 +135,8 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		}
 
 		virtual void updateGUI() {
-			WL.updateGUI("L");
-			WR.updateGUI("R");
+			updateGUIForFields(&WL, "WL");
+			updateGUIForFields(&WR, "WR");
 		}
 	};
 
@@ -337,25 +328,6 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 
 	void updateGUI() {
 		igInputFloat("gamma", &heatCapacityRatio, .1, 1, "%f", 0);
-	}
-
-	//TODO enumerate vectors in Cons struct
-	//automatically rotate and reflect them here
-	//also automatically add them as vectors to display vars
-
-	Cons rotateTo(Cons U, real3 normal) {
-		U.m = CFDMesh::rotateTo<real3>(U.m, normal);
-		return U;
-	}
-	
-	Cons rotateFrom(Cons U, real3 normal) {
-		U.m = CFDMesh::rotateFrom<real3>(U.m, normal);
-		return U;
-	}
-
-	Cons reflect(Cons U, real3 normal, real restitution) const {
-		U.m = U.m - normal * ((1 + restitution) * real3::dot(normal, U.m));
-		return U;
 	}
 };
 
