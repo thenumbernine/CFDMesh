@@ -17,6 +17,7 @@ enum { numCons = 5 };
 
 template<typename real>
 union Cons_ {
+	using This = Cons_;
 	using real3 = Tensor::Vector<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
@@ -37,9 +38,9 @@ union Cons_ {
 	ADD_OPS(Cons_)
 
 	static constexpr auto fields = std::make_tuple(
-		std::make_pair("rho", &Cons_::rho),
-		std::make_pair("m", &Cons_::m),
-		std::make_pair("ETotal", &Cons_::ETotal)
+		std::make_pair("rho", &This::rho),
+		std::make_pair("m", &This::m),
+		std::make_pair("ETotal", &This::ETotal)
 	);
 };
 
@@ -49,6 +50,7 @@ ADD_OSTREAM(Cons_<T>)
 
 template<typename real>
 union Prim_ {
+	using This = Prim_;
 	using real3 = Tensor::Vector<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
@@ -69,9 +71,9 @@ union Prim_ {
 	ADD_OPS(Prim_)
 
 	static constexpr auto fields = std::make_tuple(
-		std::make_pair("rho", &Prim_::rho),
-		std::make_pair("v", &Prim_::v),
-		std::make_pair("P", &Prim_::P)
+		std::make_pair("rho", &This::rho),
+		std::make_pair("v", &This::v),
+		std::make_pair("P", &This::P)
 	);
 };
 

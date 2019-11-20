@@ -122,28 +122,34 @@ struct Simulation : public ISimulation {
 		}
 	};
 
-	struct ChartMeshFactory : public MeshFactory {
+	struct Chart2DMeshFactory : public MeshFactory {
+		using This = Chart2DMeshFactory; 
+		
 		int2 size = int2(101, 101);
 		float2 mins = real2(-1, -1);
 		float2 maxs = real2(1, 1);
 		int2 repeat = int2(0, 0);
 		int2 capmin = int2(0, 0);
+		
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("size", &This::size),
+			std::make_pair("mins", &This::mins),
+			std::make_pair("maxs", &This::maxs),
+			std::make_pair("repeat", &This::repeat),
+			std::make_pair("capmin", &This::capmin)
+		);
 
-		ChartMeshFactory(const char* name_) : MeshFactory(name_) {}
+		Chart2DMeshFactory(const char* name_) : MeshFactory(name_) {}
 
 		virtual real2 grid(real2 x) const { return x; }
 		
 		virtual void updateGUI() {
-			igInputInt2("size", size.v, 0);
-			igInputFloat2("mins", mins.v, "%f", 0);
-			igInputFloat2("maxs", maxs.v, "%f", 0);
-			igInputInt2("repeat", repeat.v, 0);
-			igInputInt2("capmin", capmin.v, 0);
+			updateGUIForFields(this);
 		}
 	};
 
-	struct TriUnitMeshFactory : public ChartMeshFactory {
-		using Super = ChartMeshFactory;
+	struct TriUnitMeshFactory : public Chart2DMeshFactory {
+		using Super = Chart2DMeshFactory;
 		TriUnitMeshFactory() : Super("unit square of triangles") {}
 		
 		virtual std::shared_ptr<Mesh> createMesh() {
@@ -181,8 +187,8 @@ struct Simulation : public ISimulation {
 		}
 	};
 
-	struct QuadUnitMeshFactory : public ChartMeshFactory {
-		using Super = ChartMeshFactory;
+	struct QuadUnitMeshFactory : public Chart2DMeshFactory {
+		using Super = Chart2DMeshFactory;
 		QuadUnitMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
 		
 		virtual std::shared_ptr<Mesh> createMesh() {
@@ -281,8 +287,8 @@ struct Simulation : public ISimulation {
 	};
 
 	//not inheriting from QuadUnitMeshFactory because it has variable size and we want fixed size (based on image size)
-	struct QuadUnitBasedOnImageMeshFactory : public ChartMeshFactory {
-		using Super = ChartMeshFactory;
+	struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
+		using Super = Chart2DMeshFactory;
 		QuadUnitBasedOnImageMeshFactory() : Super("unit based on image") {}
 
 		std::string imageFilename = "layout.png";
@@ -331,7 +337,7 @@ struct Simulation : public ISimulation {
 			return mesh;
 		}
 
-		//override ChartMeshFactory and get rid of size
+		//override Chart2DMeshFactory and get rid of size
 		//TODO add in imageFilename
 		virtual void updateGUI() {
 			//igInputInt2("size", size.v, 0);
@@ -343,15 +349,24 @@ struct Simulation : public ISimulation {
 	};
 
 	struct Chart3DMeshFactory : public MeshFactory {
+		using This = Chart3DMeshFactory;
 		int3 size = int3(31,31,31);
 		float3 mins = float3(-1, -1, -1);
 		float3 maxs = float3(1, 1, 1);
+
+		//TODO support for inheritence and reflection
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("size", &This::size),
+			std::make_pair("mins", &This::mins),
+			std::make_pair("maxs", &This::maxs)
+		);
 
 		Chart3DMeshFactory() : MeshFactory("3D chart mesh") {}
 
 		virtual real3 grid(real3 x) const { return x; }
 
 		virtual void updateGUI() {
+			updateGUIForFields(this);
 		}
 	};
 

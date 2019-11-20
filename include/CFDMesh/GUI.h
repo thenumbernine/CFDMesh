@@ -5,7 +5,6 @@
 
 namespace CFDMesh {
 
-
 template<typename T>
 using helper_field_t = decltype(std::declval<T&>().fields);
 
@@ -32,6 +31,5 @@ void updateGUIForFields(T* ptr, std::string prefix = {}) {
 		updateGUIForFields<float>(ptr->v+2, prefix + ".z");
 	}
 }
-
 
 }
