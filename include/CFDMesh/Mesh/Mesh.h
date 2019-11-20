@@ -2,12 +2,19 @@
 
 #include "CFDMesh/Vector.h"
 #include "CFDMesh/Util.h"
+#include "GLApp/gl.h"
 #include "Common/File.h"
 #include "Common/Exception.h"
 #include <vector>
 #include <list>
 #include <string>
 #include <cassert>
+
+
+template<typename T> void glVertex2v(const T* v);
+template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
+template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
+
 
 namespace CFDMesh {
 
@@ -225,6 +232,77 @@ public:
 				}
 			}
 		}
+	}
+
+	void draw(
+		int gradientTex,
+		float displayValueMin,
+		float displayValueMax,
+		int selectedCellIndex,
+		bool showVtxs,
+		bool showEdges,
+		bool showCellCenters
+	) {
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		glEnable(GL_TEXTURE_1D);
+		glBindTexture(GL_TEXTURE_1D, gradientTex);
+
+		for (const auto& c : cells) {
+			real f = (c.displayValue - displayValueMin) / (displayValueMax - displayValueMin);
+			glTexCoord1f(f);
+			glBegin(GL_POLYGON);
+			for (int vi = 0; vi < c.vtxCount; ++vi) {
+				glVertex2v(vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos.v);
+			}
+			glEnd();
+		}
+		
+		glBindTexture(GL_TEXTURE_1D, 0);
+		glDisable(GL_TEXTURE_1D);
+		
+		if (selectedCellIndex != -1) {
+			Cell* selectedCell = &cells[selectedCellIndex];
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			glLineWidth(3);
+			glColor3f(1,1,0);
+			glBegin(GL_POLYGON);
+			for (int vi = 0; vi < selectedCell->vtxCount; ++vi) {
+				glVertex2v(vtxs[cellVtxIndexes[vi + selectedCell->vtxOffset]].pos.v);
+			}
+			glEnd();
+			glLineWidth(1);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		}
+
+		if (showVtxs || showCellCenters) {
+			glColor3f(1,1,1);
+			glPointSize(3);
+			glBegin(GL_POINTS);
+			if (showVtxs) {
+				for (const auto& v : vtxs) {
+					glVertex2v(v.pos.v);
+				}
+			}
+			if (showCellCenters) {
+				for (const auto& c : cells) {
+					glVertex2v(c.pos.v);
+				}
+			}
+			glEnd();
+			glPointSize(1);
+		}
+		if (showEdges) {
+			glColor3f(1,1,1);
+			glBegin(GL_LINES);
+			for (const auto& e : faces) {
+				for (int vi : e.vtxs) {
+					glVertex2v(vtxs[vi].pos.v);
+				}
+			}
+			glEnd();
+		}
+
 	}
 };
 

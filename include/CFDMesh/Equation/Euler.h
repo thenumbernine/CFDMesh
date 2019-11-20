@@ -1,9 +1,9 @@
 #pragma once
 
 #include "CFDMesh/Equation/Equation.h"
+#include "CFDMesh/GUI.h"
 #include "CFDMesh/Util.h"
 #include "Tensor/Vector.h"
-#include <cimgui.h>
 #include <utility>
 #include <tuple>
 #include <cmath>
@@ -81,6 +81,7 @@ ADD_OSTREAM(Prim_<T>)
 
 template<typename real>
 struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
+	using This = Euler;
 	using Super = Equation<Euler<real>, real, Cons_<real>, Prim_<real>>;
 	using Cons = typename Super::Cons;
 	using Prim = typename Super::Prim;
@@ -99,7 +100,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		Prim_<float> W = Prim_<float>(1, float3(), 1);
 		using InitCond::InitCond;
 		virtual const char* name() const { return "constant"; }
-		virtual Cons initCell(const Euler* eqn, real3 x) const {	
+		virtual Cons initCell(const This* eqn, real3 x) const {	
 			
 			assert(std::isfinite(W.rho) && W.rho > 0);
 			assert(std::isfinite(W.v(0)));
@@ -129,7 +130,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		Prim_<float> WR = Prim_<float>(.125, float3(), .1);
 		
 		virtual const char* name() const { return "Sod"; }
-		virtual Cons initCell(const Euler* eqn, real3 x) const {
+		virtual Cons initCell(const This* eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0;
 			return eqn->consFromPrim(lhs ? WL : WR);
 		}
@@ -143,7 +144,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 	struct InitCondSpiral : public InitCond {
 		using InitCond::InitCond;
 		virtual const char* name() const { return "Spiral"; }
-		virtual Cons initCell(const Euler* eqn, real3 x) const {
+		virtual Cons initCell(const This* eqn, real3 x) const {
 			return eqn->consFromPrim(Prim(1, real3(-x(1), x(0)), 1));
 		}
 	};
@@ -152,8 +153,8 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 
 	void buildInitCondsAndDisplayVars() {
 		Super::initConds = {
-			std::make_shared<InitCondConst>(),
 			std::make_shared<InitCondSod>(),
+			std::make_shared<InitCondConst>(),
 			std::make_shared<InitCondSpiral>(),
 		};
 	}
@@ -243,7 +244,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		real v;
 		real Cs;
 		
-		CalcLambdaVars(const Euler& eqn, const Cons& U) {
+		CalcLambdaVars(const This& eqn, const Cons& U) {
 			Prim W = eqn.primFromCons(U);
 			v = real3::length(W.v);
 			Cs = eqn.calc_Cs_from_P_rho(W.P, W.rho);
@@ -326,8 +327,12 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		return flux;
 	}
 
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("heatCapacityRatio", &This::heatCapacityRatio)
+	);
+
 	void updateGUI() {
-		igInputFloat("gamma", &heatCapacityRatio, .1, 1, "%f", 0);
+		updateGUIForFields(this);
 	}
 };
 

@@ -28,8 +28,7 @@
 
 #include <cassert>
 
-using namespace CFDMesh;
-
+namespace CFDMesh {
 
 //config for everything, to hold everything in one place
 using real = double;
@@ -39,10 +38,6 @@ using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
 static Parallel::Parallel parallel;
-
-template<typename T> void glVertex2v(const T* v);
-template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
-template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
 
 
 template<typename T> T cubed(const T& t) { return t * t * t; }
@@ -345,7 +340,19 @@ struct Simulation : public ISimulation {
 			igInputInt2("repeat", Super::repeat.v, 0);
 			igInputInt2("capmin", Super::capmin.v, 0);
 		}
+	};
 
+	struct Chart3DMeshFactory : public MeshFactory {
+		int3 size = int3(31,31,31);
+		float3 mins = float3(-1, -1, -1);
+		float3 maxs = float3(1, 1, 1);
+
+		Chart3DMeshFactory() : MeshFactory("3D chart mesh") {}
+
+		virtual real3 grid(real3 x) const { return x; }
+
+		virtual void updateGUI() {
+		}
 	};
 
 	std::vector<std::shared_ptr<MeshFactory>> meshGenerators;
@@ -403,6 +410,8 @@ struct Simulation : public ISimulation {
 		resetMesh();	//which calls resetState()
 	}
 
+	virtual void draw();
+
 	void resetMesh() {
 		m = meshGenerators[meshGenerationIndex]->createMesh();
 		resetState();
@@ -432,8 +441,6 @@ struct Simulation : public ISimulation {
 		
 		refreshDisplayValues();
 	}
-
-	virtual void draw();
 
 	std::pair<Cons, Cons> getEdgeStates(const Face* e) {
 		Cell* cL = e->cells[0] == -1 ? nullptr : &m->cells[e->cells[0]];
@@ -746,7 +753,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 	virtual void onUpdate() {
 		Super::onUpdate();
-		
+	
 		sim->draw();
 		
 		gui->onUpdate([this](){
@@ -790,69 +797,6 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		}
 	}
 };
-
-template<typename real, typename Equation>
-void Simulation<real, Equation>::draw() {
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	glEnable(GL_TEXTURE_1D);
-	glBindTexture(GL_TEXTURE_1D, app->gradientTex);
-
-	for (const auto& c : m->cells) {
-		real f = (c.displayValue - displayValueRange.first) / (displayValueRange.second - displayValueRange.first);
-		glTexCoord1f(f);
-		glBegin(GL_POLYGON);
-		for (int vi = 0; vi < c.vtxCount; ++vi) {
-			glVertex2v(m->vtxs[m->cellVtxIndexes[vi + c.vtxOffset]].pos.v);
-		}
-		glEnd();
-	}
-	
-	glBindTexture(GL_TEXTURE_1D, 0);
-	glDisable(GL_TEXTURE_1D);
-	
-	if (selectedCellIndex != -1) {
-		Cell* selectedCell = &m->cells[selectedCellIndex];
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-		glLineWidth(3);
-		glColor3f(1,1,0);
-		glBegin(GL_POLYGON);
-		for (int vi = 0; vi < selectedCell->vtxCount; ++vi) {
-			glVertex2v(m->vtxs[m->cellVtxIndexes[vi + selectedCell->vtxOffset]].pos.v);
-		}
-		glEnd();
-		glLineWidth(1);
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-	}
-
-	if (showVtxs || showCellCenters) {
-		glColor3f(1,1,1);
-		glPointSize(3);
-		glBegin(GL_POINTS);
-		if (showVtxs) {
-			for (const auto& v : m->vtxs) {
-				glVertex2v(v.pos.v);
-			}
-		}
-		if (showCellCenters) {
-			for (const auto& c : m->cells) {
-				glVertex2v(c.pos.v);
-			}
-		}
-		glEnd();
-		glPointSize(1);
-	}
-	if (showEdges) {
-		glColor3f(1,1,1);
-		glBegin(GL_LINES);
-		for (const auto& e : m->faces) {
-			for (int vi : e.vtxs) {
-				glVertex2v(m->vtxs[vi].pos.v);
-			}
-		}
-		glEnd();
-	}
-}
 
 template<typename real, typename Equation>
 void Simulation<real, Equation>::updateGUI() {
@@ -989,4 +933,20 @@ void Simulation<real, Equation>::updateGUI() {
 	}
 }
 
-GLAPP_MAIN(CFDMeshApp)
+
+template<typename real, typename ThisEquation>
+void Simulation<real, ThisEquation>::draw() {
+	m->draw(
+		app->gradientTex,
+		displayValueRange.first,
+		displayValueRange.second,
+		selectedCellIndex,
+		showVtxs,
+		showEdges,
+		showCellCenters
+	);
+}
+
+}
+
+GLAPP_MAIN(CFDMesh::CFDMeshApp)

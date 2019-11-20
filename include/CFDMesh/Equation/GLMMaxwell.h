@@ -1,9 +1,9 @@
 #pragma once
 
 #include "CFDMesh/Equation/Equation.h"
+#include "CFDMesh/GUI.h"
 #include "CFDMesh/Util.h"
 #include "Tensor/Vector.h"
-#include "cimgui.h"
 #include <utility>
 #include <tuple>
 #include <cmath>
@@ -66,6 +66,7 @@ using Prim_ = Cons_<T>;
 
 template<typename real>
 struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>> {
+	using This = GLMMaxwell;
 	using Super = Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>>;
 	using Cons = typename Super::Cons;
 	using Prim = typename Super::Prim;
@@ -212,10 +213,14 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 		F.psi = U.B(0) * divPsiWavespeed;
 		return F;
 	}
-	
+
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("divPhiWavespeed", &This::divPhiWavespeed),
+		std::make_pair("divPsiWavespeed", &This::divPsiWavespeed)
+	);
+
 	void updateGUI() {
-		igInputFloat("divPhiWavespeed", &divPhiWavespeed, .1, 1, "%f", 0);
-		igInputFloat("divPsiWavespeed", &divPsiWavespeed, .1, 1, "%f", 0);
+		updateGUIForFields(this);
 	}
 };
 
