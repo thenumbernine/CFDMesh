@@ -6,16 +6,16 @@
 namespace CFDMesh {
 
 template<typename T>
-using helper_field_t = decltype(std::declval<T&>().fields);
+using has_field_t = decltype(std::declval<T&>().fields);
 
 template<typename T>
-void updateGUIForFields(T* ptr, std::string prefix = {}) {
-	if constexpr (std::experimental::is_detected_v<helper_field_t, T>) {
+void updateGUI(T* ptr, std::string prefix = {}) {
+	if constexpr (std::experimental::is_detected_v<has_field_t, T>) {
 		tuple_for_each(T::fields, [ptr, &prefix](auto x, size_t i) constexpr {
 			auto name = x.first;
 			auto field = x.second;
 			using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
-			updateGUIForFields<FieldType>(&(ptr->*field), prefix + name);
+			updateGUI<FieldType>(&(ptr->*field), prefix + name);
 		});
 	
 	} else if constexpr (std::is_floating_point_v<T>) {
@@ -26,9 +26,9 @@ void updateGUIForFields(T* ptr, std::string prefix = {}) {
 	
 	//TODO handle all floatN, doubleN, etc types
 	} else if constexpr (std::is_same_v<T, float3>) {
-		updateGUIForFields<float>(ptr->v+0, prefix + ".x");
-		updateGUIForFields<float>(ptr->v+1, prefix + ".y");
-		updateGUIForFields<float>(ptr->v+2, prefix + ".z");
+		updateGUI<float>(ptr->v+0, prefix + ".x");
+		updateGUI<float>(ptr->v+1, prefix + ".y");
+		updateGUI<float>(ptr->v+2, prefix + ".z");
 	}
 }
 

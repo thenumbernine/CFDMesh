@@ -143,7 +143,14 @@ struct Simulation : public ISimulation {
 		virtual real2 coordChart(real2 x) const { return x; }
 		
 		virtual void updateGUI() {
-			updateGUIForFields(this);
+			
+			//if you do not explicilty provide the template class then nothing shows up
+			// mind you, in CFDMesh::updateGUI, I have a member detect for 'fields'
+			// and in the child classes no such 'fields' exists
+			//CFDMesh::updateGUI(this);
+		
+			//explicitly stating the template parameter doesn't help
+			//CFDMesh::updateGUI<Chart2DMeshFactory>(this);
 		}
 	};
 
@@ -201,7 +208,15 @@ struct Simulation : public ISimulation {
 			for (i(1) = 0; i(1) < n(1); ++i(1)) {
 				for (i(0) = 0; i(0) < n(0); ++i(0)) {
 					real2 x = ((real2)i + .5) / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
-					real2 u = Super::coordChart(x);
+					
+					//if I do not put Super:: then I get: "error: there are no arguments to ‘coordChart’ that depend on a template parameter, so a declaration of ‘coordChart’ must be available"
+					//real2 u = coordChart(x);
+				
+					//if I say 'Super::coordChart' then it will explicitly call that class' coordChart method (and not the vtable entry)
+					//real2 u = Super::coordChart(x);
+					
+					real2 u = this->coordChart(x);
+					
 					mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
 				}
 			}
@@ -368,7 +383,7 @@ struct Simulation : public ISimulation {
 		virtual real3 coordChart(real3 x) const { return x; }
 
 		virtual void updateGUI() {
-			updateGUIForFields(this);
+			CFDMesh::updateGUI(this);
 		}
 	};
 
@@ -651,12 +666,12 @@ struct Simulation : public ISimulation {
 			m->faces.end(),
 			[this, dt](Face& e) {
 				//roe averaged values at edge 
-				std::pair<Cons, Cons> ULR = getEdgeStates(&e);
+				auto [UL, UR] = getEdgeStates(&e);
 				
 				//rotate to align edge normal to x axis
 				//so x-direction flux jacobian is good for calculating the flux 
-				Cons UL = eqn.rotateTo(ULR.first, e.normal);
-				Cons UR = eqn.rotateTo(ULR.second, e.normal);
+				UL = eqn.rotateTo(UL, e.normal);
+				UR = eqn.rotateTo(UR, e.normal);
 
 #ifdef DEBUG
 for (int i = 0; i < Cons::size; ++i) {

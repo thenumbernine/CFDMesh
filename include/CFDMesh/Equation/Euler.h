@@ -129,7 +129,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		}
 		
 		virtual void updateGUI() {
-			updateGUIForFields(this);
+			CFDMesh::updateGUI(this);
 		}
 	};
 
@@ -151,7 +151,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		}
 
 		virtual void updateGUI() {
-			updateGUIForFields(this);
+			CFDMesh::updateGUI(this);
 		}
 	};
 
@@ -201,7 +201,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		}
 		
 		virtual void updateGUI() {
-			updateGUIForFields(this);
+			CFDMesh::updateGUI(this);
 		}
 	};
 
@@ -398,7 +398,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 	);
 
 	void updateGUI() {
-		updateGUIForFields(this);
+		CFDMesh::updateGUI(this);
 	}
 };
 

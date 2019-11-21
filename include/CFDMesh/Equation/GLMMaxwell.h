@@ -80,17 +80,24 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 	using real3 = Tensor::Vector<real, 3>;
 
 	struct InitCondDefault : public InitCond {
+		using InitCond::InitCond;
+		
 		Cons_<float> UL = Cons_<float>(float3(1, 1, 0), float3(0, -1, 1), 0, 0, 1, 1);
 		Cons_<float> UR = Cons_<float>(float3(-1, 1, 0), float3(0, -1, -1), 0, 0, 1, 1);
-		using InitCond::InitCond;
+	
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("UL", &InitCondDefault::UL),
+			std::make_pair("UR", &InitCondDefault::UR)
+		);
+
 		virtual const char* name() const { return "default"; }
+		
 		virtual Cons initCell(const GLMMaxwell* eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0;
 			return lhs ? UL : UR;
 		}
 		virtual void updateGUI() {
-			updateGUIForFields(&UL, "UL");
-			updateGUIForFields(&UR, "UR");
+			CFDMesh::updateGUI(this);
 		}
 	};
 	
@@ -220,7 +227,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 	);
 
 	void updateGUI() {
-		updateGUIForFields(this);
+		CFDMesh::updateGUI(this);
 	}
 };
 
