@@ -61,14 +61,14 @@ struct ISimulation {
 	virtual void resetState() = 0;
 };
 
-template<typename real, typename ThisEquation>
+template<typename real, int dim, typename ThisEquation>
 struct Simulation : public ISimulation {
 	using Super = ISimulation;
 
 	using WaveVec = typename ThisEquation::WaveVec;
 	using Cons = typename ThisEquation::Cons;
 
-	using ThisMeshNamespace = CFDMesh::MeshNamespace<real, Cons>;
+	using ThisMeshNamespace = CFDMesh::MeshNamespace<real, dim, Cons>;
 	using Mesh = typename ThisMeshNamespace::Mesh;
 	using MeshFactory = typename ThisMeshNamespace::MeshFactory;
 	using Cell = typename ThisMeshNamespace::Cell;
@@ -94,8 +94,7 @@ struct Simulation : public ISimulation {
 			std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
 			if (_x.front() == "") _x.pop_front();
 			if (_x.back() == "") _x.pop_back();
-			std::function<real(const std::string&)> f = [](const std::string& s) -> real { return std::stod(s); };
-			std::vector<real> x = map<std::list<std::string>, std::vector<real>>(_x, f);
+			std::vector<real> x = map<std::list<std::string>, std::vector<real>>(_x, [](const std::string& s) -> real { return std::stod(s); });
 			assert(x.size() == (size_t)(2 * m * n));
 		
 			auto us = std::vector(x.begin(), x.begin() + m*n);
@@ -141,7 +140,7 @@ struct Simulation : public ISimulation {
 
 		Chart2DMeshFactory(const char* name_) : MeshFactory(name_) {}
 
-		virtual real2 grid(real2 x) const { return x; }
+		virtual real2 coordChart(real2 x) const { return x; }
 		
 		virtual void updateGUI() {
 			updateGUIForFields(this);
@@ -165,9 +164,8 @@ struct Simulation : public ISimulation {
 						((real)i + .5) / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
 						((real)j + .5) / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
 					
-					real2 u = Super::grid(x);
-					std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-					mesh->vtxs[i + m * j].pos = real3(f);
+					real2 u = Super::coordChart(x);
+					mesh->vtxs[i + m * j].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
 				}
 			}
 			
@@ -194,47 +192,51 @@ struct Simulation : public ISimulation {
 		virtual std::shared_ptr<Mesh> createMesh() {
 			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 
-			int m = Super::size(0);
-			int n = Super::size(1);
-
-			int vtxsize = m * n;
+			int2 n = Super::size;
+			int2 step(1, n(0));
+			int vtxsize = n.volume();
 			if (Super::capmin(0)) vtxsize++;
 			mesh->vtxs.resize(vtxsize);
-			for (int j = 0; j < n; ++j) {
-				for (int i = 0; i < m; ++i) {
-					real2 x = real2(
-						((real)i + .5) / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
-						((real)j + .5) / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
-					
-					real2 u = Super::grid(x);
-					std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-					mesh->vtxs[i + m * j].pos = real3(f);
+			int2 i;
+			for (i(1) = 0; i(1) < n(1); ++i(1)) {
+				for (i(0) = 0; i(0) < n(0); ++i(0)) {
+					real2 x = ((real2)i + .5) / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
+					real2 u = Super::coordChart(x);
+					mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
 				}
 			}
 			
-			int capindex = m * n;
+			int capindex = n.volume();
 			if (Super::capmin(0)) {
 				real3 sum;
-				for (int j = 0; j < n; ++j) {
-					sum += mesh->vtxs[0 + m * j].pos;
+				for (int j = 0; j < n(1); ++j) {
+					sum += mesh->vtxs[0 + n(0) * j].pos;
 				}
-				mesh->vtxs[capindex].pos = sum / (real)n;
+				mesh->vtxs[capindex].pos = sum / (real)n(1);
 			}
 
-			int imax = Super::repeat(0) ? m : m-1;
-			int jmax = Super::repeat(1) ? n : n-1;
-			for (int j = 0; j < jmax; ++j) {
-				int jn = (j + 1) % n;
-				for (int i = 0; i < imax; ++i) {
-					int in = (i + 1) % m;
-					mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
+			int2 imax;
+			for (int j = 0; j < 2; ++j) {
+				imax(j) = Super::repeat(j) ? n(j) : n(j)-1;
+			}
+			int2 in;
+			for (i(1) = 0; i(1) < imax(1); ++i(1)) {
+				in(1) = (i(1) + 1) % n(1);
+				for (i(0) = 0; i(0) < imax(0); ++i(0)) {
+					in(0) = (i(0) + 1) % n(0);
+					mesh->addCell(std::vector<int>{
+						i(0) + n(0) * i(1),
+						in(0) + n(0) * i(1),
+						in(0) + n(0) * in(1),
+						i(0) + n(0) * in(1)
+					});
 				}
 			}
 
 			if (Super::capmin(0)) {
-				for (int j = 0; j < jmax; ++j) {
-					int jn = (j + 1) % n;
-					mesh->addCell(std::vector<int>{ 0 + m * j, 0 + m * jn, capindex });
+				for (int j = 0; j < imax(1); ++j) {
+					int jn = (j + 1) % n(1);
+					mesh->addCell(std::vector<int>{ 0 + n(0) * j, 0 + n(0) * jn, capindex });
 				}
 			}
 
@@ -245,21 +247,21 @@ struct Simulation : public ISimulation {
 
 	struct QuadUnitCbrtMeshFactory : public QuadUnitMeshFactory {
 		QuadUnitCbrtMeshFactory() : QuadUnitMeshFactory("unit square of quads, cbrt mapping") {}
-		virtual real2 grid(real2 v) const {
+		virtual real2 coordChart(real2 v) const {
 			return real2(cbrt(v(0)), cbrt(v(1)));
 		}
 	};
 
 	struct QuadUnitCubedMeshFactory : public QuadUnitMeshFactory {
 		QuadUnitCubedMeshFactory() : QuadUnitMeshFactory("unit square of quads, cubed mapping") {}
-		virtual real2 grid(real2 v) const {
+		virtual real2 coordChart(real2 v) const {
 			return real2(cubed(v(0)), cubed(v(1)));
 		}
 	};
 
 	struct TwistQuadUnitMeshFactory : public QuadUnitMeshFactory {
 		TwistQuadUnitMeshFactory() : QuadUnitMeshFactory("unit square of quads, twist in the middle") {}
-		virtual real2 grid(real2 v) const {
+		virtual real2 coordChart(real2 v) const {
 			real r = real2::length(v);
 			//real theta = std::max(0., 1. - r);
 			real sigma = 3.;	//almost 0 at r=1
@@ -281,7 +283,7 @@ struct Simulation : public ISimulation {
 			Super::repeat = int2(0, 1);
 			//Super::capmin = int2(1, 0);
 		}
-		virtual real2 grid(real2 v) const {
+		virtual real2 coordChart(real2 v) const {
 			return real2(cos(v(1)), sin(v(1))) * v(0);
 		}
 	};
@@ -315,9 +317,8 @@ struct Simulation : public ISimulation {
 						((real)i + .5) / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
 						((real)j + .5) / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
 					
-					real2 u = Super::grid(x);
-					std::function<real(int)> f = [&u](int i) -> real { return i < real2::size ? u(i) : 0.; };
-					mesh->vtxs[i + m * j].pos = real3(f);
+					real2 u = Super::coordChart(x);
+					mesh->vtxs[i + m * j].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
 				}
 			}
 
@@ -350,6 +351,7 @@ struct Simulation : public ISimulation {
 
 	struct Chart3DMeshFactory : public MeshFactory {
 		using This = Chart3DMeshFactory;
+		
 		int3 size = int3(31,31,31);
 		float3 mins = float3(-1, -1, -1);
 		float3 maxs = float3(1, 1, 1);
@@ -363,10 +365,61 @@ struct Simulation : public ISimulation {
 
 		Chart3DMeshFactory() : MeshFactory("3D chart mesh") {}
 
-		virtual real3 grid(real3 x) const { return x; }
+		virtual real3 coordChart(real3 x) const { return x; }
 
 		virtual void updateGUI() {
 			updateGUIForFields(this);
+		}
+	};
+
+	struct CubeUnitMeshFactory : public Chart3DMeshFactory {
+		using Super = Chart3DMeshFactory;
+		CubeUnitMeshFactory(const char* name_ = "unit cube of cubes") : Super(name_) {}
+		
+		virtual std::shared_ptr<Mesh> createMesh() {
+			std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+		
+			int3 n = Super::size;
+			int vtxsize = n.volume();
+			mesh->vtxs.resize(vtxsize);
+			int3 i;
+			for (i(2) = 0; i(2) < n(2); ++i(2)) {
+				for (i(1) = 0; i(1) < n(1); ++i(1)) {
+					for (i(0) = 0; i(0) < n(0); ++i(0)) {
+						real3 x = ((real3)i + .5) / (real3)Super::size * (Super::maxs - Super::mins) + Super::mins;
+						mesh->vtxs[i(0) + n(0) * (i(1) + n(1) * i(2))].pos = Super::coordChart(x);
+					}
+				}
+			}
+
+			int3 imax;
+			for (int j = 0; j < 3; ++j) {
+				imax(j) = Super::repeat(j) ? n(j) : n(j)-1;
+			}
+			int3 in;
+			for (i(2) = 0; i(2) < imax(2); ++i(2)) {
+				in(2) = (i(2) + 1) % n(1);
+				for (i(1) = 0; i(1) < imax(1); ++i(1)) {
+					in(1) = (i(1) + 1) % n(1);
+					for (i(0) = 0; i(0) < imax(0); ++i(0)) {
+						in(0) = (i(0) + 1) % n(0);
+						mesh->addCube(std::vector<int>{
+							//using z-order
+							i(0) + n(0) * (i(1) + n(1) * i(2)),
+							in(0) + n(0) * (i(1) + n(1) * i(2)),
+							i(0) + n(0) * (in(1) + n(1) * i(2)),
+							in(0) + n(0) * (in(1) + n(1) * i(2)),
+							
+							i(0) + n(0) * (i(1) + n(1) * in(2)),
+							in(0) + n(0) * (i(1) + n(1) * in(2)),
+							i(0) + n(0) * (in(1) + n(1) * in(2)),
+							in(0) + n(0) * (in(1) + n(1) * in(2)),
+						});
+					}
+				}
+			}
+		
+			mesh->calcAux();
 		}
 	};
 
@@ -691,8 +744,9 @@ for (int i = 0; i < Cons::size; ++i) {
 };
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
-	{"Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::Euler::Euler<real>>>(app); }},
-	{"GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
+	{"Euler 2D", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real>>>(app); }},
+	{"Euler 3D", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real>>>(app); }},
+	{"GLM-Maxwell 2D", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<
@@ -754,7 +808,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA, gradientTexData.size(), 0, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->v);
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 		glBindTexture(GL_TEXTURE_1D, 0);
 
 		resetSimulation();
@@ -813,8 +867,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	}
 };
 
-template<typename real, typename Equation>
-void Simulation<real, Equation>::updateGUI() {
+template<typename real, int dim, typename Equation>
+void Simulation<real, dim, Equation>::updateGUI() {
 
 	igText("time: %f", time);
 	igCheckbox("running", &running);
@@ -889,9 +943,7 @@ void Simulation<real, Equation>::updateGUI() {
 		//find the view bounds
 		//find the mouse position
 		//find any cells at that position
-		real2 pos2 = (real2)((mousepos - .5f) * float2(1, -1) * float2(app->getAspectRatio(), 1) / float2(app->viewOrtho->zoom(0), app->viewOrtho->zoom(1)) + app->viewOrtho->pos);
-		std::function<real(int)> f = [&](int i) -> real { return i >= 2 ? 0 : pos2(i); };
-		real3 pos = real3(f);
+		real2 pos = (real2)((mousepos - .5f) * float2(1, -1) * float2(app->getAspectRatio(), 1) / float2(app->viewOrtho->zoom(0), app->viewOrtho->zoom(1)) + app->viewOrtho->pos);
 			
 		bool canHandleMouse = !igGetIO()->WantCaptureMouse;
 		
@@ -905,10 +957,13 @@ void Simulation<real, Equation>::updateGUI() {
 		for (int i = 0; i < (int)m->cells.size(); ++i) {
 			Cell* c = &m->cells[i];
 			if (ThisMeshNamespace::contains(
-				pos, 
+				pos,
 				m->cellVtxIndexes.begin() + c->vtxOffset,
 				m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount,
-				[this](int i) -> real3 { return m->vtxs[i].pos; }
+				[this](int i) -> real2 { 
+					typename ThisMeshNamespace::Vertex& vi = m->vtxs[i];
+					return real2([&vi](int j) -> real { return vi.pos(j); }); 
+				}
 			)) {
 				selectedCellIndex = i;
 				break;
@@ -949,8 +1004,8 @@ void Simulation<real, Equation>::updateGUI() {
 }
 
 
-template<typename real, typename ThisEquation>
-void Simulation<real, ThisEquation>::draw() {
+template<typename real, int dim, typename ThisEquation>
+void Simulation<real, dim, ThisEquation>::draw() {
 	m->draw(
 		app->gradientTex,
 		displayValueRange.first,

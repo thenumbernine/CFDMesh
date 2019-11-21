@@ -4,6 +4,7 @@
 #include "CFDMesh/GUI.h"
 #include "CFDMesh/Util.h"
 #include "Tensor/Vector.h"
+#include "Common/Macros.h"
 #include <utility>
 #include <tuple>
 #include <cmath>
@@ -99,8 +100,14 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 	float heatCapacityRatio = 1.4;
 
 	struct InitCondConst : public InitCond {
-		Prim_<float> W = Prim_<float>(1, float3(), 1);
 		using InitCond::InitCond;
+		
+		Prim_<float> W = Prim_<float>(1, float3(), 1);
+		
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("W", &InitCondConst::W)
+		);
+
 		virtual const char* name() const { return "constant"; }
 		virtual Cons initCell(const This* eqn, real3 x) const {	
 			
@@ -122,15 +129,21 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		}
 		
 		virtual void updateGUI() {
-			updateGUIForFields(&W, "W");
+			updateGUIForFields(this);
 		}
 	};
 
 	struct InitCondSod : public InitCond {
 		using InitCond::InitCond;
+		
 		Prim_<float> WL = Prim_<float>(1, float3(), 1);
 		Prim_<float> WR = Prim_<float>(.125, float3(), .1);
-		
+
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("WL", &InitCondSod::WL),
+			std::make_pair("WR", &InitCondSod::WR)
+		);
+
 		virtual const char* name() const { return "Sod"; }
 		virtual Cons initCell(const This* eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0;
@@ -138,13 +151,63 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		}
 
 		virtual void updateGUI() {
-			updateGUIForFields(&WL, "WL");
-			updateGUIForFields(&WR, "WR");
+			updateGUIForFields(this);
+		}
+	};
+
+	struct InitCondKelvinHelmholtz : public InitCond {
+		using InitCond::InitCond;
+
+		float rhoIn = 2;
+		float rhoOut = 1;
+		float velYAmp = 1e-2;
+		float frequency = 2;
+		float randomNoiseAmp = 1e-4;
+		float backgroundPressure = 2.5;
+		float velocity = .5;
+		
+		Prim_<float> Win = Prim_<float>(2, float3(-.5, 0), 2.5);
+		Prim_<float> Wout = Prim_<float>(1, float3(.5, 0), 2.5);
+	
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("rhoIn", &InitCondKelvinHelmholtz::rhoIn),
+			std::make_pair("rhoOut", &InitCondKelvinHelmholtz::rhoOut),
+			std::make_pair("velYAmp", &InitCondKelvinHelmholtz::velYAmp),
+			std::make_pair("frequency", &InitCondKelvinHelmholtz::frequency),
+			std::make_pair("randomNoiseAmp", &InitCondKelvinHelmholtz::randomNoiseAmp),
+			std::make_pair("backgroundPressure", &InitCondKelvinHelmholtz::backgroundPressure),
+			std::make_pair("velocity", &InitCondKelvinHelmholtz::velocity)
+		);
+
+		virtual const char* name() const { return "Kelvin-Helmholtz"; }
+
+		virtual Cons initCell(const This* eqn, real3 x) const {
+			//TODO get mins & maxs from mesh?
+			real3 mins = real3(-1);
+			real3 maxs = real3(1);
+			bool inside = x(1) > -.5 && x(1) < .5;
+			Prim W;
+			W.rho = inside ? rhoIn : rhoOut;
+			float theta = frequency * 2 * M_PI;
+			theta *= (x(0) - mins(0)) / (maxs(0) - mins(0));
+			W.v(0) = (inside ? -1 : 1) * velocity;
+			float noise = (maxs(0) - mins(1)) * velYAmp;
+			W.v(1) = noise * sin(theta);
+			W.P = backgroundPressure;
+			for (int j = 0; j < Prim::size; ++j) {
+				W.ptr[j] += randomNoiseAmp * crand();
+			}
+			return eqn->consFromPrim(W);
+		}
+		
+		virtual void updateGUI() {
+			updateGUIForFields(this);
 		}
 	};
 
 	struct InitCondSpiral : public InitCond {
 		using InitCond::InitCond;
+		
 		virtual const char* name() const { return "Spiral"; }
 		virtual Cons initCell(const This* eqn, real3 x) const {
 			return eqn->consFromPrim(Prim(1, real3(-x(1), x(0)), 1));
@@ -157,6 +220,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		Super::initConds = {
 			std::make_shared<InitCondSod>(),
 			std::make_shared<InitCondConst>(),
+			std::make_shared<InitCondKelvinHelmholtz>(),
 			std::make_shared<InitCondSpiral>(),
 		};
 	}

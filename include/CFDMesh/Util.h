@@ -68,7 +68,6 @@ inline real3 rotateFrom(real3 v, real3 n) {
 	);
 }
 
-
 // https://stackoverflow.com/a/6894436
 template<std::size_t I = 0, typename FuncT, typename... Tp>
 inline typename std::enable_if_t<I == sizeof...(Tp), void>

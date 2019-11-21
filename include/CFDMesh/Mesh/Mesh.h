@@ -4,6 +4,7 @@
 #include "CFDMesh/Util.h"
 #include "GLApp/gl.h"
 #include "Common/File.h"
+#include "Common/Macros.h"
 #include "Common/Exception.h"
 #include <vector>
 #include <list>
@@ -18,7 +19,8 @@ template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
 
 namespace CFDMesh {
 
-template<typename real, typename Cons>
+//dim is the dimension of the manifold, not of the vectors (which are all 3D atm)
+template<typename real, int dim, typename Cons>
 struct MeshNamespace {
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
@@ -44,9 +46,8 @@ struct Face {
 	real3 pos;
 	real3 delta;
 	real3 normal;
-	real length;
-	real cellDist;
-	Cons flux;
+	real length;	//space taken up by the face
+	real cellDist;	//dist between adjacent cell centers
 	
 	int cells[2];	//there are always only 2 n-forms on either side of a (n-1)-form
 	
@@ -55,6 +56,8 @@ struct Face {
 	//also used by the renderer
 	//however, note, in n>2 dimensions, a (n-1)-form will be defined by an arbitrary number of vertices (more than just two)
 	int vtxs[2];
+	
+	Cons flux;
 	
 	Face(int va, int vb) : length(0), cellDist(0) {
 		vtxs[0] = va;
@@ -77,7 +80,6 @@ struct Face {
 struct Cell {
 	real3 pos;
 	real volume;
-	Cons U;
 	
 	//required by the finite volume algorithm
 	//std::vector<int> faces;
@@ -91,13 +93,16 @@ struct Cell {
 	int vtxOffset = 0;
 	int vtxCount = 0;
 
+	Cons U;
 	float displayValue = 0;
 
 	Cell() : volume(0) {}
 };
 
 struct MeshFactory;
+
 struct Mesh {
+
 //liu kang wins.  friendship.
 protected:
 	//https://stackoverflow.com/questions/8147027/how-do-i-call-stdmake-shared-on-a-class-with-only-protected-or-private-const
@@ -117,6 +122,7 @@ public:
 	std::vector<Vertex> vtxs;	//0-forms, which construct n and n-1 forms
 	std::vector<Face> faces;	//n-1-forms, hold flux information between cells
 	std::vector<Cell> cells;	//n-forms, hold the info at each cell
+	
 	std::vector<int> cellFaceIndexes;
 	std::vector<int> cellVtxIndexes;
 
@@ -127,21 +133,37 @@ public:
 	virtual ~Mesh() {}
 
 
-	int addEdge(int va, int vb) {
-		int ei = 0;
-		for (; ei < (int)faces.size(); ++ei) {
-			Face* e = &faces[ei];
-			if ((e->vtxs[0] == va && e->vtxs[1] == vb) ||
-				(e->vtxs[0] == vb && e->vtxs[1] == va)) 
-			{
-				return ei;
+	int addFace(const int* vs, int n) {
+		//static_assert(dim == 2, "you are here");
+		//if constexpr (dim == 2) {
+			int va = vs[0];
+			int vb = vs[1];
+			int ei = 0;
+			for (; ei < (int)faces.size(); ++ei) {
+				Face* e = &faces[ei];
+				if ((e->vtxs[0] == va && e->vtxs[1] == vb) ||
+					(e->vtxs[0] == vb && e->vtxs[1] == va)) 
+				{
+					return ei;
+				}
 			}
-		}
-		assert(ei == (int)faces.size());
-		faces.push_back(Face(va, vb));
-		//vtxs[va].faces.push_back(ei);
-		//vtxs[vb].faces.push_back(ei);
-		return ei;
+			assert(ei == (int)faces.size());
+			faces.push_back(Face(va, vb));
+		
+			Face& e = faces.back();
+			{
+				auto& a = vtxs[e.vtxs[0]];
+				auto& b = vtxs[e.vtxs[1]];
+				e.pos = (a.pos + b.pos) * .5;
+				e.delta = a.pos - b.pos;
+				e.length = real3::length(e.delta);
+				e.normal = real3(e.delta(1), -e.delta(0));
+				e.normal *= 1. / real3::length(e.normal);
+			}
+//		} else if constexpr (dim != 2) {
+//			static_assert(false, "you are here");
+			return ei;
+//		}
 	}
 
 	void addCell(std::vector<int> vis) {
@@ -153,14 +175,67 @@ public:
 		c.vtxOffset = (int)cellVtxIndexes.size();
 		cellVtxIndexes.insert(cellVtxIndexes.end(), vis.begin(), vis.end());
 		c.vtxCount = (int)cellVtxIndexes.size() - c.vtxOffset;
-	
+
 		c.faceOffset = (int)cellFaceIndexes.size();
-		for (size_t i = 0; i < n; ++i) {
-			cellFaceIndexes.push_back(addEdge(vis[i], vis[(i+1)%n]));
+		if constexpr (dim == 2) {
+			//face is a 1-form
+			for (size_t i = 0; i < n; ++i) {
+				int vtxs[2] = {vis[i], vis[(i+1)%n]}; 
+				cellFaceIndexes.push_back(addFace(vtxs, numberof(vtxs)));
+			}
+			c.volume = polygonVolume(map<std::vector<int>, std::vector<real3>>(vis, [this](int vi) -> real3 { return vtxs[vi].pos; }));
+		} else if constexpr (dim == 3) {
+			//face is a 2-form
+			assert(vis.size() == 8);	//only adding cubes at the moment
+		
+			std::vector<std::vector<int>> cubeSides = {
+				{2,3,1,0},
+				{4,5,7,6},
+				{0,1,5,4},
+				{2,3,7,6},
+				{0,2,6,4},
+				{1,3,7,5},
+			};		
+			
+			for (auto side : cubeSides) {
+				addFace(map<
+					std::vector<int>,
+					std::vector<int>
+				>(side, [&vis](int side_i) -> int { return vis[side_i]; }).data(), side.size());
+			}
+			
+			c.volume = polyhedronVolume(
+				//either remap sides -> vis[sides]
+				// or just use the newly created faces
+#if 1				
+				map<std::vector<int>, std::vector<real3>>(vis, [this](int vi) -> real3 { return vtxs[vi].pos; }),
+				cubeSides
+#endif
+#if 0
+				vtxs,
+				std::map<
+					decltype(cubeSides),
+					std::vector<std::vector<int>>
+				>(
+					cubeSides,
+					[&vis](const std::vector<int>& v) -> std::vector<int> {
+						std::vector<int> results;
+						return std::map<
+							decltype(results),
+							decltype(results)
+						>(
+							results,
+							[&vis](int i) -> int { return vis[i]; }
+						);
+					}
+				)
+#endif			
+			);
+//		} else {
+//			static_assert(false, "you are here");
 		}
 		c.faceCount = (int)cellFaceIndexes.size() - c.faceOffset;
 
-		c.volume = polyVol(map<std::vector<int>, std::vector<real3>>(vis, [this](int vi) -> real3 { return vtxs[vi].pos; }));
 		assert(c.volume > 0);
 
 #if 1	//vertex average
@@ -173,7 +248,7 @@ public:
 		})) * (1. / (real)n);
 #else	//COM
 		for (int j = 0; j < 3; ++j) {
-			for (int i = 0; i < n; ++i) {
+			for (int i = 0; i < (int)n; ++i) {
 				real3 x1 = vtxs[vis[i]].pos;
 				real3 x2 = vtxs[vis[(i+1)%n]].pos;
 				c.pos(j) += (x1(j) + x2(j)) / (x1(0) * x2(1) - x1(1) * x2(0));
@@ -201,35 +276,23 @@ public:
 	//calculate cell volume info
 	void calcAux() {		
 		for (auto& e : faces) {
-			{
-				auto& a = vtxs[e.vtxs[0]];
-				auto& b = vtxs[e.vtxs[1]];
-				e.pos = (a.pos + b.pos) * .5;
-				e.delta = a.pos - b.pos;
-				e.length = real3::length(e.delta);
-				e.normal = real3(e.delta(1), -e.delta(0));
-				e.normal *= 1. / real3::length(e.normal);
-			}
-
-			{
-				int a = e.cells[0];
-				int b = e.cells[1];
-				if (a != -1 && b != -1) {
-					if (real3::dot(cells[a].pos - cells[b].pos, e.normal) < 0) {
-						std::swap(a, b);
-						e.cells[0] = a;
-						e.cells[1] = b;
-						e.normal *= -1;
-					}
-					//distance between cell centers
-					//e.cellDist = real3::length(cells[b].pos - cells[a].pos);
-					//distance projected to edge normal
-					e.cellDist = fabs(real3::dot(e.normal, cells[b].pos - cells[a].pos));
-				} else if (a != -1) {
-					e.cellDist = real3::length(cells[a].pos - e.pos) * 2.;
-				} else {
-					throw Common::Exception() << "you are here";
+			int a = e.cells[0];
+			int b = e.cells[1];
+			if (a != -1 && b != -1) {
+				if (real3::dot(cells[a].pos - cells[b].pos, e.normal) < 0) {
+					std::swap(a, b);
+					e.cells[0] = a;
+					e.cells[1] = b;
+					e.normal *= -1;
 				}
+				//distance between cell centers
+				//e.cellDist = real3::length(cells[b].pos - cells[a].pos);
+				//distance projected to edge normal
+				e.cellDist = fabs(real3::dot(e.normal, cells[b].pos - cells[a].pos));
+			} else if (a != -1) {
+				e.cellDist = real3::length(cells[a].pos - e.pos) * 2.;
+			} else {
+				throw Common::Exception() << "you are here";
 			}
 		}
 	}
@@ -319,48 +382,74 @@ protected:
 		return Mesh::create();
 	}
 };
-	
 
-//2D polygon volume
-static real polyVol(const std::vector<real3>& vs) {
-	size_t n = vs.size();
-	real v = 0;
-	for (size_t i = 0; i < n; ++i) {
-		real3 pi = vs[i];
-		real3 pj = vs[(i+1)%n];
-		v += pi(0) * pj(1) - pi(1) * pj(0);
-	}
-	return .5 * v;
+static real volumeOfParallelogram(real2 a, real2 b) {
+	return a(0) * b(1)
+		- a(1) * b(0);
 }
 
-template<typename I, typename F>
-static bool contains(
-	real3 pos,
-	I begin,
-	I end,
-	F f
-) {
-	I i = begin;
-	using V = decltype(f(*i));
-	V first = f(*i);
-	V prev = first;
+//2D polygon volume
+static real polygonVolume(const std::vector<real3>& vs) {
+	size_t n = vs.size();
+	real volume = 0;
+	for (size_t i = 0; i < n; ++i) {
+		const real3 &a = vs[i];
+		const real3 &b = vs[(i+1)%n];
+		volume += volumeOfParallelogram(
+			real2([&a](int j) -> real { return a(j); }),
+			real2([&b](int j) -> real { return b(j); })
+		);
+	}
+	return .5 * volume;
+}
 
-	auto check = [pos](V prev, V cur) -> bool {
-		real3 pi = prev - pos;
-		real3 pj = cur - pos;
-		real vz = pi(0) * pj(1) - pi(1) * pj(0);
-		return vz < 0;
+//3D polygon volume
+//epsilon_ijk a^i b^j c^k
+static real volumeOfParallelippid(real3 a, real3 b, real3 c) {
+	return a(0) * b(1) * c(2)
+		+ a(1) * b(2) * c(0)
+		+ a(2) * b(0) * c(1)
+		- c(0) * b(1) * a(2)
+		- c(1) * b(2) * a(0)
+		- c(2) * b(0) * a(1);
+}
+
+//3D polygon volume
+static real polyhedronVolume(const std::vector<real3>& vtxs, const std::vector<std::vector<int>>& faces) {
+	real volume = 0;
+	for (const auto& face : faces) {
+		for (int i = 2; i < (int)face.size(); ++i) {
+			//tri from 0, i-1, 1
+			const real3& a = vtxs[face[0]];
+			const real3& b = vtxs[face[i-1]];
+			const real3& c = vtxs[face[i]];
+			volume += volumeOfParallelippid(a, b, c);
+		}
+	}
+	//volume of n-sided pyramid in nD is volume of parallelogram divided by 1/n!
+	return volume / 6.;
+}
+
+//2D polygon contains
+template<typename I, typename F>
+static bool contains(real2 pos, I begin, I end, F f) {
+	auto check = [pos](real2 prev, real2 cur) -> bool {
+		return volumeOfParallelogram(prev - pos, cur - pos) < 0;
 	};
+	
+	I i = begin;
+	real2 first = f(*i);
+	real2 prev = first;
 	if (i != end) {
 		for (++i; i != end; ++i) {
-			V cur = f(*i);
+			real2 cur = f(*i);
 			if (!check(prev, cur)) return false;
 			prev = cur;
 		}
 	}
+	
 	check(prev, first);
 	return true;
-
 }
 
 };
