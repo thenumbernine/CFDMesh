@@ -102,7 +102,7 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 	struct InitCondConst : public InitCond {
 		using InitCond::InitCond;
 		
-		Prim_<float> W = Prim_<float>(1, float3(), 1);
+		Prim W = Prim(1, float3(), 1);
 		
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("W", &InitCondConst::W)
@@ -136,8 +136,8 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 	struct InitCondSod : public InitCond {
 		using InitCond::InitCond;
 		
-		Prim_<float> WL = Prim_<float>(1, float3(), 1);
-		Prim_<float> WR = Prim_<float>(.125, float3(), .1);
+		Prim WL = Prim(1, float3(), 1);
+		Prim WR = Prim(.125, float3(), .1);
 
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("WL", &InitCondSod::WL),
@@ -166,8 +166,8 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		float backgroundPressure = 2.5;
 		float velocity = .5;
 		
-		Prim_<float> Win = Prim_<float>(2, float3(-.5, 0), 2.5);
-		Prim_<float> Wout = Prim_<float>(1, float3(.5, 0), 2.5);
+		Prim Win = Prim(2, float3(-.5, 0), 2.5);
+		Prim Wout = Prim(1, float3(.5, 0), 2.5);
 	
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("rhoIn", &InitCondKelvinHelmholtz::rhoIn),

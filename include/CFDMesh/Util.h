@@ -68,27 +68,4 @@ inline real3 rotateFrom(real3 v, real3 n) {
 	);
 }
 
-// https://stackoverflow.com/a/6894436
-template<std::size_t I = 0, typename FuncT, typename... Tp>
-inline typename std::enable_if_t<I == sizeof...(Tp), void>
-tuple_for_each(const std::tuple<Tp...> &, FuncT) // Unused arguments are given no names.
-{ }
-
-template<std::size_t I = 0, typename FuncT, typename... Tp>
-inline typename std::enable_if_t<I < sizeof...(Tp), void>
-tuple_for_each(const std::tuple<Tp...>& t, FuncT f)
-{
-	f(std::get<I>(t), I);
-	tuple_for_each<I + 1, FuncT, Tp...>(t, f);
-}
-
-
-//https://stackoverflow.com/a/43211852
-template<typename T> struct MemberPointerInfo {};
-template<typename ClassType_, typename FieldType_>
-struct MemberPointerInfo<FieldType_ ClassType_::*> {
-	using ClassType = ClassType_;
-	using FieldType = FieldType_;
-};
-
 }

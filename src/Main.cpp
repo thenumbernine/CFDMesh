@@ -143,14 +143,7 @@ struct Simulation : public ISimulation {
 		virtual real2 coordChart(real2 x) const { return x; }
 		
 		virtual void updateGUI() {
-			
-			//if you do not explicilty provide the template class then nothing shows up
-			// mind you, in CFDMesh::updateGUI, I have a member detect for 'fields'
-			// and in the child classes no such 'fields' exists
-			//CFDMesh::updateGUI(this);
-		
-			//explicitly stating the template parameter doesn't help
-			//CFDMesh::updateGUI<Chart2DMeshFactory>(this);
+			CFDMesh::updateGUI(this);
 		}
 	};
 

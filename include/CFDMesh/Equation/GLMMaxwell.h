@@ -82,8 +82,8 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 	struct InitCondDefault : public InitCond {
 		using InitCond::InitCond;
 		
-		Cons_<float> UL = Cons_<float>(float3(1, 1, 0), float3(0, -1, 1), 0, 0, 1, 1);
-		Cons_<float> UR = Cons_<float>(float3(-1, 1, 0), float3(0, -1, -1), 0, 0, 1, 1);
+		Cons UL = Cons(float3(1, 1, 0), float3(0, -1, 1), 0, 0, 1, 1);
+		Cons UR = Cons(float3(-1, 1, 0), float3(0, -1, -1), 0, 0, 1, 1);
 	
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("UL", &InitCondDefault::UL),

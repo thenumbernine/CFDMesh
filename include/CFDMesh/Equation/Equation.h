@@ -1,7 +1,8 @@
 #pragma once
 
 #include "CFDMesh/Vector.h"
-#include "CFDMesh/Util.h"
+#include "CFDMesh/Util.h"	//map
+#include "Common/Meta.h"
 #include "Common/crtp_cast.h"
 #include <vector>
 #include <memory>
@@ -65,9 +66,9 @@ struct Equation {
 		crtp_cast<Base>(*this).buildInitCondsAndDisplayVars();
 
 		//cycle through the Cons::fields tuple and add each of these
-		tuple_for_each(Cons::fields, [this](auto x, size_t i) constexpr {
+		Common::TupleForEach(Cons::fields, [this](auto x, size_t i) constexpr {
 			auto field = x.second;
-			using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			addDisplayForType<FieldType>(
 				x.first, 
 				[field](const Base* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
@@ -77,9 +78,9 @@ struct Equation {
 		});
 
 		if constexpr (!std::is_same_v<Cons, Prim>) {
-			tuple_for_each(Prim::fields, [this](auto x, size_t i) constexpr {
+			Common::TupleForEach(Prim::fields, [this](auto x, size_t i) constexpr {
 				auto field = x.second;
-				using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+				using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 				addDisplayForType<FieldType>(
 					x.first, 
 					[field](const Base* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
@@ -132,9 +133,9 @@ struct Equation {
 	}
 
 	Cons rotateTo(Cons U, const real3& normal) {
-		tuple_for_each(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
+		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
 			auto field = x.second;
-			using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = CFDMesh::rotateTo<real3>(U.*field, normal);
 				
@@ -144,9 +145,9 @@ struct Equation {
 	}
 
 	Cons rotateFrom(Cons U, const real3& normal) {
-		tuple_for_each(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
+		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
 			auto field = x.second;
-			using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = CFDMesh::rotateFrom<real3>(U.*field, normal);
 				
@@ -156,9 +157,9 @@ struct Equation {
 	}
 
 	Cons reflect(Cons U, const real3& normal, real restitution) {
-		tuple_for_each(Cons::fields, [&U, &normal, restitution](auto x, size_t i) constexpr {
+		Common::TupleForEach(Cons::fields, [&U, &normal, restitution](auto x, size_t i) constexpr {
 			auto field = x.second;
-			using FieldType = typename MemberPointerInfo<decltype(field)>::FieldType;
+			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = U.*field - normal * ((1 + restitution) * real3::dot(normal, U.*field));
 			}
