@@ -57,6 +57,7 @@ struct ISimulation {
 
 template<typename real, int dim, typename ThisEquation>
 struct Simulation : public ISimulation {
+	using This = Simulation;
 	using Super = ISimulation;
 
 	using WaveVec = typename ThisEquation::WaveVec;
@@ -97,6 +98,51 @@ struct Simulation : public ISimulation {
 	float cfl = .5;
 
 	int meshGenerationIndex = 0;
+
+	//TODO
+	//this is not just reflection, but also has a lot of gui-specific data tied into it
+	//maybe I should call it a separate variable, like 'gui =' instead of 'fields =' ... ?
+	static constexpr auto fields = std::make_tuple(
+		std::make_tuple("time", &This::time, GUIReadOnly()),
+		
+		//these are in Super ... inherit them automatically plz
+		std::make_pair("running", &Super::running),
+		std::make_pair("step", &Super::singleStep),	//TODO as a button? with lambdas maybe?
+		//std::make_pair("mousepos", &Super::mousepos),		//TODO as a hover text / readonly
+
+		std::make_pair("cfl", &This::cfl),
+		std::make_pair("show vtxs", &This::showVtxs),
+		std::make_pair("show edges", &This::showEdges),
+		std::make_pair("show cell centers", &This::showCellCenters),
+		GUISeparator(),
+		
+		std::make_pair("display method", &This::displayMethodIndex),	//TODO combo from displayMethodNames
+		std::make_pair("auto display range", &This::displayAutomaticRange),
+		std::make_pair("display value range", &This::displayValueRange),
+		GUISeparator(),
+		
+		std::make_pair("restitution", &This::restitution),
+		GUISeparator(),
+		
+		std::make_pair("flux", &This::calcFluxIndex),	//TODO combo from calcFluxNames
+		GUISeparator(),
+
+//		GUICall<This>([](This* sim) { sim->eqn.updateGUI(); }),
+
+		GUISeparator(),
+		
+		std::make_pair("init cond", &This::initCondIndex),	//TODO combo from initCondNames
+		//TODO eqn.initConds[initCondIndex]->updateGUI() here
+		
+		std::make_pair("reset state", &This::resetState),	//button, not a field ... hmm 
+		GUISeparator(),
+		
+		std::make_pair("mesh generation", &This::meshGenerationIndex),	//TODO combo from meshGenerationNames
+		//TODO meshGenerators[meshGenerationIndex]->updateGUI() here
+		
+		std::make_pair("reset mesh", &This::resetMesh),	//button
+		GUISeparator()
+	);
 
 	Simulation(CFDMeshApp* app_) : Super(app_) {
 		
@@ -380,9 +426,9 @@ for (int i = 0; i < Cons::size; ++i) {
 };
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
-	{"Euler 2D", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real>>>(app); }},
-	{"GLM-Maxwell 2D", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
-	//{"Euler 3D", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real>>>(app); }},
+	{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real>>>(app); }},
+	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
+	//{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<
@@ -506,6 +552,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 template<typename real, int dim, typename Equation>
 void Simulation<real, dim, Equation>::updateGUI() {
 
+#if 1
 	igText("time: %f", time);
 	igCheckbox("running", &running);
 	
@@ -574,6 +621,9 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	}
 	
 	igSeparator();
+#else
+	CFDMesh::updateGUI(this);
+#endif
 
 	if (app->view == app->viewOrtho) {
 		//find the view bounds

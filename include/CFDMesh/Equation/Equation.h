@@ -156,6 +156,9 @@ struct Equation {
 		return U;
 	}
 
+	//TODO - restitution isn't the only solution
+	// at the moment if an edge is only connected to one face then it will not update
+	// and that means if there are constant values on both faces of the other edges ... 
 	Cons reflect(Cons U, const real3& normal, real restitution) {
 		Common::TupleForEach(Cons::fields, [&U, &normal, restitution](auto x, size_t i) constexpr {
 			auto field = x.second;

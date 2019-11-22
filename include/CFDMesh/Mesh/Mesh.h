@@ -47,8 +47,8 @@ struct Face {
 	real3 pos;
 	real3 delta;
 	real3 normal;
-	real length;	//space taken up by the face
-	real cellDist;	//dist between adjacent cell centers
+	real length = 0;	//space taken up by the face
+	real cellDist = 0;	//dist between adjacent cell centers
 	
 	int cells[2];	//there are always only 2 n-forms on either side of a (n-1)-form
 	
@@ -56,13 +56,13 @@ struct Face {
 	//they are required for determining the interface area which is then used by the finite volume algorithm
 	//also used by the renderer
 	//however, note, in n>2 dimensions, a (n-1)-form will be defined by an arbitrary number of vertices (more than just two)
-	int vtxs[2];
+	//int vtxs[2];
+	int vtxOffset = 0;
+	int vtxCount = 0;
 	
 	Cons flux;
 	
-	Face(int va, int vb) : length(0), cellDist(0) {
-		vtxs[0] = va;
-		vtxs[1] = vb;
+	Face() {
 		cells[0] = -1;
 		cells[1] = -1;
 	}
@@ -126,7 +126,7 @@ public:
 	
 	std::vector<int> cellFaceIndexes;
 	std::vector<int> cellVtxIndexes;
-
+	std::vector<int> faceVtxIndexes;
 
 	friend struct MeshFactory;
 	
@@ -136,35 +136,66 @@ public:
 
 	int addFace(const int* vs, int n) {
 		//static_assert(dim == 2, "you are here");
-		//if constexpr (dim == 2) {
-			int va = vs[0];
-			int vb = vs[1];
-			int ei = 0;
-			for (; ei < (int)faces.size(); ++ei) {
-				Face* e = &faces[ei];
-				if ((e->vtxs[0] == va && e->vtxs[1] == vb) ||
-					(e->vtxs[0] == vb && e->vtxs[1] == va)) 
-				{
-					return ei;
+		int fi = 0;
+		for (; fi < (int)faces.size(); ++fi) {
+			Face* f = &faces[fi];
+			if constexpr (dim == 2) {
+				int va = vs[0];
+				int vb = vs[1];
+				if (f->vtxCount == 2) {
+					if ((faceVtxIndexes[f->vtxOffset+0] == va && faceVtxIndexes[f->vtxOffset+1] == vb) ||
+						(faceVtxIndexes[f->vtxOffset+0] == vb && faceVtxIndexes[f->vtxOffset+1] == va)) 
+					{
+						return fi;
+					}
+				}
+			} else if constexpr (dim == 3) {
+				for (int j = 0; j < n; ++j) {
+					//check in one direction
+					bool matches = true;
+					for (int i = 0; i < n; ++i) {
+						if (faceVtxIndexes[f->vtxOffset+i] != vs[(i+j)%n]) {
+							matches = false;
+							break;
+						}
+					}
+					if (!matches) return fi;
+				
+					//check in the other direction
+					matches = true;
+					for (int i = 0; i < n; ++i) {
+						if (faceVtxIndexes[f->vtxOffset+i] != vs[(i+j)%n]) {
+							matches = false;
+							break;
+						}
+					}
+					if (!matches) return fi;
 				}
 			}
-			assert(ei == (int)faces.size());
-			faces.push_back(Face(va, vb));
+		}
 		
-			Face& e = faces.back();
-			{
-				auto& a = vtxs[e.vtxs[0]];
-				auto& b = vtxs[e.vtxs[1]];
-				e.pos = (a.pos + b.pos) * .5;
-				e.delta = a.pos - b.pos;
-				e.length = real3::length(e.delta);
-				e.normal = real3(e.delta(1), -e.delta(0));
-				e.normal *= 1. / real3::length(e.normal);
-			}
-//		} else if constexpr (dim != 2) {
-//			static_assert(false, "you are here");
-			return ei;
-//		}
+		assert(fi == (int)faces.size());
+		faces.push_back(Face());
+	
+		Face& f = faces.back();
+		
+		f.vtxOffset = faceVtxIndexes.size();
+		for (int i = 0; i < n; ++i) {
+			faceVtxIndexes.push_back(vs[i]);
+		}
+		f.vtxCount = faceVtxIndexes.size() - f.vtxOffset;
+
+		//TODO calc these for n=3
+		static_assert(dim == 2);
+		auto& a = vtxs[vs[0]];
+		auto& b = vtxs[vs[1]];
+		f.pos = (a.pos + b.pos) * .5;
+		f.delta = a.pos - b.pos;
+		f.length = real3::length(f.delta);
+		f.normal = real3(f.delta(1), -f.delta(0));
+		f.normal *= 1. / real3::length(f.normal);
+		
+		return fi;
 	}
 
 	void addCell(std::vector<int> vis) {
@@ -188,14 +219,22 @@ public:
 		} else if constexpr (dim == 3) {
 			//face is a 2-form
 			assert(vis.size() == 8);	//only adding cubes at the moment
-		
+/*
+  6----7
+ /|   /|
+4----5 |
+| |  | |  z
+| 2--|-3  ^ y
+|/   |/   |/
+0----1    *-> x
+*/
 			std::vector<std::vector<int>> cubeSides = {
-				{2,3,1,0},
-				{4,5,7,6},
-				{0,1,5,4},
-				{2,3,7,6},
-				{0,2,6,4},
-				{1,3,7,5},
+				{0,4,6,2},	//x-
+				{1,3,7,5},	//x+
+				{0,1,5,4},	//y-
+				{2,6,7,3},	//y+
+				{0,2,3,1},	//z-
+				{4,5,7,6},	//z+
 			};		
 			
 			for (auto side : cubeSides) {
@@ -239,7 +278,7 @@ public:
 
 		assert(c.volume > 0);
 
-#if 1	//vertex average
+#if 0	//vertex average
 		//TODO use COM
 		c.pos = sum(map<
 			std::vector<int>,
@@ -252,7 +291,7 @@ public:
 			for (int i = 0; i < (int)n; ++i) {
 				real3 x1 = vtxs[vis[i]].pos;
 				real3 x2 = vtxs[vis[(i+1)%n]].pos;
-				c.pos(j) += (x1(j) + x2(j)) / (x1(0) * x2(1) - x1(1) * x2(0));
+				c.pos(j) -= (x1(j) + x2(j)) / (x1(0) * x2(1) - x1(1) * x2(0));
 			}
 			c.pos(j) /= (6 * c.volume);
 		}
@@ -359,9 +398,9 @@ public:
 		}
 		if (showEdges) {
 			glBegin(GL_LINES);
-			for (const auto& e : faces) {
-				for (int vi : e.vtxs) {
-					glVertex2v(vtxs[vi].pos.v);
+			for (const auto& f : faces) {
+				for (int vi = 0; vi < f.vtxCount; ++vi) {
+					glVertex2v(vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos.v);
 				}
 			}
 			glEnd();
@@ -370,19 +409,6 @@ public:
 	}
 };
 
-
-struct MeshFactory {
-	const char* name = nullptr;
-	
-	MeshFactory(const char* name_) : name(name_) {}
-	virtual ~MeshFactory() {}
-	virtual void updateGUI() {}
-	virtual std::shared_ptr<Mesh> createMesh() = 0;
-protected:
-	virtual std::shared_ptr<Mesh> createMeshSuper() const {
-		return Mesh::create();
-	}
-};
 
 static real volumeOfParallelogram(real2 a, real2 b) {
 	return a(0) * b(1)
@@ -453,6 +479,19 @@ static bool contains(real2 pos, I begin, I end, F f) {
 }
 
 
+struct MeshFactory {
+	const char* name = nullptr;
+	
+	MeshFactory(const char* name_) : name(name_) {}
+	virtual ~MeshFactory() {}
+	virtual void updateGUI() {}
+	virtual std::shared_ptr<Mesh> createMesh() = 0;
+protected:
+	virtual std::shared_ptr<Mesh> createMeshSuper() const {
+		return Mesh::create();
+	}
+};
+
 struct FileMeshFactory : public MeshFactory {
 	std::string filename = {"grids/n0012_113-33.p2dfmt"};
 	
@@ -502,11 +541,11 @@ struct FileMeshFactory : public MeshFactory {
 struct Chart2DMeshFactory : public MeshFactory {
 	using This = Chart2DMeshFactory; 
 	
-	int2 size = int2(101, 101);
+	int2 size = int2(100, 100);
 	float2 mins = real2(-1, -1);
 	float2 maxs = real2(1, 1);
-	int2 repeat = int2(0, 0);
-	int2 capmin = int2(0, 0);
+	bool2 repeat = bool2(false, false);
+	bool2 capmin = bool2(false, false);
 	
 	static constexpr auto fields = std::make_tuple(
 		std::make_pair("size", &This::size),
@@ -532,8 +571,8 @@ struct TriUnitMeshFactory : public Chart2DMeshFactory {
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 		
-		int m = Super::size(0);
-		int n = Super::size(1);
+		int m = Super::size(0) + 1;
+		int n = Super::size(1) + 1;
 	
 		mesh->vtxs.resize(m * n);
 		for (int j = 0; j < n; ++j) {
@@ -570,7 +609,7 @@ struct QuadUnitMeshFactory : public Chart2DMeshFactory {
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 
-		int2 n = Super::size;
+		int2 n = Super::size + 1;
 		int2 step(1, n(0));
 		int vtxsize = n.volume();
 		if (Super::capmin(0)) vtxsize++;
@@ -666,11 +705,11 @@ struct TwistQuadUnitMeshFactory : public QuadUnitMeshFactory {
 struct DonutQuadUnitMeshFactory : public QuadUnitMeshFactory {
 	using Super = QuadUnitMeshFactory;
 	DonutQuadUnitMeshFactory() : Super("polar") {
-		Super::size = int2(51, 201);
+		Super::size = int2(50, 200);
 		Super::mins = real2(.5, 0);
 		Super::maxs = real2(1, 2*M_PI);
-		Super::repeat = int2(0, 1);
-		//Super::capmin = int2(1, 0);
+		Super::repeat = bool2(false, true);
+		//Super::capmin = int2(true, false);
 	}
 	virtual real2 coordChart(real2 v) const {
 		return real2(cos(v(1)), sin(v(1))) * v(0);
@@ -679,6 +718,7 @@ struct DonutQuadUnitMeshFactory : public QuadUnitMeshFactory {
 
 //not inheriting from QuadUnitMeshFactory because it has variable size and we want fixed size (based on image size)
 struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
+	using This = QuadUnitBasedOnImageMeshFactory;
 	using Super = Chart2DMeshFactory;
 	QuadUnitBasedOnImageMeshFactory() : Super("unit based on image") {}
 
@@ -729,22 +769,27 @@ struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
 
 	//override Chart2DMeshFactory and get rid of size
 	//TODO add in imageFilename
+	//TODO TODO if you use fields for anything else, consider a readonly modifier
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("mins", &Super::mins),
+		std::make_pair("maxs", &Super::maxs),
+		std::make_pair("repeat", &Super::repeat),
+		std::make_pair("capmin", &Super::capmin),
+		std::make_pair("imageFilename", &This::imageFilename)
+	);
+
 	virtual void updateGUI() {
-		//igInputInt2("size", size.v, 0);
-		igInputFloat2("mins", Super::mins.v, "%f", 0);
-		igInputFloat2("maxs", Super::maxs.v, "%f", 0);
-		igInputInt2("repeat", Super::repeat.v, 0);
-		igInputInt2("capmin", Super::capmin.v, 0);
+		CFDMesh::updateGUI(this);
 	}
 };
 
 struct Chart3DMeshFactory : public MeshFactory {
 	using This = Chart3DMeshFactory;
 	
-	int3 size = int3(31,31,31);
+	int3 size = int3(10,10,10);
 	float3 mins = float3(-1, -1, -1);
 	float3 maxs = float3(1, 1, 1);
-	int3 repeat = int3(0,0,0);
+	bool3 repeat;
 
 	//TODO support for inheritence and reflection
 	static constexpr auto fields = std::make_tuple(
@@ -770,7 +815,7 @@ struct CubeUnitMeshFactory : public Chart3DMeshFactory {
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 	
-		int3 n = Super::size;
+		int3 n = Super::size + 1;
 		int vtxsize = n.volume();
 		mesh->vtxs.resize(vtxsize);
 		int3 i;
@@ -818,8 +863,6 @@ struct CubeUnitMeshFactory : public Chart3DMeshFactory {
 static std::vector<std::shared_ptr<MeshFactory>> getGens() {
 	if constexpr (dim == 2) {
 		return std::vector<std::shared_ptr<MeshFactory>>{
-		
-			//2D
 			std::make_shared<QuadUnitMeshFactory>(),
 			std::make_shared<TriUnitMeshFactory>(),
 			std::make_shared<QuadUnitCbrtMeshFactory>(),
@@ -828,11 +871,9 @@ static std::vector<std::shared_ptr<MeshFactory>> getGens() {
 			std::make_shared<DonutQuadUnitMeshFactory>(),
 			std::make_shared<QuadUnitBasedOnImageMeshFactory>(),
 			std::make_shared<FileMeshFactory>(),
-
 		};
 	} else if constexpr (dim == 3) {
 		return std::vector<std::shared_ptr<MeshFactory>>{
-			//3D
 			std::make_shared<CubeUnitMeshFactory>(),
 		};
 	}
