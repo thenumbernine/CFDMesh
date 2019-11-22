@@ -331,19 +331,6 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		return vars.v + vars.Cs;
 	}
 
-	static Cons matmul(const real* A, const Cons& x) {
-		Cons y;
-		for (int i = 0; i < Cons::size; ++i) {
-			real sum = 0;
-			for (int j = 0; j < Cons::size; ++j) {
-				//C layout, so row-major
-				sum += A[j + Cons::size * i] * x(j);
-			}
-			y(i) = sum;
-		}
-		return y;
-	}
-
 	Cons apply_evL(Cons x, const Eigen& vars) {
 		const real& Cs = vars.Cs;
 		const real3& v = vars.v;
@@ -353,14 +340,13 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		const real& vz = v(2);
 		real CsSq = Cs * Cs;
 		real gamma_1 = heatCapacityRatio - 1;
-		real evL[5][5] = {
-			{(.5 * gamma_1 * vSq + Cs * vx) / (2 * CsSq),	(-Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
-			{1 - gamma_1 * vSq / (2 * CsSq),				gamma_1 * vx / CsSq,				gamma_1 * vy / CsSq,			gamma_1 * vz / CsSq,		-gamma_1 / CsSq,		},
-			{-vy,											0,									1,								0,							0,						}, 
-			{-vz,											0,									0,								1,							0,						},
-			{(.5 * gamma_1 * vSq - Cs * vx) / (2 * CsSq),	(Cs - gamma_1 * vx) / (2 * CsSq),	-gamma_1 * vy / (2 * CsSq),		-gamma_1 * vz / (2 * CsSq),	gamma_1 / (2 * CsSq),	},
-		};
-		return matmul(&evL[0][0], x);
+		Cons y;
+		y.ptr[0] = x.ptr[0]*((.5 * gamma_1 * vSq + Cs * vx) / (2 * CsSq)) + x.ptr[1]*((-Cs - gamma_1 * vx) / (2 * CsSq)) + x.ptr[2]*(-gamma_1 * vy / (2 * CsSq)) + x.ptr[3]*(-gamma_1 * vz / (2 * CsSq)) + x.ptr[4]*(gamma_1 / (2 * CsSq));
+		y.ptr[1] = x.ptr[0]*(1 - gamma_1 * vSq / (2 * CsSq)) + x.ptr[1]*(gamma_1 * vx / CsSq) + x.ptr[2]*(gamma_1 * vy / CsSq) + x.ptr[3]*(gamma_1 * vz / CsSq) + x.ptr[4]*(-gamma_1 / CsSq);
+		y.ptr[2] = x.ptr[0]*(-vy) + x.ptr[1]*(0) + x.ptr[2]*(1) + x.ptr[3]*(0) + x.ptr[4]*(0); 
+		y.ptr[3] = x.ptr[0]*(-vz) + x.ptr[1]*(0) + x.ptr[2]*(0) + x.ptr[3]*(1) + x.ptr[4]*(0);
+		y.ptr[4] = x.ptr[0]*((.5 * gamma_1 * vSq - Cs * vx) / (2 * CsSq)) + x.ptr[1]*((Cs - gamma_1 * vx) / (2 * CsSq)) + x.ptr[2]*(-gamma_1 * vy / (2 * CsSq)) + x.ptr[3]*(-gamma_1 * vz / (2 * CsSq)) + x.ptr[4]*(gamma_1 / (2 * CsSq));
+		return y;
 	}
 
 	Cons apply_evR(Cons x, const Eigen& vars) {
@@ -371,14 +357,13 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 		const real& vx = v(0);
 		const real& vy = v(1);
 		const real& vz = v(2);
-		real evR[5][5] = {
-			{1, 				1, 			0,		0,		1,				},
-			{vx - Cs, 			vx, 		0,		0,		vx + Cs,		},
-			{vy,				vy,			1,		0,		vy,				},
-			{vz,				vz,			0,		1,		vz,				},
-			{hTotal - Cs * vx, .5 * vSq, 	vy,		vz,		hTotal + Cs * vx},
-		};
-		return matmul(&evR[0][0], x);
+		Cons y;
+		y.ptr[0] = x.ptr[0]*(1) + x.ptr[1]*(1) + x.ptr[2]*(0) + x.ptr[3]*(0) + x.ptr[4]*(1);
+		y.ptr[1] = x.ptr[0]*(vx - Cs) + x.ptr[1]*(vx) + x.ptr[2]*(0) + x.ptr[3]*(0) + x.ptr[4]*(vx + Cs);
+		y.ptr[2] = x.ptr[0]*(vy) + x.ptr[1]*(vy) + x.ptr[2]*(1) + x.ptr[3]*(0) + x.ptr[4]*(vy);
+		y.ptr[3] = x.ptr[0]*(vz) + x.ptr[1]*(vz) + x.ptr[2]*(0) + x.ptr[3]*(1) + x.ptr[4]*(vz);
+		y.ptr[4] = x.ptr[0]*(hTotal - Cs * vx) + x.ptr[1]*(.5 * vSq) + x.ptr[2]*(vy) + x.ptr[3]*(vz) + x.ptr[4]*(hTotal + Cs * vx);
+		return y;
 	}
 
 	Cons calcFluxFromCons(Cons U) {

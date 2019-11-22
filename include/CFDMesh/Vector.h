@@ -2,6 +2,12 @@
 
 #include "Tensor/Vector.h"
 
+//TODO move these to Tensor/Vector.h
+
+using bool2 = Tensor::Vector<bool, 2>;
+using bool3 = Tensor::Vector<bool, 3>;
+using bool4 = Tensor::Vector<bool, 4>;
+
 using uchar2 = Tensor::Vector<unsigned char, 2>;
 using uchar3 = Tensor::Vector<unsigned char, 3>;
 using uchar4 = Tensor::Vector<unsigned char, 4>;
@@ -18,8 +24,10 @@ using double2 = Tensor::Vector<double, 2>;
 using double3 = Tensor::Vector<double, 3>;
 using double4 = Tensor::Vector<double, 4>;
 
+
 //for giving operators to the Cons and Prim vector classes
-//how can you add correctly-typed ops via crtp to a union?  unions can't inherit.
+//how can you add correctly-typed ops via crtp to a union?
+//unions can't inherit.
 //until then...
 
 #define ADD_VECTOR_OP(classname, op)\

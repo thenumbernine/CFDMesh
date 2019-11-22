@@ -38,17 +38,17 @@ struct UpdateGUI {
 template<typename T>
 struct UpdateGUI<Tensor::Vector<T, 2>> {
 	static void exec(Tensor::Vector<T, 2>* ptr, std::string prefix) {
-		UpdateGUI<T>::exec(ptr->v+0, prefix + ".x");
-		UpdateGUI<T>::exec(ptr->v+1, prefix + ".y");
+		UpdateGUI<T>::exec(ptr->v+0, prefix + " 0");
+		UpdateGUI<T>::exec(ptr->v+1, prefix + " 1");
 	}
 };
 
 template<typename T>
 struct UpdateGUI<Tensor::Vector<T, 3>> {
 	static void exec(Tensor::Vector<T, 3>* ptr, std::string prefix) {
-		UpdateGUI<T>::exec(ptr->v+0, prefix + ".x");
-		UpdateGUI<T>::exec(ptr->v+1, prefix + ".y");
-		UpdateGUI<T>::exec(ptr->v+2, prefix + ".z");
+		UpdateGUI<T>::exec(ptr->v+0, prefix + " 0");
+		UpdateGUI<T>::exec(ptr->v+1, prefix + " 1");
+		UpdateGUI<T>::exec(ptr->v+2, prefix + " 2");
 	}
 };
 
