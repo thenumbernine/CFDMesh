@@ -79,17 +79,22 @@ struct Simulation : public ISimulation {
 
 	double time = 0;
 	
-	bool showVtxs = false;
-	bool showEdges = false;
-	bool showCellCenters = false;
+	using ValueRange = std::pair<float, float>; //min, max
+	ValueRange displayValueRange = ValueRange(0, 1);
+	
 	int selectedCellIndex = -1;
+	
+	bool showCells = true;
+	bool showVtxs = false;
+	bool showFaces = false;
+	bool showFaceCenters = false;
+	bool showCellCenters = false;
+
+	float cellScale = 1;
 
 	bool displayAutomaticRange = true;
 	int displayMethodIndex = 0;
 	
-	using ValueRange = std::pair<float, float>; //min, max
-	ValueRange displayValueRange = ValueRange(0, 1);
-
 	int initCondIndex = 0;
 
 	//1 = mirror boundary, -1 = freeflow boundary
@@ -111,9 +116,13 @@ struct Simulation : public ISimulation {
 		//std::make_pair("mousepos", &Super::mousepos),		//TODO as a hover text / readonly
 
 		std::make_pair("cfl", &This::cfl),
+		
+		std::make_pair("show cells", &This::showCells),
 		std::make_pair("show vtxs", &This::showVtxs),
-		std::make_pair("show edges", &This::showEdges),
+		std::make_pair("show faces", &This::showFaces),
+		std::make_pair("show face centers", &This::showFaceCenters),
 		std::make_pair("show cell centers", &This::showCellCenters),
+		std::make_pair("cell scale", &This::cellScale),
 		GUISeparator(),
 		
 		std::make_pair("display method", &This::displayMethodIndex),	//TODO combo from displayMethodNames
@@ -143,6 +152,7 @@ struct Simulation : public ISimulation {
 		std::make_pair("reset mesh", &This::resetMesh),	//button
 		GUISeparator()
 	);
+
 
 	Simulation(CFDMeshApp* app_) : Super(app_) {
 		
@@ -426,9 +436,10 @@ for (int i = 0; i < Cons::size; ++i) {
 };
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
-	//{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real>>>(app); }},
-	//{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
 	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real>>>(app); }},
+	
+	{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real>>>(app); }},
+	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<
@@ -448,6 +459,13 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 	GLuint gradientTex = {};
 
+	int simGenIndex = 0;
+
+	int viewIndex = 0;
+	std::vector<std::shared_ptr<::GLApp::View>> views;
+	std::vector<const char*> viewNames = {"ortho", "frustum"};
+
+
 	virtual const char* getTitle() { return "CFD Mesh"; }
 
 	virtual void init(const Init& args) {
@@ -457,6 +475,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		
 		view = viewOrtho;
 		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
+
+		views = decltype(views){viewOrtho, viewFrustum};
 
 		std::vector<float4> gradientColors = {
 			{1,0,0,1},
@@ -493,10 +513,10 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 		glBindTexture(GL_TEXTURE_1D, 0);
 
+		glEnable(GL_DEPTH_TEST);
+
 		resetSimulation();
 	}
-	
-	int simGenIndex = 0;
 	
 	void resetSimulation() {
 		sim = simGens[simGenIndex].second(this);
@@ -508,7 +528,11 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		sim->draw();
 		
 		gui->onUpdate([this](){
-			
+
+			if (igCombo("view method", &viewIndex, viewNames.data(), viewNames.size(), -1)) {
+				view = views[viewIndex];
+			}
+
 			if (igCombo("simulation", &simGenIndex, simGenNames.data(), simGenNames.size(), -1)) {
 				resetSimulation();
 				return;
@@ -560,10 +584,12 @@ void Simulation<real, dim, Equation>::updateGUI() {
 
 	igInputFloat("cfl", &cfl, .1, 1, "%f", 0);
 
+	igCheckbox("showCells", &showCells);
 	igCheckbox("showVtxs", &showVtxs);
+	igCheckbox("showFaceCenters", &showFaceCenters);
 	igCheckbox("showCellCenters", &showCellCenters);
-	igCheckbox("showEdges", &showEdges);
-	//igCheckbox("ortho", &ortho);
+	igCheckbox("showFaces", &showFaces);
+	igInputFloat("cell scale", &cellScale, .1, 1, "%f", 0);
 
 	igSeparator();
 
@@ -692,15 +718,17 @@ void Simulation<real, dim, Equation>::updateGUI() {
 
 template<typename real, int dim, typename ThisEquation>
 void Simulation<real, dim, ThisEquation>::draw() {
-	m->draw(
-		app->gradientTex,
-		displayValueRange.first,
-		displayValueRange.second,
-		selectedCellIndex,
-		showVtxs,
-		showEdges,
-		showCellCenters
-	);
+	typename Mesh::DrawArgs args;
+	args.gradientTex = app->gradientTex;
+	args.displayValueRange = displayValueRange;
+	args.selectedCellIndex = selectedCellIndex;
+	args.showCells = showCells;
+	args.showVtxs = showVtxs;
+	args.showFaces = showFaces;
+	args.showFaceCenters = showFaceCenters;
+	args.showCellCenters = showCellCenters;
+	args.cellScale = cellScale;
+	m->draw(args);
 }
 
 }

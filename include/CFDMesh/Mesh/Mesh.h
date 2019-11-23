@@ -17,6 +17,10 @@ template<typename T> void glVertex2v(const T* v);
 template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
 template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
 
+template<typename T> void glVertex3v(const T* v);
+template<> void glVertex3v<float>(const float* v) { glVertex3fv(v); }
+template<> void glVertex3v<double>(const double* v) { glVertex3dv(v); }
+
 
 template<typename real3>
 inline real3 cross(real3 a, real3 b) {
@@ -179,7 +183,6 @@ using Cell = Cell_<real, Cons>;
 struct MeshFactory;
 
 struct Mesh {
-//liu kang wins.  friendship.
 protected:
 	//https://stackoverflow.com/questions/8147027/how-do-i-call-stdmake-shared-on-a-class-with-only-protected-or-private-const
 	struct ctorkey {
@@ -209,8 +212,7 @@ public:
 	virtual ~Mesh() {}
 
 
-	int addFace(const int* vs, int n) {
-		//static_assert(dim == 2, "you are here");
+	int addFaceForVtxs(const int* vs, int n) {
 		int fi = 0;
 		for (; fi < (int)faces.size(); ++fi) {
 			Face* f = &faces[fi];
@@ -234,7 +236,9 @@ public:
 							break;
 						}
 					}
-					if (!matches) return fi;
+					if (matches) {
+						return fi;
+					}
 				
 					//check in the other direction
 					matches = true;
@@ -244,14 +248,15 @@ public:
 							break;
 						}
 					}
-					if (!matches) return fi;
+					if (matches) {
+						return fi;
+					}
 				}
 			}
 		}
 		
 		assert(fi == (int)faces.size());
 		faces.push_back(Face());
-	
 		Face& f = faces.back();
 		
 		f.vtxOffset = faceVtxIndexes.size();
@@ -274,7 +279,7 @@ public:
 			for (int i = 0; i < n; ++i) {
 				polyVtxs[i] = vtxs[vs[i]].pos;
 			}
-			f.normal = cross(polyVtxs[2] - polyVtxs[1], polyVtxs[1] - polyVtxs[0]);
+			f.normal = cross(polyVtxs[1] - polyVtxs[0], polyVtxs[2] - polyVtxs[1]);
 			f.normal *= 1. / real3::length(f.normal);
 			f.area = polygon3DVolume(polyVtxs, f.normal);
 			f.pos = polygon3DCOM(polyVtxs, f.area, f.normal);
@@ -284,8 +289,25 @@ public:
 		return fi;
 	}
 
+	
+	int addFace(const int* vs, int n, int ci) {
+		int fi = addFaceForVtxs(vs, n);
+		Face& f = faces[fi];	
+		if (f.cells(0) == -1) {
+			f.cells(0) = ci;
+		} else if (f.cells(1) == -1) {
+			f.cells(1) = ci;
+		} else {
+			throw Common::Exception() << "tried to add too many cells to an edge";
+		}
+		return fi;
+	}
+
+
 	void addCell(std::vector<int> vis) {
-		Cell c;
+		int ci = (int)cells.size();
+		cells.push_back(Cell());
+		Cell& c = cells.back();
 		
 		size_t n = vis.size();
 	
@@ -299,7 +321,7 @@ public:
 			//face is a 1-form
 			for (size_t i = 0; i < n; ++i) {
 				int vtxs[2] = {vis[i], vis[(i+1)%n]}; 
-				cellFaceIndexes.push_back(addFace(vtxs, numberof(vtxs)));
+				cellFaceIndexes.push_back(addFace(vtxs, numberof(vtxs), ci));
 			}
 			std::vector<real2> polyVtxs = map<
 				std::vector<int>,
@@ -334,10 +356,10 @@ public:
 			};		
 			
 			for (auto side : cubeSides) {
-				addFace(map<
-					std::vector<int>,
-					std::vector<int>
-				>(side, [&vis](int side_i) -> int { return vis[side_i]; }).data(), side.size());
+				cellFaceIndexes.push_back(addFace(map<
+						std::vector<int>,
+						std::vector<int>
+					>(side, [&vis](int side_i) -> int { return vis[side_i]; }).data(), side.size(), ci));
 			}
 
 			std::vector<real3> polyVtxs = map<
@@ -356,26 +378,12 @@ public:
 		c.faceCount = (int)cellFaceIndexes.size() - c.faceOffset;
 
 		assert(c.volume > 0);
-
-		int ci = (int)cells.size();
-		cells.push_back(c);
-	
-		//for (int ei : c.faces) {
-		for (int ei = 0; ei < c.faceCount; ++ei) {
-			Face* e = &faces[cellFaceIndexes[ei+c.faceOffset]];
-			if (e->cells(0) == -1) {
-				e->cells(0) = ci;
-			} else if (e->cells(1) == -1) {
-				e->cells(1) = ci;
-			} else {
-				throw Common::Exception() << "tried to add too many cells to an edge";
-			}
-		}
 	}
 
 	//calculate edge info
 	//calculate cell volume info
 	void calcAux() {		
+#if 1
 		std::cout << "vtxs" << std::endl;
 		for (const auto& v : vtxs) {
 			std::cout << v << std::endl;
@@ -394,7 +402,7 @@ public:
 		std::cout << "cellFaceIndexes " << concat(cellFaceIndexes, ", ") << std::endl;
 		std::cout << "cellVtxIndexes " << concat(cellVtxIndexes, ", ") << std::endl;
 		std::cout << "faceVtxIndexes " << concat(faceVtxIndexes, ", ") << std::endl;
-
+#endif
 		
 		for (auto& e : faces) {
 			int a = e.cells(0);
@@ -418,42 +426,42 @@ public:
 		}
 	}
 
-	void draw(
-		int gradientTex,
-		float displayValueMin,
-		float displayValueMax,
-		int selectedCellIndex,
-		bool showVtxs,
-		bool showEdges,
-		bool showCellCenters
-	) {
-		glClear(GL_COLOR_BUFFER_BIT);
-
-		glEnable(GL_TEXTURE_1D);
-		glBindTexture(GL_TEXTURE_1D, gradientTex);
-
-		for (const auto& c : cells) {
-			real f = (c.displayValue - displayValueMin) / (displayValueMax - displayValueMin);
-			glColor3f(1,1,1);
-			glTexCoord1f(f);
-			glBegin(GL_POLYGON);
-			for (int vi = 0; vi < c.vtxCount; ++vi) {
-				glVertex2v(vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos.v);
-			}
-			glEnd();
-		}
+	struct DrawArgs {
+		using This = DrawArgs;
 		
-		glBindTexture(GL_TEXTURE_1D, 0);
-		glDisable(GL_TEXTURE_1D);
-		
-		if (selectedCellIndex != -1) {
-			Cell* selectedCell = &cells[selectedCellIndex];
+		int gradientTex = 0;
+		std::pair<float, float> displayValueRange = {};
+		int selectedCellIndex = -1;
+		bool showCells = true;
+		bool showVtxs = false;
+		bool showFaces = false;
+		bool showFaceCenters = false;
+		bool showCellCenters = false;
+		float cellScale = 1;
+
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("display value range", &This::displayValueRange),
+			std::make_pair("show cells", &This::showCells),
+			std::make_pair("show vertexes", &This::showVtxs),
+			std::make_pair("show faces", &This::showFaces),
+			std::make_pair("show face centers", &This::showFaceCenters),
+			std::make_pair("show cell centers", &This::showCellCenters),
+			std::make_pair("cell scale", &This::cellScale)
+		);
+	};
+
+	void draw(DrawArgs args) {
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		if (args.selectedCellIndex != -1) {
+			Cell& c = cells[args.selectedCellIndex];
 			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 			glLineWidth(3);
 			glColor3f(1,1,0);
 			glBegin(GL_POLYGON);
-			for (int vi = 0; vi < selectedCell->vtxCount; ++vi) {
-				glVertex2v(vtxs[cellVtxIndexes[vi + selectedCell->vtxOffset]].pos.v);
+			for (int vi = 0; vi < c.vtxCount; ++vi) {
+				const auto& v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
+				glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
 			}
 			glEnd();
 			glColor3f(1,1,1);
@@ -461,27 +469,70 @@ public:
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		}
 
-		if (showVtxs || showCellCenters) {
-			glPointSize(3);
-			glBegin(GL_POINTS);
-			if (showVtxs) {
-				for (const auto& v : vtxs) {
-					glVertex2v(v.pos.v);
+		glEnable(GL_TEXTURE_1D);
+		glBindTexture(GL_TEXTURE_1D, args.gradientTex);
+
+		if (args.showCells) {
+			for (const auto& c : cells) {
+				real f = (c.displayValue - args.displayValueRange.first) / (args.displayValueRange.second - args.displayValueRange.first);
+				glColor3f(1,1,1);
+				glTexCoord1f(f);
+				
+				if constexpr (dim == 2) {
+					glBegin(GL_POLYGON);
+					for (int vi = 0; vi < c.vtxCount; ++vi) {
+						const auto& v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
+						glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
+					}
+					glEnd();
+				} else if constexpr (dim == 3) {
+					for (int i = 0; i < c.faceCount; ++i) {
+						Face& f = faces[cellFaceIndexes[i + c.faceOffset]];
+						glBegin(GL_POLYGON);
+						for (int vi = 0; vi < f.vtxCount; ++vi) {
+							const auto& v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
+							glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
+						}
+						glEnd();
+					}
 				}
 			}
-			if (showCellCenters) {
+		}
+
+		glBindTexture(GL_TEXTURE_1D, 0);
+		glDisable(GL_TEXTURE_1D);
+		
+		if (args.showVtxs || args.showCellCenters || args.showFaceCenters) {
+			glPointSize(3);
+			glBegin(GL_POINTS);
+			if (args.showVtxs) {
+				glColor3f(1,1,0);
+				for (const auto& v : vtxs) {
+					glVertex3v(v.pos.v);
+				}
+			}
+			if (args.showFaceCenters) {
+				glColor3f(1,0,1);
+				for (const auto& f : faces) {
+					glVertex3v(f.pos.v);
+				}
+			}
+			if (args.showCellCenters) {
+				glColor3f(0,1,1);
 				for (const auto& c : cells) {
-					glVertex2v(c.pos.v);
+					glVertex3v(c.pos.v);
 				}
 			}
 			glEnd();
+			glColor3f(1,1,1);
 			glPointSize(1);
 		}
-		if (showEdges) {
+		
+		if (args.showFaces) {
 			glBegin(GL_LINES);
 			for (const auto& f : faces) {
 				for (int vi = 0; vi < f.vtxCount; ++vi) {
-					glVertex2v(vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos.v);
+					glVertex3v(vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos.v);
 				}
 			}
 			glEnd();
@@ -930,8 +981,8 @@ struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
 struct Chart3DMeshFactory : public MeshFactory {
 	using This = Chart3DMeshFactory;
 	
-//	int3 size = int3(10,10,10);
-	int3 size = int3(1,1,1);
+	//int3 size = int3(10,10,10);
+	int3 size = int3(2,2,2);
 	float3 mins = float3(-1, -1, -1);
 	float3 maxs = float3(1, 1, 1);
 	bool3 repeat;

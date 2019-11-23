@@ -6,6 +6,12 @@
 #include <regex>
 #include <string>
 
+namespace std {
+const std::string& to_string(const std::string& s) {
+	return s;
+}
+}
+
 namespace CFDMesh {
 
 //https://stackoverflow.com/questions/16749069/c-split-string-by-regex
