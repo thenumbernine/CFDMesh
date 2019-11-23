@@ -6,10 +6,42 @@
 #include <regex>
 #include <string>
 
+
+template<typename T>
+std::string objectStringFromOStream(const T& x) {
+	std::ostringstream ss;
+	ss << x;
+	return ss.str();
+}
+
+template<typename T>
+std::ostream& operator<<(std::ostream& o, const std::vector<T>& v) {
+	o << "[";
+	const char* sep = "";
+	for (const auto& x : v) {
+		o << sep << x;
+		sep = ", ";
+	}
+	return o << "]";
+}
+
 namespace std {
+
 const std::string& to_string(const std::string& s) {
 	return s;
 }
+	
+//TODO put this somewhere ...
+template<typename T, int n>
+std::string to_string(const Tensor::Vector<T, n>& x) {
+	return objectStringFromOStream(x);
+}
+
+template<typename T>
+std::string to_string(const std::vector<T>& x) {
+	return objectStringFromOStream(x);
+}
+
 }
 
 namespace CFDMesh {

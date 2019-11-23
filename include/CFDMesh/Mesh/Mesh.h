@@ -145,7 +145,7 @@ std::ostream& ostreamForFields(std::ostream& a, const T& b) {
 		auto name = std::get<0>(x);
 		auto field = std::get<1>(x);
 		auto& value = b.*field;
-		a << sep << name << " = " << value;// << std::endl;
+		a << sep << name << " = " << value;
 		sep = ", ";
 	});
 	return a << "]";
@@ -164,6 +164,26 @@ std::ostream& operator<<(std::ostream& a, const CFDMesh::Face_<T, C>& b) {
 template<typename T, typename C>
 std::ostream& operator<<(std::ostream& a, const CFDMesh::Cell_<T, C>& b) {
 	return ostreamForFields(a, b);
+}
+
+namespace std {
+
+template<typename T>
+std::string to_string(const CFDMesh::Vertex_<T>& x) {
+	return objectStringFromOStream(x);
+}
+
+template<typename T, typename C>
+std::string to_string(const CFDMesh::Face_<T, C>& x) {
+	return objectStringFromOStream(x);
+}
+
+template<typename T, typename C>
+std::string to_string(const CFDMesh::Cell_<T, C>& x) {
+	return objectStringFromOStream(x);
+}
+
+
 }
 
 
@@ -529,13 +549,14 @@ public:
 		}
 		
 		if (args.showFaces) {
-			glBegin(GL_LINES);
 			for (const auto& f : faces) {
+				glBegin(GL_LINE_LOOP);
 				for (int vi = 0; vi < f.vtxCount; ++vi) {
-					glVertex3v(vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos.v);
+					const auto& v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
+					glVertex3v(((v - f.pos) * args.cellScale + f.pos).v);
 				}
+				glEnd();
 			}
-			glEnd();
 		}
 
 	}
@@ -547,24 +568,34 @@ public:
 
 static real polygon3DVolume(const std::vector<real3>& vs, real3 normal) {
 	size_t n = vs.size();
-	real volume = 0;
+	real area = 0;
 	for (size_t i = 0; i < n; ++i) {
 		const real3 &a = vs[i];
 		const real3 &b = vs[(i+1)%n];
-		volume += parallelepipedVolume(a, b, normal);
+		area += parallelepipedVolume(a, b, normal);
 	}
-	return .5 * volume;
+	return .5 * area;
 }
 
-static real3 polygon3DCOM(const std::vector<real3>& vs, real volume, real3 normal) {
-	size_t n = vs.size();
+static real3 polygon3DCOM(const std::vector<real3>& vs, real area, real3 normal) {
+	int n = (int)vs.size();
 	real3 com;
-	for (int i = 0; i < (int)n; ++i) {
+#if 0
+	for (int i = 0; i < n; ++i) {
 		const real3& a = vs[i];
 		const real3& b = vs[(i+1)%n];
 		com += (a + b) * parallelepipedVolume(a, b, normal);
 	}
-	return com / (6 * volume);
+	return com * (1. / (6. * area));
+#else
+	const real3& a = vs[0];
+	for (int i = 2; i < n; ++i) {
+		const real3& b = vs[i-1];
+		const real3& c = vs[i];
+		com += (a + b + c) * real3::dot(cross(c - a, c - b), normal);
+	}
+	return com * (1. / (6. * area));
+#endif
 }
 
 
@@ -601,7 +632,7 @@ static real2 polygonCOM(const std::vector<real2>& vs, real volume) {
 		const real2& b = vs[(i+1)%n];
 		com += (a + b) * parallelogramVolume(a, b);
 	}
-	return com / (6 * volume);
+	return com * (1. / (6. * volume));
 }
 
 template<typename I, typename F>
@@ -665,12 +696,10 @@ static real3 polyhedronCOM(const std::vector<real3>& vtxs, const std::vector<std
 			const real3& a = vtxs[face[0]];
 			const real3& b = vtxs[face[i-1]];
 			const real3& c = vtxs[face[i]];
-			for (int j = 0; j < 3; ++j) {
-				com(j) += ((a + b)(j) * (a + b)(j) + (b + c)(j) * (b + c)(j) + (c + a)(j) * (c + a)(j)) * cross(b - a, c - a)(j) / 24.;
-			}
+			com += ((a + b) * (a + b) + (b + c) * (b + c) + (c + a) * (c + a)) * cross(b - a, c - a) / 48.;
 		}
 	}
-	return com;
+	return com / volume;
 }
 
 
@@ -736,7 +765,8 @@ struct FileMeshFactory : public MeshFactory {
 struct Chart2DMeshFactory : public MeshFactory {
 	using This = Chart2DMeshFactory; 
 	
-	int2 size = int2(100, 100);
+	//int2 size = int2(100, 100);
+int2 size = int2(2, 2);
 	float2 mins = real2(-1, -1);
 	float2 maxs = real2(1, 1);
 	bool2 repeat = bool2(false, false);

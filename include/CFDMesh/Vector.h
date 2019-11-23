@@ -24,7 +24,6 @@ using double2 = Tensor::Vector<double, 2>;
 using double3 = Tensor::Vector<double, 3>;
 using double4 = Tensor::Vector<double, 4>;
 
-
 //for giving operators to the Cons and Prim vector classes
 //how can you add correctly-typed ops via crtp to a union?
 //unions can't inherit.
