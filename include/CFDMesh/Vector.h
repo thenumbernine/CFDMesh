@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Tensor/Vector.h"
+#include "Tensor/Quat.h"
 
 //TODO move these to Tensor/Vector.h
 
@@ -96,4 +97,101 @@ std::ostream& operator<<(std::ostream& o, const classname& x) {\
 		sep = ", ";\
 	}\
 	return o << "]";\
+}
+
+
+namespace CFDMesh {
+
+template<typename V>
+struct Rotate {};
+
+template<typename real>
+struct Rotate<Tensor::Vector<real, 2>> {
+	using real2 = Tensor::Vector<real, 2>;
+	
+	static real2 to(real2 v, real2 n) {
+		return real2(
+			v(0) * n(0) + v(1) * n(1),
+			v(1) * n(0) - v(0) * n(1));
+	}
+
+	static real2 from(real2 v, real2 n) {
+		return real2(
+			v(0) * n(0) - v(1) * n(1),
+			v(1) * n(0) + v(0) * n(1));
+	}
+};
+
+template<typename real>
+struct Rotate<Tensor::Vector<real, 3>> {
+	using real3 = Tensor::Vector<real, 3>;
+	using Quat = Tensor::Quat<real>;
+
+	// rotate vx,vy,vz such that n now points along the x dir
+	static real3 to(real3 v, real3 n) {
+		/*
+		axis is n cross x-axis
+		[ 1  0  0] x [nx ny nz] = [0, -nz, ny] / (ny^2 + nz^2)	
+		angle = acos(n(0))
+		cos angle = n(0)
+		sin angle = sqrt(1 - nx^2)
+		cos (angle/2) = 
+
+		cos^2 theta + sin^2 theta = 1
+		sin^2 theta = 1 - cos^2
+		cos^2 theta - sin^2 theta = cos(2 theta) <-> 
+		cos(theta/2) = sqrt((1 + cos(theta))/2) <-> 
+		2 sin theta cos theta = sin(2 theta)
+		*/
+		real cosTheta = n(0);
+		real cosHalfTheta = sqrt(std::clamp<real>(.5 * (1. + cosTheta), 0, 1));
+		real sinHalfTheta = sqrt(std::clamp<real>(1. - cosHalfTheta * cosHalfTheta, 0, 1));
+		real n2 = sqrt(n(1) * n(1) + n(2) * n(2));
+		real ax = 0.;
+		real ay = -n(2) / n2;
+		real az = n(1) / n2;
+		Quat q(
+			ax * sinHalfTheta,
+			ay * sinHalfTheta,
+			az * sinHalfTheta,
+			cosHalfTheta);
+		Quat qInv = q.unitConj();
+		Quat _v(v(0), v(1), v(2), 0);
+		Quat vres = Quat::mul(Quat::mul(q, _v), qInv);
+		real3 vp = real3(vres(0), vres(1), vres(2));
+		return vp;
+	}
+
+	// rotate vx,vy,vz such that the x dir now points along n 
+	static real3 from(real3 v, real3 n) {
+		real cosTheta = n(0);
+		real cosHalfTheta = sqrt(std::clamp<real>(.5 * (1. + cosTheta), 0, 1));
+		real sinHalfTheta = sqrt(std::clamp<real>(1. - cosHalfTheta * cosHalfTheta, 0, 1));
+		real n2 = sqrt(n(1) * n(1) + n(2) * n(2));
+		real ax = 0.;
+		real ay = n(2) / n2;
+		real az = -n(1) / n2;
+		Quat q(
+			ax * sinHalfTheta,
+			ay * sinHalfTheta,
+			az * sinHalfTheta,
+			cosHalfTheta);
+		Quat qInv = q.unitConj();
+		Quat _v(v(0), v(1), v(2), 0);
+		Quat vres = Quat::mul(Quat::mul(q, _v), qInv);
+		return real3(vres(0), vres(1), vres(2));
+
+	}
+};
+
+template<typename T>
+inline T rotateFrom(T v, T n) {
+	return Rotate<T>::from(v, n);
+}
+
+template<typename T>
+inline T rotateTo(T v, T n) {
+	return Rotate<T>::to(v, n);
+}
+
 }

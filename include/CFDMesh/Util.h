@@ -102,22 +102,4 @@ typename T::value_type sum(const T& t) {
 	return std::accumulate(t.begin(), t.end(), typename T::value_type());
 }
 
-// rotate vx,vy such that n now points along the x dir
-template<typename real3>
-inline real3 rotateTo(real3 v, real3 n) {
-	return real3(
-		v(0) * n(0) + v(1) * n(1),
-		v(1) * n(0) - v(0) * n(1)
-	);
-}
-
-// rotate vx,vy such that the x dir now points along n 
-template<typename real3>
-inline real3 rotateFrom(real3 v, real3 n) {
-	return real3(
-		v(0) * n(0) - v(1) * n(1),
-		v(1) * n(0) + v(0) * n(1)
-	);
-}
-
 }
