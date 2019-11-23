@@ -82,12 +82,14 @@ template<typename T>
 ADD_OSTREAM(Prim_<T>)
 
 
-template<typename real>
-struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
+template<typename real, int dim_>
+struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>> {
 	using This = Euler;
-	using Super = Equation<Euler<real>, real, Cons_<real>, Prim_<real>>;
+	using Super = Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>>;
 	using Cons = typename Super::Cons;
 	using Prim = typename Super::Prim;
+
+	enum { dim = dim_ };
 
 	enum { numWaves = numCons };
 	using WaveVec = Cons;
@@ -146,7 +148,9 @@ struct Euler : public Equation<Euler<real>, real, Cons_<real>, Prim_<real>> {
 
 		virtual const char* name() const { return "Sod"; }
 		virtual Cons initCell(const This* eqn, real3 x) const {
-			bool lhs = x(0) < 0 && x(1) < 0;
+			bool lhs = x(0) < 0 && x(1) < 0 && (
+				This::dim == 3 ? x(2) < 0 : true
+			);
 			return eqn->consFromPrim(lhs ? WL : WR);
 		}
 

@@ -8,6 +8,20 @@
 
 
 template<typename T>
+std::ostream& ostreamForFields(std::ostream& a, const T& b) {
+	a << "[";
+	const char* sep = "";
+	Common::TupleForEach(T::fields, [&a, &b, &sep](auto x, size_t i) constexpr {
+		auto name = std::get<0>(x);
+		auto field = std::get<1>(x);
+		auto& value = b.*field;
+		a << sep << name << " = " << value;
+		sep = ", ";
+	});
+	return a << "]";
+}
+
+template<typename T>
 std::string objectStringFromOStream(const T& x) {
 	std::ostringstream ss;
 	ss << x;

@@ -138,20 +138,6 @@ struct Cell_ {
 
 
 template<typename T>
-std::ostream& ostreamForFields(std::ostream& a, const T& b) {
-	a << "[";
-	const char* sep = "";
-	Common::TupleForEach(T::fields, [&a, &b, &sep](auto x, size_t i) constexpr {
-		auto name = std::get<0>(x);
-		auto field = std::get<1>(x);
-		auto& value = b.*field;
-		a << sep << name << " = " << value;
-		sep = ", ";
-	});
-	return a << "]";
-}
-
-template<typename T>
 std::ostream& operator<<(std::ostream& a, const CFDMesh::Vertex_<T>& b) {
 	return ostreamForFields(a, b);
 }
@@ -182,7 +168,6 @@ template<typename T, typename C>
 std::string to_string(const CFDMesh::Cell_<T, C>& x) {
 	return objectStringFromOStream(x);
 }
-
 
 }
 
@@ -251,26 +236,22 @@ public:
 					//check in one direction
 					bool matches = true;
 					for (int i = 0; i < n; ++i) {
-						if (faceVtxIndexes[f->vtxOffset+i] != vs[(i+j)%n]) {
+						if (faceVtxIndexes[f->vtxOffset+i] != vs[(j+i)%n]) {
 							matches = false;
 							break;
 						}
 					}
-					if (matches) {
-						return fi;
-					}
+					if (matches) return fi;
 				
 					//check in the other direction
 					matches = true;
 					for (int i = 0; i < n; ++i) {
-						if (faceVtxIndexes[f->vtxOffset+i] != vs[(i+j)%n]) {
+						if (faceVtxIndexes[f->vtxOffset+i] != vs[(j+n-i)%n]) {
 							matches = false;
 							break;
 						}
 					}
-					if (matches) {
-						return fi;
-					}
+					if (matches) return fi;
 				}
 			}
 		}
@@ -373,13 +354,17 @@ public:
 				{2,6,7,3},	//y+
 				{0,2,3,1},	//z-
 				{4,5,7,6},	//z+
-			};		
-			
+			};
+		
 			for (auto side : cubeSides) {
-				cellFaceIndexes.push_back(addFace(map<
-						std::vector<int>,
-						std::vector<int>
-					>(side, [&vis](int side_i) -> int { return vis[side_i]; }).data(), side.size(), ci));
+				std::vector<int> vtxIndexes = map<
+					std::vector<int>,
+					std::vector<int>
+				>(side, [&vis](int side_i) -> int {
+					return vis[side_i];
+				});
+				int f = addFace(vtxIndexes.data(), vtxIndexes.size(), ci);
+				cellFaceIndexes.push_back(f);
 			}
 
 			std::vector<real3> polyVtxs = map<
@@ -402,28 +387,7 @@ public:
 
 	//calculate edge info
 	//calculate cell volume info
-	void calcAux() {		
-#if 1
-		std::cout << "vtxs" << std::endl;
-		for (const auto& v : vtxs) {
-			std::cout << v << std::endl;
-		}
-		
-		std::cout << "faces" << std::endl;
-		for (const auto& f : faces) {
-			std::cout << f << std::endl;
-		}
-		
-		std::cout << "cells" << std::endl;
-		for (const auto& c : cells) {
-			std::cout << c << std::endl;
-		}
-
-		std::cout << "cellFaceIndexes " << concat(cellFaceIndexes, ", ") << std::endl;
-		std::cout << "cellVtxIndexes " << concat(cellVtxIndexes, ", ") << std::endl;
-		std::cout << "faceVtxIndexes " << concat(faceVtxIndexes, ", ") << std::endl;
-#endif
-		
+	void calcAux() {
 		for (auto& e : faces) {
 			int a = e.cells(0);
 			int b = e.cells(1);
@@ -765,8 +729,7 @@ struct FileMeshFactory : public MeshFactory {
 struct Chart2DMeshFactory : public MeshFactory {
 	using This = Chart2DMeshFactory; 
 	
-	//int2 size = int2(100, 100);
-int2 size = int2(2, 2);
+	int2 size = int2(100, 100);
 	float2 mins = real2(-1, -1);
 	float2 maxs = real2(1, 1);
 	bool2 repeat = bool2(false, false);
@@ -1011,8 +974,7 @@ struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
 struct Chart3DMeshFactory : public MeshFactory {
 	using This = Chart3DMeshFactory;
 	
-	//int3 size = int3(10,10,10);
-	int3 size = int3(2,2,2);
+	int3 size = int3(10,10,10);
 	float3 mins = float3(-1, -1, -1);
 	float3 maxs = float3(1, 1, 1);
 	bool3 repeat;

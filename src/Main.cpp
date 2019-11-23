@@ -35,7 +35,8 @@ using real = double;
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
-static Parallel::Parallel parallel;
+//static Parallel::Parallel parallel;
+static Parallel::Parallel parallel(1);
 
 struct CFDMeshApp;
 
@@ -99,7 +100,7 @@ struct Simulation : public ISimulation {
 
 	//1 = mirror boundary, -1 = freeflow boundary
 	float restitution = 1;
-		
+	
 	float cfl = .5;
 
 	int meshGenerationIndex = 0;
@@ -143,7 +144,7 @@ struct Simulation : public ISimulation {
 		std::make_pair("init cond", &This::initCondIndex),	//TODO combo from initCondNames
 		//TODO eqn.initConds[initCondIndex]->updateGUI() here
 		
-		std::make_pair("reset state", &This::resetState),	//button, not a field ... hmm 
+		std::make_pair("reset state", &This::resetState),	//button, not a field ... hmm
 		GUISeparator(),
 		
 		std::make_pair("mesh generation", &This::meshGenerationIndex),	//TODO combo from meshGenerationNames
@@ -189,7 +190,7 @@ struct Simulation : public ISimulation {
 			[this, ic](auto& c) {
 				c.U = ic->initCell(&eqn, c.pos);
 			
-				if constexpr (std::is_same_v<ThisEquation, CFDMesh::Equation::Euler::Euler<real>>) {
+				if constexpr (std::is_same_v<ThisEquation, CFDMesh::Equation::Euler::Euler<real, dim>>) {
 					assert(std::isfinite(c.U.rho) && c.U.rho > 0);
 					assert(std::isfinite(c.U.m(0)));
 					assert(std::isfinite(c.U.m(1)));
@@ -211,7 +212,7 @@ struct Simulation : public ISimulation {
 			return std::pair<Cons, Cons>{cL->U, eqn.reflect(cL->U, e->normal, restitution)};
 		} else if (cR) {
 			return std::pair<Cons, Cons>{eqn.reflect(cR->U, e->normal, restitution), cR->U};
-		} 
+		}
 		throw Common::Exception() << "here";
 	}
 
@@ -221,8 +222,8 @@ struct Simulation : public ISimulation {
 	real calcDT() {
 		//for (auto& c : m->cells) {
 		real result = parallel.reduce(
-			m->cells.begin(), 
-			m->cells.end(), 
+			m->cells.begin(),
+			m->cells.end(),
 			[this](Cell& c) -> real {
 				
 				real result = std::numeric_limits<real>::infinity();
@@ -245,8 +246,8 @@ struct Simulation : public ISimulation {
 					result = std::min(result, dum);
 				}
 				return result;
-			}, 
-			std::numeric_limits<real>::infinity(), 
+			},
+			std::numeric_limits<real>::infinity(),
 			[](real a, real b) -> real { return std::min(a,b); }
 		);
 		// calculate dt
@@ -310,7 +311,7 @@ struct Simulation : public ISimulation {
 			//(sr * fluxL[j] - sl * fluxR[j] + sl * sr * (UR[j] - UL[j])) / (sr - sl)
 			real invDenom = 1. / (sr - sl);
 			for (int i = 0; i < Cons::size; ++i) {
-				flux(i) = (sr * fluxL(i) - sl * fluxR(i) + sl * sr * (UR(i) - UL(i))) * invDenom; 
+				flux(i) = (sr * fluxL(i) - sl * fluxR(i) + sl * sr * (UR(i) - UL(i))) * invDenom;
 			}
 		} else if (sr <= 0.) {
 			Cons fluxR = eqn.calcFluxFromCons(UR);
@@ -342,19 +343,19 @@ struct Simulation : public ISimulation {
 			m->faces.begin(),
 			m->faces.end(),
 			[this, dt](Face& e) {
-				//roe averaged values at edge 
+				//Roe averaged values at edge
 				auto [UL, UR] = getEdgeStates(&e);
 				
 				//rotate to align edge normal to x axis
-				//so x-direction flux jacobian is good for calculating the flux 
+				//so x-direction flux jacobian is good for calculating the flux
 				UL = eqn.rotateTo(UL, e.normal);
 				UR = eqn.rotateTo(UR, e.normal);
 
 #ifdef DEBUG
 for (int i = 0; i < Cons::size; ++i) {
-	assert(std::isfinite(UL(i)));	
-	assert(std::isfinite(UR(i)));	
-}	
+	assert(std::isfinite(UL(i)));
+	assert(std::isfinite(UR(i)));
+}
 #endif
 				Cons F = (this->*calcFluxes[calcFluxIndex])(UL, UR, e.cellDist, dt);
 		
@@ -408,7 +409,7 @@ for (int i = 0; i < Cons::size; ++i) {
 			displayValueRange = parallel.reduce(
 				m->cells.begin(),
 				m->cells.end(),
-				[](const Cell& c) -> ValueRange { 
+				[](const Cell& c) -> ValueRange {
 					return ValueRange(c.displayValue, c.displayValue);
 				},
 				ValueRange(INFINITY, -INFINITY),
@@ -436,10 +437,10 @@ for (int i = 0; i < Cons::size; ++i) {
 };
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
-	{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real>>>(app); }},
-	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
+	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real, 3>>>(app); }},
 	
-	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real>>>(app); }},
+	{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real, 2>>>(app); }},
+	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<
@@ -461,7 +462,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 	int simGenIndex = 0;
 
-	int viewIndex = 0;
+	int viewIndex = 1;
 	std::vector<std::shared_ptr<::GLApp::View>> views;
 	std::vector<const char*> viewNames = {"ortho", "frustum"};
 
@@ -473,10 +474,10 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 		
-		view = viewOrtho;
 		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
-
+		viewFrustum->dist = 3;
 		views = decltype(views){viewOrtho, viewFrustum};
+		view = views[viewIndex];
 
 		std::vector<float4> gradientColors = {
 			{1,0,0,1},
@@ -536,7 +537,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			if (igCombo("simulation", &simGenIndex, simGenNames.data(), simGenNames.size(), -1)) {
 				resetSimulation();
 				return;
-			}	
+			}
 			
 			sim->updateGUI();
 		});
@@ -672,9 +673,9 @@ void Simulation<real, dim, Equation>::updateGUI() {
 				pos,
 				m->cellVtxIndexes.begin() + c->vtxOffset,
 				m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount,
-				[this](int i) -> real2 { 
+				[this](int i) -> real2 {
 					typename ThisMeshNamespace::Vertex& vi = m->vtxs[i];
-					return real2([&vi](int j) -> real { return vi.pos(j); }); 
+					return real2([&vi](int j) -> real { return vi.pos(j); });
 				}
 			)) {
 				selectedCellIndex = i;
@@ -710,7 +711,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 					m->faces.erase(m->faces.begin() + ei);
 				}
 			}
-#endif			
+#endif
 		}
 	}
 }
