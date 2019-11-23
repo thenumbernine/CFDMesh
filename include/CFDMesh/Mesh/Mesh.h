@@ -18,39 +18,49 @@ template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
 template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
 
 
+template<typename real3>
+inline real3 cross(real3 a, real3 b) {
+	return real3(
+		a(1) * b(2) - a(2) * b(1),
+		a(2) * b(0) - a(0) * b(2),
+		a(0) * b(1) - a(1) * b(0));
+}
+
+
 namespace CFDMesh {
 
-//dim is the dimension of the manifold, not of the vectors (which are all 3D atm)
-template<typename real, int dim, typename Cons>
-struct MeshNamespace {
-using real2 = Tensor::Vector<real, 2>;
-using real3 = Tensor::Vector<real, 3>;
-
-
-struct Vertex;
-struct Face;
-struct Cell;
-
 //zero-forms
-struct Vertex {	//not required by finite volume algorithm
+template<typename real>
+struct Vertex_ {	//not required by finite volume algorithm
+	using This = Vertex_;
+	using real3 = Tensor::Vector<real, 3>;
+	
 	real3 pos;
 	
-	//keeping track of Vertex::faces isn't used by the renderer, mesh generation, or finite-volume integration
+	//keeping track of Vertex_::faces isn't used by the renderer, mesh generation, or finite-volume integration
 	//std::vector<int> faces;
 	
-	Vertex() {}
-	Vertex(real3 pos_) : pos(pos_) {}
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("pos", &This::pos)
+	);
+	
+	Vertex_() {}
+	Vertex_(real3 pos_) : pos(pos_) {}
 };
 
 //(n-1)-forms
-struct Face {
+template<typename real, typename Cons>
+struct Face_ {
+	using This = Face_;
+	using real3 = Tensor::Vector<real, 3>;
+	
 	real3 pos;
 	real3 delta;
 	real3 normal;
-	real length = 0;	//space taken up by the face
+	real area = 0;	//space taken up by the face
 	real cellDist = 0;	//dist between adjacent cell centers
 	
-	int cells[2];	//there are always only 2 n-forms on either side of a (n-1)-form
+	int2 cells = int2(-1, -1);	//there are always only 2 n-forms on either side of a (n-1)-form
 	
 	//the vertexes of a (n-1)-form are not required by finite volume algorithm
 	//they are required for determining the interface area which is then used by the finite volume algorithm
@@ -62,25 +72,36 @@ struct Face {
 	
 	Cons flux;
 	
-	Face() {
-		cells[0] = -1;
-		cells[1] = -1;
-	}
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("pos", &This::pos),
+		std::make_pair("delta", &This::delta),
+		std::make_pair("normal", &This::normal),
+		std::make_pair("area", &This::area),
+		std::make_pair("cellDist", &This::cellDist),
+		std::make_pair("cells", &This::cells),
+		std::make_pair("vtxOffset", &This::vtxOffset),
+		std::make_pair("vtxCount", &This::vtxCount),
+		std::make_pair("flux", &This::flux)
+	);
 
 	bool removeCell(int cellIndex) {
-		if (cells[1] == cellIndex) cells[1] = -1;
-		if (cells[0] == cellIndex) {
-			cells[0] = cells[1];
-			cells[1] = -1;
+		if (cells(1) == cellIndex) cells(1) = -1;
+		if (cells(0) == cellIndex) {
+			cells(0) = cells(1);
+			cells(1) = -1;
 		}
-		return cells[0] == -1 && cells[1] == -1;
+		return cells(0) == -1 && cells(1) == -1;
 	}
 };
 
 //n-forms
-struct Cell {
+template<typename real, typename Cons>
+struct Cell_ {
+	using This = Cell_;
+	using real3 = Tensor::Vector<real, 3>;
+
 	real3 pos;
-	real volume;
+	real volume = 0;
 	
 	//required by the finite volume algorithm
 	//std::vector<int> faces;
@@ -94,16 +115,70 @@ struct Cell {
 	int vtxOffset = 0;
 	int vtxCount = 0;
 
-	Cons U;
 	float displayValue = 0;
-
-	Cell() : volume(0) {}
+	Cons U;
+	
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("pos", &This::pos),
+		std::make_pair("volume", &This::volume),
+		std::make_pair("faceOffset", &This::faceOffset),
+		std::make_pair("faceCount", &This::faceCount),
+		std::make_pair("vtxOffset", &This::vtxOffset),
+		std::make_pair("vtxCount", &This::vtxCount),
+		std::make_pair("displayValue", &This::displayValue),
+		std::make_pair("U", &This::U)
+	);
 };
+
+}
+
+
+template<typename T>
+std::ostream& ostreamForFields(std::ostream& a, const T& b) {
+	a << "[";
+	const char* sep = "";
+	Common::TupleForEach(T::fields, [&a, &b, &sep](auto x, size_t i) constexpr {
+		auto name = std::get<0>(x);
+		auto field = std::get<1>(x);
+		auto& value = b.*field;
+		a << sep << name << " = " << value;// << std::endl;
+		sep = ", ";
+	});
+	return a << "]";
+}
+
+template<typename T>
+std::ostream& operator<<(std::ostream& a, const CFDMesh::Vertex_<T>& b) {
+	return ostreamForFields(a, b);
+}
+
+template<typename T, typename C>
+std::ostream& operator<<(std::ostream& a, const CFDMesh::Face_<T, C>& b) {
+	return ostreamForFields(a, b);
+}
+
+template<typename T, typename C>
+std::ostream& operator<<(std::ostream& a, const CFDMesh::Cell_<T, C>& b) {
+	return ostreamForFields(a, b);
+}
+
+
+namespace CFDMesh {
+
+//dim is the dimension of the manifold, not of the vectors (which are all 3D atm)
+template<typename real, int dim, typename Cons>
+struct MeshNamespace {
+using real2 = Tensor::Vector<real, 2>;
+using real3 = Tensor::Vector<real, 3>;
+	
+using Vertex = Vertex_<real>;
+using Face = Face_<real, Cons>;
+using Cell = Cell_<real, Cons>;
+
 
 struct MeshFactory;
 
 struct Mesh {
-
 //liu kang wins.  friendship.
 protected:
 	//https://stackoverflow.com/questions/8147027/how-do-i-call-stdmake-shared-on-a-class-with-only-protected-or-private-const
@@ -186,15 +261,26 @@ public:
 		f.vtxCount = faceVtxIndexes.size() - f.vtxOffset;
 
 		//TODO calc these for n=3
-		static_assert(dim == 2);
-		auto& a = vtxs[vs[0]];
-		auto& b = vtxs[vs[1]];
-		f.pos = (a.pos + b.pos) * .5;
-		f.delta = a.pos - b.pos;
-		f.length = real3::length(f.delta);
-		f.normal = real3(f.delta(1), -f.delta(0));
-		f.normal *= 1. / real3::length(f.normal);
-		
+		if constexpr (dim == 2) {
+			auto& a = vtxs[vs[0]];
+			auto& b = vtxs[vs[1]];
+			f.pos = (a.pos + b.pos) * .5;
+			f.delta = a.pos - b.pos;
+			f.area = real3::length(f.delta);
+			f.normal = real3(f.delta(1), -f.delta(0));
+			f.normal *= 1. / real3::length(f.normal);
+		} else if constexpr (dim == 3) {
+			std::vector<real3> polyVtxs(n);
+			for (int i = 0; i < n; ++i) {
+				polyVtxs[i] = vtxs[vs[i]].pos;
+			}
+			f.normal = cross(polyVtxs[2] - polyVtxs[1], polyVtxs[1] - polyVtxs[0]);
+			f.normal *= 1. / real3::length(f.normal);
+			f.area = polygon3DVolume(polyVtxs, f.normal);
+			f.pos = polygon3DCOM(polyVtxs, f.area, f.normal);
+		} else {
+			throw Common::Exception() << "here";
+		}
 		return fi;
 	}
 
@@ -215,7 +301,17 @@ public:
 				int vtxs[2] = {vis[i], vis[(i+1)%n]}; 
 				cellFaceIndexes.push_back(addFace(vtxs, numberof(vtxs)));
 			}
-			c.volume = polygonVolume(map<std::vector<int>, std::vector<real3>>(vis, [this](int vi) -> real3 { return vtxs[vi].pos; }));
+			std::vector<real2> polyVtxs = map<
+				std::vector<int>,
+				std::vector<real2>
+			>(vis, [this](int vi) -> real2 {
+				return real2([this, vi](int i) -> real { return vtxs[vi].pos(i); });
+			});
+			
+			c.volume = polygonVolume(polyVtxs);
+			real2 com = polygonCOM(polyVtxs, c.volume);
+			c.pos = real3([&com](int i) -> real { return i < 2 ? com(i) : 0; });
+		
 		} else if constexpr (dim == 3) {
 			//face is a 2-form
 			assert(vis.size() == 8);	//only adding cubes at the moment
@@ -243,69 +339,34 @@ public:
 					std::vector<int>
 				>(side, [&vis](int side_i) -> int { return vis[side_i]; }).data(), side.size());
 			}
-			
-			c.volume = polyhedronVolume(
-				//either remap sides -> vis[sides]
-				// or just use the newly created faces
-#if 1				
-				map<std::vector<int>, std::vector<real3>>(vis, [this](int vi) -> real3 { return vtxs[vi].pos; }),
-				cubeSides
-#endif
-#if 0
-				vtxs,
-				std::map<
-					decltype(cubeSides),
-					std::vector<std::vector<int>>
-				>(
-					cubeSides,
-					[&vis](const std::vector<int>& v) -> std::vector<int> {
-						std::vector<int> results;
-						return std::map<
-							decltype(results),
-							decltype(results)
-						>(
-							results,
-							[&vis](int i) -> int { return vis[i]; }
-						);
-					}
-				)
-#endif			
-			);
-//		} else {
-//			static_assert(false, "you are here");
+
+			std::vector<real3> polyVtxs = map<
+				std::vector<int>,
+				std::vector<real3>
+			>(vis, [this](int vi) -> real3 {
+				return vtxs[vi].pos;
+			});
+
+			c.volume = polyhedronVolume(polyVtxs, cubeSides);
+			c.pos = polyhedronCOM(polyVtxs, cubeSides, c.volume);
+
+		} else {
+			throw Common::Exception() << "you are here";
 		}
 		c.faceCount = (int)cellFaceIndexes.size() - c.faceOffset;
 
 		assert(c.volume > 0);
 
-#if 0	//vertex average
-		//TODO use COM
-		c.pos = sum(map<
-			std::vector<int>,
-			std::vector<real3>
-		>(vis, [this](int vi) {
-			return vtxs[vi].pos;
-		})) * (1. / (real)n);
-#else	//COM
-		for (int j = 0; j < 3; ++j) {
-			for (int i = 0; i < (int)n; ++i) {
-				real3 x1 = vtxs[vis[i]].pos;
-				real3 x2 = vtxs[vis[(i+1)%n]].pos;
-				c.pos(j) -= (x1(j) + x2(j)) / (x1(0) * x2(1) - x1(1) * x2(0));
-			}
-			c.pos(j) /= (6 * c.volume);
-		}
-#endif
 		int ci = (int)cells.size();
 		cells.push_back(c);
 	
 		//for (int ei : c.faces) {
 		for (int ei = 0; ei < c.faceCount; ++ei) {
 			Face* e = &faces[cellFaceIndexes[ei+c.faceOffset]];
-			if (e->cells[0] == -1) {
-				e->cells[0] = ci;
-			} else if (e->cells[1] == -1) {
-				e->cells[1] = ci;
+			if (e->cells(0) == -1) {
+				e->cells(0) = ci;
+			} else if (e->cells(1) == -1) {
+				e->cells(1) = ci;
 			} else {
 				throw Common::Exception() << "tried to add too many cells to an edge";
 			}
@@ -315,14 +376,34 @@ public:
 	//calculate edge info
 	//calculate cell volume info
 	void calcAux() {		
+		std::cout << "vtxs" << std::endl;
+		for (const auto& v : vtxs) {
+			std::cout << v << std::endl;
+		}
+		
+		std::cout << "faces" << std::endl;
+		for (const auto& f : faces) {
+			std::cout << f << std::endl;
+		}
+		
+		std::cout << "cells" << std::endl;
+		for (const auto& c : cells) {
+			std::cout << c << std::endl;
+		}
+
+		std::cout << "cellFaceIndexes " << concat(cellFaceIndexes, ", ") << std::endl;
+		std::cout << "cellVtxIndexes " << concat(cellVtxIndexes, ", ") << std::endl;
+		std::cout << "faceVtxIndexes " << concat(faceVtxIndexes, ", ") << std::endl;
+
+		
 		for (auto& e : faces) {
-			int a = e.cells[0];
-			int b = e.cells[1];
+			int a = e.cells(0);
+			int b = e.cells(1);
 			if (a != -1 && b != -1) {
 				if (real3::dot(cells[a].pos - cells[b].pos, e.normal) < 0) {
 					std::swap(a, b);
-					e.cells[0] = a;
-					e.cells[1] = b;
+					e.cells(0) = a;
+					e.cells(1) = b;
 					e.normal *= -1;
 				}
 				//distance between cell centers
@@ -410,58 +491,72 @@ public:
 };
 
 
-static real volumeOfParallelogram(real2 a, real2 b) {
-	return a(0) * b(1)
-		- a(1) * b(0);
-}
+//	3D - polygon
 
-//2D polygon volume
-static real polygonVolume(const std::vector<real3>& vs) {
+
+static real polygon3DVolume(const std::vector<real3>& vs, real3 normal) {
 	size_t n = vs.size();
 	real volume = 0;
 	for (size_t i = 0; i < n; ++i) {
 		const real3 &a = vs[i];
 		const real3 &b = vs[(i+1)%n];
-		volume += volumeOfParallelogram(
-			real2([&a](int j) -> real { return a(j); }),
-			real2([&b](int j) -> real { return b(j); })
-		);
+		volume += parallelepipedVolume(a, b, normal);
 	}
 	return .5 * volume;
 }
 
-//3D polygon volume
-//epsilon_ijk a^i b^j c^k
-static real volumeOfParallelippid(real3 a, real3 b, real3 c) {
-	return a(0) * b(1) * c(2)
-		+ a(1) * b(2) * c(0)
-		+ a(2) * b(0) * c(1)
-		- c(0) * b(1) * a(2)
-		- c(1) * b(2) * a(0)
-		- c(2) * b(0) * a(1);
-}
-
-//3D polygon volume
-static real polyhedronVolume(const std::vector<real3>& vtxs, const std::vector<std::vector<int>>& faces) {
-	real volume = 0;
-	for (const auto& face : faces) {
-		for (int i = 2; i < (int)face.size(); ++i) {
-			//tri from 0, i-1, 1
-			const real3& a = vtxs[face[0]];
-			const real3& b = vtxs[face[i-1]];
-			const real3& c = vtxs[face[i]];
-			volume += volumeOfParallelippid(a, b, c);
-		}
+static real3 polygon3DCOM(const std::vector<real3>& vs, real volume, real3 normal) {
+	size_t n = vs.size();
+	real3 com;
+	for (int i = 0; i < (int)n; ++i) {
+		const real3& a = vs[i];
+		const real3& b = vs[(i+1)%n];
+		com += (a + b) * parallelepipedVolume(a, b, normal);
 	}
-	//volume of n-sided pyramid in nD is volume of parallelogram divided by 1/n!
-	return volume / 6.;
+	return com / (6 * volume);
 }
 
-//2D polygon contains
+
+
+//	2D - parallelogram
+
+
+static real parallelogramVolume(real2 a, real2 b) {
+	//epsilon_ij a^i b^j
+	return a(0) * b(1)
+		- a(1) * b(0);
+}
+
+
+//	2D - polygon
+
+
+static real polygonVolume(const std::vector<real2>& vs) {
+	size_t n = vs.size();
+	real volume = 0;
+	for (size_t i = 0; i < n; ++i) {
+		const real2 &a = vs[i];
+		const real2 &b = vs[(i+1)%n];
+		volume += parallelogramVolume(a, b);
+	}
+	return .5 * volume;
+}
+
+static real2 polygonCOM(const std::vector<real2>& vs, real volume) {
+	size_t n = vs.size();
+	real2 com;
+	for (int i = 0; i < (int)n; ++i) {
+		const real2& a = vs[i];
+		const real2& b = vs[(i+1)%n];
+		com += (a + b) * parallelogramVolume(a, b);
+	}
+	return com / (6 * volume);
+}
+
 template<typename I, typename F>
-static bool contains(real2 pos, I begin, I end, F f) {
+static bool polygonContains(real2 pos, I begin, I end, F f) {
 	auto check = [pos](real2 prev, real2 cur) -> bool {
-		return volumeOfParallelogram(prev - pos, cur - pos) > 0;
+		return parallelogramVolume(prev - pos, cur - pos) > 0;
 	};
 	
 	I i = begin;
@@ -476,6 +571,55 @@ static bool contains(real2 pos, I begin, I end, F f) {
 	}
 	if (!check(prev, first)) return false;
 	return true;
+}
+
+
+//	3D - parallelepiped
+
+
+static real parallelepipedVolume(real3 a, real3 b, real3 c) {
+	//epsilon_ijk a^i b^j c^k
+	return a(0) * b(1) * c(2)
+		+ a(1) * b(2) * c(0)
+		+ a(2) * b(0) * c(1)
+		- c(0) * b(1) * a(2)
+		- c(1) * b(2) * a(0)
+		- c(2) * b(0) * a(1);
+}
+
+
+//	3D - polyhedron
+
+
+static real polyhedronVolume(const std::vector<real3>& vtxs, const std::vector<std::vector<int>>& faces) {
+	real volume = 0;
+	for (const auto& face : faces) {
+		for (int i = 2; i < (int)face.size(); ++i) {
+			//tri from 0, i-1, 1
+			const real3& a = vtxs[face[0]];
+			const real3& b = vtxs[face[i-1]];
+			const real3& c = vtxs[face[i]];
+			volume += parallelepipedVolume(a, b, c);
+		}
+	}
+	//volume of n-sided pyramid in nD is volume of parallelogram divided by 1/n!
+	return volume / 6.;
+}
+
+static real3 polyhedronCOM(const std::vector<real3>& vtxs, const std::vector<std::vector<int>>& faces, real volume) {
+	real3 com;
+	for (const auto& face : faces) {
+		for (int i = 2; i < (int)face.size(); ++i) {
+			//tri from 0, i-1, 1
+			const real3& a = vtxs[face[0]];
+			const real3& b = vtxs[face[i-1]];
+			const real3& c = vtxs[face[i]];
+			for (int j = 0; j < 3; ++j) {
+				com(j) += ((a + b)(j) * (a + b)(j) + (b + c)(j) * (b + c)(j) + (c + a)(j) * (c + a)(j)) * cross(b - a, c - a)(j) / 24.;
+			}
+		}
+	}
+	return com;
 }
 
 
@@ -578,8 +722,8 @@ struct TriUnitMeshFactory : public Chart2DMeshFactory {
 		for (int j = 0; j < n; ++j) {
 			for (int i = 0; i < m; ++i) {
 				real2 x = real2(
-					((real)i + .5) / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
-					((real)j + .5) / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
+					(real)i / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
+					(real)j / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
 				
 				real2 u = Super::coordChart(x);
 				mesh->vtxs[i + m * j].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
@@ -617,7 +761,7 @@ struct QuadUnitMeshFactory : public Chart2DMeshFactory {
 		int2 i;
 		for (i(1) = 0; i(1) < n(1); ++i(1)) {
 			for (i(0) = 0; i(0) < n(0); ++i(0)) {
-				real2 x = ((real2)i + .5) / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
+				real2 x = (real2)i / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
 				
 				//if I do not put Super:: then I get: "error: there are no arguments to ‘coordChart’ that depend on a template parameter, so a declaration of ‘coordChart’ must be available"
 				//real2 u = coordChart(x);
@@ -743,8 +887,8 @@ struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
 		for (int j = 0; j < n; ++j) {
 			for (int i = 0; i < m; ++i) {
 				real2 x = real2(
-					((real)i + .5) / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
-					((real)j + .5) / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
+					(real)i / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
+					(real)j / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
 				
 				real2 u = Super::coordChart(x);
 				mesh->vtxs[i + m * j].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
@@ -786,7 +930,8 @@ struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
 struct Chart3DMeshFactory : public MeshFactory {
 	using This = Chart3DMeshFactory;
 	
-	int3 size = int3(10,10,10);
+//	int3 size = int3(10,10,10);
+	int3 size = int3(1,1,1);
 	float3 mins = float3(-1, -1, -1);
 	float3 maxs = float3(1, 1, 1);
 	bool3 repeat;
@@ -822,12 +967,12 @@ struct CubeUnitMeshFactory : public Chart3DMeshFactory {
 		for (i(2) = 0; i(2) < n(2); ++i(2)) {
 			for (i(1) = 0; i(1) < n(1); ++i(1)) {
 				for (i(0) = 0; i(0) < n(0); ++i(0)) {
-					real3 x = ((real3)i + .5) / (real3)Super::size * (Super::maxs - Super::mins) + Super::mins;
+					real3 x = (real3)i / (real3)Super::size * (Super::maxs - Super::mins) + Super::mins;
 					mesh->vtxs[i(0) + n(0) * (i(1) + n(1) * i(2))].pos = Super::coordChart(x);
 				}
 			}
 		}
-
+		
 		int3 imax;
 		for (int j = 0; j < 3; ++j) {
 			imax(j) = Super::repeat(j) ? n(j) : n(j)-1;

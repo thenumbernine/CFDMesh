@@ -193,8 +193,8 @@ struct Simulation : public ISimulation {
 	}
 
 	std::pair<Cons, Cons> getEdgeStates(const Face* e) {
-		Cell* cL = e->cells[0] == -1 ? nullptr : &m->cells[e->cells[0]];
-		Cell* cR = e->cells[1] == -1 ? nullptr : &m->cells[e->cells[1]];
+		Cell* cL = e->cells(0) == -1 ? nullptr : &m->cells[e->cells(0)];
+		Cell* cR = e->cells(1) == -1 ? nullptr : &m->cells[e->cells(1)];
 		if (cL && cR) {
 			return std::pair<Cons, Cons>{cL->U, cR->U};
 		} else if (cL) {
@@ -230,7 +230,7 @@ struct Simulation : public ISimulation {
 					lambdaMax = std::max<real>(0, lambdaMax);
 					// TODO a better way to do this.  maybe use faces' lambdas?  maybe do this after calculating the eigenbasis?
 					//real dx = sqrt(c.volume);
-					real dx = e->length;
+					real dx = e->area;
 					real dum = dx / (abs(lambdaMax - lambdaMin) + 1e-9);
 					result = std::min(result, dum);
 				}
@@ -369,10 +369,10 @@ for (int i = 0; i < Cons::size; ++i) {
 				for (int ei = 0; ei < c.faceCount; ++ei) {
 					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
 					//if (e.hasFlux) {
-						if (&c == &m->cells[e->cells[0]]) {
-							dU_dt -= e->flux * (e->length / c.volume);
+						if (&c == &m->cells[e->cells(0)]) {
+							dU_dt -= e->flux * (e->area / c.volume);
 						} else {
-							dU_dt += e->flux * (e->length / c.volume);
+							dU_dt += e->flux * (e->area / c.volume);
 						}
 					//}
 				}
@@ -426,9 +426,9 @@ for (int i = 0; i < Cons::size; ++i) {
 };
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
-	{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real>>>(app); }},
-	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
-	//{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real>>>(app); }},
+	//{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real>>>(app); }},
+	//{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
+	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<
@@ -642,7 +642,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 		selectedCellIndex = -1;
 		for (int i = 0; i < (int)m->cells.size(); ++i) {
 			Cell* c = &m->cells[i];
-			if (ThisMeshNamespace::contains(
+			if (ThisMeshNamespace::polygonContains(
 				pos,
 				m->cellVtxIndexes.begin() + c->vtxOffset,
 				m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount,

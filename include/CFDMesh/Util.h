@@ -30,7 +30,7 @@ std::string concat(const T& v, const std::string& sep) {
 	std::string result = "";
 	for (const auto& s : v) {
 		if (!first) result += sep;
-		result += s;
+		result += std::to_string(s);
 		first = false;
 	}
 	return result;

@@ -67,10 +67,10 @@ struct Equation {
 
 		//cycle through the Cons::fields tuple and add each of these
 		Common::TupleForEach(Cons::fields, [this](auto x, size_t i) constexpr {
-			auto field = x.second;
+			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			addDisplayForType<FieldType>(
-				x.first, 
+				std::get<0>(x),
 				[field](const Base* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
 					return U.*field; 
 				}
@@ -79,10 +79,10 @@ struct Equation {
 
 		if constexpr (!std::is_same_v<Cons, Prim>) {
 			Common::TupleForEach(Prim::fields, [this](auto x, size_t i) constexpr {
-				auto field = x.second;
+				auto field = std::get<1>(x);
 				using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 				addDisplayForType<FieldType>(
-					x.first, 
+					std::get<0>(x),
 					[field](const Base* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
 						Prim W = eqn->primFromCons(U);
 						return W.*field; 
@@ -134,7 +134,7 @@ struct Equation {
 
 	Cons rotateTo(Cons U, const real3& normal) {
 		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
-			auto field = x.second;
+			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = CFDMesh::rotateTo<real3>(U.*field, normal);
@@ -146,7 +146,7 @@ struct Equation {
 
 	Cons rotateFrom(Cons U, const real3& normal) {
 		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
-			auto field = x.second;
+			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = CFDMesh::rotateFrom<real3>(U.*field, normal);
@@ -161,7 +161,7 @@ struct Equation {
 	// and that means if there are constant values on both faces of the other edges ... 
 	Cons reflect(Cons U, const real3& normal, real restitution) {
 		Common::TupleForEach(Cons::fields, [&U, &normal, restitution](auto x, size_t i) constexpr {
-			auto field = x.second;
+			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = U.*field - normal * ((1 + restitution) * real3::dot(normal, U.*field));
