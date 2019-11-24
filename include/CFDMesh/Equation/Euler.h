@@ -112,22 +112,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 
 		virtual const char* name() const { return "constant"; }
 		virtual Cons initCell(const This* eqn, real3 x) const {	
-			
-			assert(std::isfinite(W.rho) && W.rho > 0);
-			assert(std::isfinite(W.v(0)));
-			assert(std::isfinite(W.v(1)));
-			assert(std::isfinite(W.v(2)));
-			assert(std::isfinite(W.P) && W.P > 0);
-			
-			Cons U = eqn->consFromPrim((Prim)W);
-			
-			assert(std::isfinite(U.rho) && U.rho > 0);
-			assert(std::isfinite(U.m(0)));
-			assert(std::isfinite(U.m(1)));
-			assert(std::isfinite(U.m(2)));
-			assert(std::isfinite(U.ETotal) && U.ETotal > 0);
-			
-			return U;
+			return eqn->consFromPrim((Prim)W);
 		}
 		
 		virtual void updateGUI() {
@@ -298,29 +283,31 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return vars;
 	}
 
-	WaveVec getEigenvalues(const Eigen& vars) {
-		const real& vx = vars.v(0);
+	WaveVec getEigenvalues(const Eigen& vars, real3 n) {
+		real v = real3::dot(vars.v, n);
 		const real& Cs = vars.Cs;
 		WaveVec lambdas;
-		lambdas(0) = vx - Cs;
-		lambdas(1) = vx;
-		lambdas(2) = vx;
-		lambdas(3) = vx;
-		lambdas(4) = vx + Cs;
+		lambdas(0) = v - Cs;
+		lambdas(1) = v;
+		lambdas(2) = v;
+		lambdas(3) = v;
+		lambdas(4) = v + Cs;
 		return lambdas;
 	}
 
 	struct CalcLambdaVars {
+		real3 n;
 		real v;
 		real Cs;
 		
-		CalcLambdaVars(const This& eqn, const Cons& U) {
+		CalcLambdaVars(const This& eqn, const Cons& U, const real3& n_) {
 			Prim W = eqn.primFromCons(U);
-			v = real3::length(W.v);
+			n = n_;
+			v = real3::dot(W.v, n);
 			Cs = eqn.calc_Cs_from_P_rho(W.P, W.rho);
 		}
 	
-		CalcLambdaVars(const Eigen& vars) : v(vars.v(0)), Cs(vars.Cs) {}
+		CalcLambdaVars(const Eigen& vars, const real3& n_) : n(n_), v(real3::dot(vars.v, n)), Cs(vars.Cs) {}
 	};
 
 	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) const {
@@ -335,50 +322,178 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return vars.v + vars.Cs;
 	}
 
-	Cons apply_evL(Cons x, const Eigen& vars) {
+
+	struct BuildPerpendicularBasis {
+		static void go(
+			real3 normal, 
+			Tensor::Vector<real3, 2> &tangents) 
+		{
+			//1) pick normal's max abs component
+			//2) fill in all axii but that component
+			//3) apply Graham-Schmidt
+			// what about coordinate system handedness?
+
+			int maxAxis = -1;
+			real maxValue = -HUGE_VAL;
+			for (int k = 0; k < dim; ++k) {
+				real absNormal = fabs(normal(k));
+				if (absNormal > maxValue) {
+					maxValue = absNormal;
+					maxAxis = k;
+				}
+			}
+
+			for (int j = 0; j < dim-1; ++j) {
+				if (j < maxAxis) {
+					tangents(j)(j) = 1;
+				} else {
+					tangents(j)(j+1) = 1;
+				}
+			
+				for (int k = j-1; k >= 0; --k) {
+					real num = real(0), denom = real(0);
+					for (int i = 0; i < dim; ++i) {
+						num += tangents(j)(i) * tangents(k)(i);
+						denom += tangents(j)(i) * tangents(j)(i);
+					}
+					tangents(j) -= tangents(j) * (num / denom);
+				}
+				{
+					real num = real(0), denom = real(0);
+					for (int i = 0; i < dim; ++i) {
+						num += tangents(j)(i) * normal(i);
+						denom += tangents(j)(i) * tangents(j)(i);
+					}
+					tangents(j) -= tangents(j) * (num / denom);
+				}
+				{
+					real len = real(0);
+					for (int k = 0; k < dim; ++k) {
+						len += sqrt(tangents(j)(k) * tangents(j)(k));
+					}
+					tangents(j) *= real(1) / len;
+				}
+			}
+		}
+	};
+
+	Cons apply_evL(Cons x, const Eigen& vars, real3 n) {
 		const real& Cs = vars.Cs;
 		const real3& v = vars.v;
-		const real& vSq = vars.vSq;
-		const real& vx = v(0);
-		const real& vy = v(1);
-		const real& vz = v(2);
+		const real& vSq = real3::lenSq(v);
+	
+		real vn = real3::dot(v, n);
+
 		real CsSq = Cs * Cs;
 		real gamma_1 = heatCapacityRatio - 1;
+
+		real denom = 2. * CsSq;
+		real invDenom = 1. / denom;
+
+		//TODO FIXME this only works for cartesian basis normals
+		Tensor::Vector<real3, 2> t;
+		BuildPerpendicularBasis::go(n, t);
+
+		//eigenvector inverses:
 		Cons y;
-		y.ptr[0] = x.ptr[0]*((.5 * gamma_1 * vSq + Cs * vx) / (2 * CsSq)) + x.ptr[1]*((-Cs - gamma_1 * vx) / (2 * CsSq)) + x.ptr[2]*(-gamma_1 * vy / (2 * CsSq)) + x.ptr[3]*(-gamma_1 * vz / (2 * CsSq)) + x.ptr[4]*(gamma_1 / (2 * CsSq));
-		y.ptr[1] = x.ptr[0]*(1 - gamma_1 * vSq / (2 * CsSq)) + x.ptr[1]*(gamma_1 * vx / CsSq) + x.ptr[2]*(gamma_1 * vy / CsSq) + x.ptr[3]*(gamma_1 * vz / CsSq) + x.ptr[4]*(-gamma_1 / CsSq);
-		y.ptr[2] = x.ptr[0]*(-vy) + x.ptr[1]*(0) + x.ptr[2]*(1) + x.ptr[3]*(0) + x.ptr[4]*(0); 
-		y.ptr[3] = x.ptr[0]*(-vz) + x.ptr[1]*(0) + x.ptr[2]*(0) + x.ptr[3]*(1) + x.ptr[4]*(0);
-		y.ptr[4] = x.ptr[0]*((.5 * gamma_1 * vSq - Cs * vx) / (2 * CsSq)) + x.ptr[1]*((Cs - gamma_1 * vx) / (2 * CsSq)) + x.ptr[2]*(-gamma_1 * vy / (2 * CsSq)) + x.ptr[3]*(-gamma_1 * vz / (2 * CsSq)) + x.ptr[4]*(gamma_1 / (2 * CsSq));
+		//min row	
+		y.ptr[0] = (
+				x.ptr[0] * (.5 * gamma_1 * vSq + Cs * vn)
+				+ x.ptr[1] * -(n(0) * Cs + gamma_1 * v(0))
+				+ x.ptr[2] * -(n(1) * Cs + gamma_1 * v(1))
+				+ x.ptr[3] * -(n(2) * Cs + gamma_1 * v(2))
+				+ x.ptr[4] * gamma_1
+			) * invDenom;
+		//mid normal row
+		y.ptr[1] =
+			x.ptr[0] * (1. - gamma_1 * vSq * invDenom)
+			+ x.ptr[1] * (gamma_1 * v(0) * 2. * invDenom)
+			+ x.ptr[2] * (gamma_1 * v(1) * 2. * invDenom)
+			+ x.ptr[3] * (gamma_1 * v(2) * 2. * invDenom)
+			+ x.ptr[4] * (-gamma_1 * 2. * invDenom);
+		//mid tangent row
+		y.ptr[2] =
+			x.ptr[0] * -real3::dot(v, t(0))
+			+ x.ptr[1] * t(0)(0)
+			+ x.ptr[2] * t(0)(1)
+			+ x.ptr[3] * t(0)(2);
+		y.ptr[3] =
+			x.ptr[0] * -real3::dot(v, t(1))
+			+ x.ptr[1] * t(1)(0)
+			+ x.ptr[2] * t(1)(1)
+			+ x.ptr[3] * t(1)(2);
+		//max row
+		y.ptr[4] = (
+				x.ptr[0] * (.5 * gamma_1 * vSq - Cs * vn)
+				+ x.ptr[1] * (n(0) * Cs - gamma_1 * v(0))
+				+ x.ptr[2] * (n(1) * Cs - gamma_1 * v(1))
+				+ x.ptr[3] * (n(2) * Cs - gamma_1 * v(2))
+				+ x.ptr[4] * gamma_1
+			) * invDenom;
+
 		return y;
 	}
 
-	Cons apply_evR(Cons x, const Eigen& vars) {
+	Cons apply_evR(Cons x, const Eigen& vars, real3 n) {
 		const real& Cs = vars.Cs;
 		const real3& v = vars.v;
-		const real& vSq = vars.vSq;
+		const real& vSq = real3::lenSq(v);
 		const real& hTotal = vars.hTotal;
-		const real& vx = v(0);
-		const real& vy = v(1);
-		const real& vz = v(2);
+
+		real vn = real3::dot(v, n);
+		
+		//TODO FIXME this only works for cartesian basis normals
+		Tensor::Vector<real3, 2> t;
+		BuildPerpendicularBasis::go(n, t);
+
 		Cons y;
-		y.ptr[0] = x.ptr[0]*(1) + x.ptr[1]*(1) + x.ptr[2]*(0) + x.ptr[3]*(0) + x.ptr[4]*(1);
-		y.ptr[1] = x.ptr[0]*(vx - Cs) + x.ptr[1]*(vx) + x.ptr[2]*(0) + x.ptr[3]*(0) + x.ptr[4]*(vx + Cs);
-		y.ptr[2] = x.ptr[0]*(vy) + x.ptr[1]*(vy) + x.ptr[2]*(1) + x.ptr[3]*(0) + x.ptr[4]*(vy);
-		y.ptr[3] = x.ptr[0]*(vz) + x.ptr[1]*(vz) + x.ptr[2]*(0) + x.ptr[3]*(1) + x.ptr[4]*(vz);
-		y.ptr[4] = x.ptr[0]*(hTotal - Cs * vx) + x.ptr[1]*(.5 * vSq) + x.ptr[2]*(vy) + x.ptr[3]*(vz) + x.ptr[4]*(hTotal + Cs * vx);
+		
+		//min eigenvector
+		y.ptr[0] =
+			x.ptr[0]
+			+ x.ptr[0] * (v(0) - Cs * n(0))
+			+ x.ptr[0] * (v(1) - Cs * n(1))
+			+ x.ptr[0] * (v(2) - Cs * n(2))
+			+ x.ptr[0] * (hTotal - Cs * vn);
+		//mid eigenvectors (n)
+		y.ptr[1] =
+			x.ptr[1]
+			+ x.ptr[1] * (v(0))
+			+ x.ptr[1] * (v(1))
+			+ x.ptr[1] * (v(2))
+			+ x.ptr[1] * (.5 * vSq);
+		//mid eigenvectors (tangents)
+		y.ptr[2] =
+			x.ptr[0+2] * t(0)(0)
+			+ x.ptr[0+2] * t(0)(1)
+			+ x.ptr[0+2] * t(0)(2)
+			+ x.ptr[0+2] * real3::dot(v, t(0));
+		y.ptr[3] =
+			x.ptr[1+2] * t(1)(0)
+			+ x.ptr[1+2] * t(1)(1)
+			+ x.ptr[1+2] * t(1)(2)
+			+ x.ptr[1+2] * real3::dot(v, t(1));
+		//max eigenvector
+		y.ptr[4] =
+			x.ptr[3+1]
+			+ x.ptr[3+1] * (v(0) + Cs * n(0))
+			+ x.ptr[3+1] * (v(1) + Cs * n(1))
+			+ x.ptr[3+1] * (v(2) + Cs * n(2))
+			+ x.ptr[3+1] * (hTotal + Cs * vn);
+		
 		return y;
 	}
 
-	Cons calcFluxFromCons(Cons U) {
+	Cons calcFluxFromCons(Cons U, real3 n) {
 		Prim W = primFromCons(U);
 		real hTotal = calc_hTotal(W.rho, W.P, U.ETotal);
 		Cons flux;
-		flux(0) = U.m(0);
-		flux(1) = U.m(0) * W.v(0) + W.P;
-		flux(2) = U.m(0) * W.v(1);
-		flux(3) = U.m(0) * W.v(2);
-		flux(4) = U.m(0) * hTotal;
+		real m = real3::dot(U.m, n);
+		flux(0) = m;
+		flux(1) = m * W.v(0) + W.P * n(0);
+		flux(2) = m * W.v(1) + W.P * n(1);
+		flux(3) = m * W.v(2) + W.P * n(2);
+		flux(4) = m * hTotal;
 		return flux;
 	}
 

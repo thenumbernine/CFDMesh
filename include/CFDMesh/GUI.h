@@ -80,9 +80,11 @@ struct UpdateGUIField<T, std::tuple<const char*, B, GUIReadOnly>> {
 template<typename T>
 void UpdateGUI<T>::exec(T* ptr, std::string prefix) {
 	if constexpr (std::experimental::is_detected_v<has_field_t, T>) {
+		igPushIDPtr(ptr);
 		Common::TupleForEach(T::fields, [ptr, &prefix](auto x, size_t i) constexpr {
 			UpdateGUIField<T, decltype(x)>::exec(ptr, prefix, x);
 		});
+		igPopID();
 	} else if constexpr (std::is_same_v<T, bool>) {
 		igCheckbox(prefix.c_str(), ptr);
 	} else if constexpr (std::is_floating_point_v<T>) {
@@ -99,6 +101,13 @@ void UpdateGUI<T>::exec(T* ptr, std::string prefix) {
 		igText(prefix.c_str());
 	}
 }
+
+template<>
+struct UpdateGUI<bool> {
+	static void exec(bool* ptr, std::string prefix) {
+		igCheckbox(prefix.c_str(), ptr);
+	}
+};
 
 template<typename T>
 struct UpdateGUI<Tensor::Vector<T, 2>> {

@@ -132,30 +132,6 @@ struct Equation {
 		);
 	}
 
-	Cons rotateTo(Cons U, const real3& normal) {
-		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
-			auto field = std::get<1>(x);
-			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
-			if constexpr (std::is_same_v<FieldType, real3>) {
-				U.*field = CFDMesh::rotateTo<real3>(U.*field, normal);
-				
-			}
-		});
-		return U;
-	}
-
-	Cons rotateFrom(Cons U, const real3& normal) {
-		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
-			auto field = std::get<1>(x);
-			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
-			if constexpr (std::is_same_v<FieldType, real3>) {
-				U.*field = CFDMesh::rotateFrom<real3>(U.*field, normal);
-				
-			}
-		});
-		return U;
-	}
-
 	//TODO - restitution isn't the only solution
 	// at the moment if an edge is only connected to one face then it will not update
 	// and that means if there are constant values on both faces of the other edges ... 

@@ -1,5 +1,5 @@
 #include "CFDMesh/Equation/Euler.h"
-#include "CFDMesh/Equation/GLMMaxwell.h"
+//#include "CFDMesh/Equation/GLMMaxwell.h"
 
 #include "CFDMesh/Mesh/Mesh.h"
 #include "CFDMesh/Util.h"
@@ -189,14 +189,6 @@ struct Simulation : public ISimulation {
 			m->cells.end(),
 			[this, ic](auto& c) {
 				c.U = ic->initCell(&eqn, c.pos);
-			
-				if constexpr (std::is_same_v<ThisEquation, CFDMesh::Equation::Euler::Euler<real, dim>>) {
-					assert(std::isfinite(c.U.rho) && c.U.rho > 0);
-					assert(std::isfinite(c.U.m(0)));
-					assert(std::isfinite(c.U.m(1)));
-					assert(std::isfinite(c.U.m(2)));
-					assert(std::isfinite(c.U.ETotal) && c.U.ETotal > 0);
-				}
 			}
 		);
 		
@@ -225,25 +217,25 @@ struct Simulation : public ISimulation {
 			m->cells.begin(),
 			m->cells.end(),
 			[this](Cell& c) -> real {
+				const Cons& U = c.U;
 				
 				real result = std::numeric_limits<real>::infinity();
 				for (int ei = 0; ei < c.faceCount; ++ei) {
 					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
-					
-					Cons U = eqn.rotateTo(c.U, e->normal);
-					CalcLambdaVars vars(eqn, U);
-					
-					real lambdaMin, lambdaMax;
-					std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(vars);
-					lambdaMin = lambdaMinMax.first;
-					lambdaMax = lambdaMinMax.second;
-					lambdaMin = std::min<real>(0, lambdaMin);
-					lambdaMax = std::max<real>(0, lambdaMax);
-					// TODO a better way to do this.  maybe use faces' lambdas?  maybe do this after calculating the eigenbasis?
-					//real dx = sqrt(c.volume);
 					real dx = e->area;
-					real dum = dx / (abs(lambdaMax - lambdaMin) + 1e-9);
-					result = std::min(result, dum);
+					if (dx && e->cells(0) != -1 && e->cells(1) != -1) {
+						CalcLambdaVars vars(eqn, U, e->normal);
+						
+						real lambdaMin, lambdaMax;
+						std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(vars);
+						lambdaMin = lambdaMinMax.first;
+						lambdaMax = lambdaMinMax.second;
+						lambdaMin = std::min<real>(0, lambdaMin);
+						lambdaMax = std::max<real>(0, lambdaMax);
+						
+						real dum = dx / (abs(lambdaMax - lambdaMin) + 1e-9);
+						result = std::min(result, dum);
+					}
 				}
 				return result;
 			},
@@ -255,13 +247,13 @@ struct Simulation : public ISimulation {
 		return dt;
 	}
 
-	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt) {
+	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt, real3 n) {
 		Eigen vars = eqn.calcRoeAvg(UL, UR);
 
-		WaveVec lambdas = eqn.getEigenvalues(vars);
+		WaveVec lambdas = eqn.getEigenvalues(vars, n);
 
 		Cons dU = UR - UL;
-		WaveVec dUTilde = eqn.apply_evL(dU, vars);
+		WaveVec dUTilde = eqn.apply_evL(dU, vars, n);
 	
 		WaveVec fluxTilde;
 		for (int j = 0; j < ThisEquation::numWaves; ++j) {
@@ -273,22 +265,21 @@ struct Simulation : public ISimulation {
 		}
 	
 		Cons UAvg = (UR + UL) * .5;
-		WaveVec UAvgTilde = eqn.apply_evL(UAvg, vars);
+		WaveVec UAvgTilde = eqn.apply_evL(UAvg, vars, n);
 		fluxTilde = fluxTilde + lambdas * UAvgTilde;
 	
-		Cons flux = eqn.apply_evR(fluxTilde, vars);
+		Cons flux = eqn.apply_evR(fluxTilde, vars, n);
 		// here's the flux, aligned along the normal
 
 		return flux;
 	}
 
-	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt) {
-		real lambdaMinL = eqn.calcLambdaMin(CalcLambdaVars(eqn, UL));
-		
-		real lambdaMaxR = eqn.calcLambdaMax(CalcLambdaVars(eqn, UR));
+	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt, real3 n) {
+		real lambdaMinL = eqn.calcLambdaMin(CalcLambdaVars(eqn, UL, n));
+		real lambdaMaxR = eqn.calcLambdaMax(CalcLambdaVars(eqn, UR, n));
 		
 		Eigen vars = eqn.calcRoeAvg(UL, UR);
-		std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(CalcLambdaVars(vars));
+		std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(CalcLambdaVars(vars, n));
 		real lambdaMin = lambdaMinMax.first;
 		real lambdaMax = lambdaMinMax.second;
 
@@ -303,25 +294,27 @@ struct Simulation : public ISimulation {
 		
 		Cons flux;
 		if (0. <= sl) {
-			Cons fluxL = eqn.calcFluxFromCons(UL);
+			Cons fluxL = eqn.calcFluxFromCons(UL, n);
 			flux = fluxL;
 		} else if (sl <= 0. && 0. <= sr) {
-			Cons fluxL = eqn.calcFluxFromCons(UL);
-			Cons fluxR = eqn.calcFluxFromCons(UR);
+			Cons fluxL = eqn.calcFluxFromCons(UL, n);
+			Cons fluxR = eqn.calcFluxFromCons(UR, n);
 			//(sr * fluxL[j] - sl * fluxR[j] + sl * sr * (UR[j] - UL[j])) / (sr - sl)
 			real invDenom = 1. / (sr - sl);
 			for (int i = 0; i < Cons::size; ++i) {
 				flux(i) = (sr * fluxL(i) - sl * fluxR(i) + sl * sr * (UR(i) - UL(i))) * invDenom;
 			}
 		} else if (sr <= 0.) {
-			Cons fluxR = eqn.calcFluxFromCons(UR);
+			Cons fluxR = eqn.calcFluxFromCons(UR, n);
 			flux = fluxR;
 		}
 	
 		return flux;
 	}
 
-	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real);
+	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real, real3);
+
+	int calcFluxIndex = 1;
 	
 	std::vector<CalcFluxFunc> calcFluxes = {
 		&Simulation::calcFluxRoe,
@@ -332,60 +325,42 @@ struct Simulation : public ISimulation {
 		"Roe",
 		"HLL",
 	};
-
-	int calcFluxIndex = 0;
 	
 	void step() {
 		real dt = calcDT();
 
-		//for (auto& e : m->faces) {
 		parallel.foreach(
 			m->faces.begin(),
 			m->faces.end(),
 			[this, dt](Face& e) {
-				//Roe averaged values at edge
 				auto [UL, UR] = getEdgeStates(&e);
-				
-				//rotate to align edge normal to x axis
-				//so x-direction flux jacobian is good for calculating the flux
-				UL = eqn.rotateTo(UL, e.normal);
-				UR = eqn.rotateTo(UR, e.normal);
-
 #ifdef DEBUG
 for (int i = 0; i < Cons::size; ++i) {
-	assert(std::isfinite(UL(i)));
-	assert(std::isfinite(UR(i)));
+	if (!std::isfinite(UL(i))) { std::cerr << "got non-finite " << UL << std::endl; }
+	if (!std::isfinite(UR(i))) { std::cerr << "got non-finite " << UR << std::endl; }
 }
 #endif
-				Cons F = (this->*calcFluxes[calcFluxIndex])(UL, UR, e.cellDist, dt);
-		
-				// rotate back to normal
-				e.flux = eqn.rotateFrom(F, e.normal);
+				e.flux = (this->*calcFluxes[calcFluxIndex])(UL, UR, e.cellDist, dt, e.normal);
 #ifdef DEBUG
 for (int i = 0; i < Cons::size; ++i) {
-	assert(std::isfinite(e.flux(i)));
+	if (!std::isfinite(e.flux(i))) { std::cerr << "got non-finite " << e.flux << std::endl; break; }
 }
 #endif
 			}
 		);
 
-		//for (auto& c : m->cells) {
 		parallel.foreach(
 			m->cells.begin(),
 			m->cells.end(),
 			[this, dt](Cell& c) {
 				Cons dU_dt;
-				//for (int ei : c.faces) {
-				//	Face* e = &m->faces[ei];
 				for (int ei = 0; ei < c.faceCount; ++ei) {
 					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
-					//if (e.hasFlux) {
-						if (&c == &m->cells[e->cells(0)]) {
-							dU_dt -= e->flux * (e->area / c.volume);
-						} else {
-							dU_dt += e->flux * (e->area / c.volume);
-						}
-					//}
+					if (&c == &m->cells[e->cells(0)]) {
+						dU_dt -= e->flux * (e->area / c.volume);
+					} else {
+						dU_dt += e->flux * (e->area / c.volume);
+					}
 				}
 				c.U += dU_dt * dt;
 			}
@@ -440,7 +415,7 @@ std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CF
 	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real, 3>>>(app); }},
 	
 	{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real, 2>>>(app); }},
-	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
+//	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<
@@ -578,6 +553,23 @@ template<typename real, int dim, typename Equation>
 void Simulation<real, dim, Equation>::updateGUI() {
 
 #if 1
+	igPushIDStr("mesh generation");
+	if (igCombo("", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
+		resetMesh();
+	}
+	igPopID();
+	igSameLine(0, 0);
+	igPushIDStr("mesh generation fields");
+	if (igCollapsingHeader("", 0)) {
+		meshGenerators[meshGenerationIndex]->updateGUI();
+	}
+	igPopID();
+	if (igSmallButton("reset mesh")) {
+		resetMesh();
+	}
+	
+	igSeparator();
+	
 	igText("time: %f", time);
 	igCheckbox("running", &running);
 	
@@ -632,22 +624,6 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	
 	igSeparator();
 	
-	igPushIDStr("mesh generation");
-	if (igCombo("", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
-		resetMesh();
-	}
-	igPopID();
-	igSameLine(0, 0);
-	igPushIDStr("mesh generation fields");
-	if (igCollapsingHeader("", 0)) {
-		meshGenerators[meshGenerationIndex]->updateGUI();
-	}
-	igPopID();
-	if (igSmallButton("reset mesh")) {
-		resetMesh();
-	}
-	
-	igSeparator();
 #else
 	CFDMesh::updateGUI(this);
 #endif

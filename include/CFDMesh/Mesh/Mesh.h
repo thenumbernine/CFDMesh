@@ -382,7 +382,10 @@ public:
 		}
 		c.faceCount = (int)cellFaceIndexes.size() - c.faceOffset;
 
-		assert(c.volume > 0);
+//		assert(c.volume > 0);
+#if DEBUG
+if (c.volume <= 0) std::cerr << "got a non-positive volume " << c << std::endl;
+#endif
 	}
 
 	//calculate edge info
@@ -407,6 +410,10 @@ public:
 			} else {
 				throw Common::Exception() << "looks like you created a face that isn't touching any cells...";
 			}
+	
+#if DEBUG
+if (e.cellDist <= 0) std::cerr << "got non-positive cell distance " << e << std::endl;
+#endif
 		}
 	}
 
@@ -680,10 +687,10 @@ protected:
 	}
 };
 
-struct FileMeshFactory : public MeshFactory {
+struct P2DFMTMeshFactory : public MeshFactory {
 	std::string filename = {"grids/n0012_113-33.p2dfmt"};
 	
-	FileMeshFactory() : MeshFactory("p2dfmt mesh") {}
+	P2DFMTMeshFactory() : MeshFactory("p2dfmt mesh") {}
 
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
@@ -752,47 +759,66 @@ struct Chart2DMeshFactory : public MeshFactory {
 	}
 };
 
-struct TriUnitMeshFactory : public Chart2DMeshFactory {
+struct Tri2DMeshFactory : public Chart2DMeshFactory {
 	using Super = Chart2DMeshFactory;
-	TriUnitMeshFactory() : Super("unit square of triangles") {}
+	Tri2DMeshFactory() : Super("unit square of triangles") {}
 	
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
-		
-		int m = Super::size(0) + 1;
-		int n = Super::size(1) + 1;
-	
-		mesh->vtxs.resize(m * n);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					(real)i / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
-					(real)j / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
-				
+
+		int2 n = Super::size + 1;
+		int2 step(1, n(0));
+		int vtxsize = n.volume();
+		if (Super::capmin(0)) vtxsize++;
+		mesh->vtxs.resize(vtxsize);
+		int2 i;
+		for (i(1) = 0; i(1) < n(1); ++i(1)) {
+			for (i(0) = 0; i(0) < n(0); ++i(0)) {
+				real2 x = (real2)i / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
 				real2 u = Super::coordChart(x);
-				mesh->vtxs[i + m * j].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
+				mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
 			}
+		}
+#if 0	
+		int capindex = n.volume();
+		if (Super::capmin(0)) {
+			real3 sum;
+			for (int j = 0; j < n(0); ++j) {
+				sum += mesh->vtxs[0 + n(0) * j].pos;
+			}
+			mesh->vtxs[capindex].pos = sum / (real)n(1);
 		}
 		
-		int imax = Super::repeat(0) ? m : m-1;
-		int jmax = Super::repeat(1) ? n : n-1;
-		for (int j = 0; j < jmax; ++j) {
-			int jn = (j + 1) % n;
-			for (int i = 0; i < imax; ++i) {
-				int in = (i + 1) % m;
-				mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn});
-				mesh->addCell(std::vector<int>{in + m * jn, i + m * jn, i + m * j});
+		int2 imax;
+		for (int j = 0; j < 2; ++j) {
+			imax(j) = Super::repeat(j) ? n(j) : n(j)-1;
+		{
+		int2 in;
+		for (i(1) = 0; i(1) < imax(1); ++i(1)) {
+			in(1) = (i(1) + 1) % n(1);
+			for (i(0) = 0; i(0) < imax(0); ++i(0)) {
+				in(0) = (i(0) + 1) % n(0);
+				mesh->addCell(std::vector<int>{
+					i(0) + n(0) * i(1),
+					in(0) + n(0) * i(1),
+					in(0) + n(0) * in(1)
+				});
+				mesh->addCell(std::vector<int>{
+					in(0) + n(0) * in(1),
+					i(0) + n(0) * in(1),
+					i(0) + n(0) * i(1)
+				});
 			}
 		}
-	
+#endif	
 		mesh->calcAux();
 		return mesh;
 	}
 };
 
-struct QuadUnitMeshFactory : public Chart2DMeshFactory {
+struct Quad2DMeshFactory : public Chart2DMeshFactory {
 	using Super = Chart2DMeshFactory;
-	QuadUnitMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
+	Quad2DMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
 	
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
@@ -858,8 +884,8 @@ struct QuadUnitMeshFactory : public Chart2DMeshFactory {
 	}
 };
 
-struct QuadUnitCbrtMeshFactory : public QuadUnitMeshFactory {
-	QuadUnitCbrtMeshFactory() : QuadUnitMeshFactory("unit square of quads, cbrt mapping") {}
+struct Quad2DCbrtMeshFactory : public Quad2DMeshFactory {
+	Quad2DCbrtMeshFactory() : Quad2DMeshFactory("unit square of quads, cbrt mapping") {}
 	virtual real2 coordChart(real2 v) const {
 		return real2(cbrt(v(0)), cbrt(v(1)));
 	}
@@ -868,15 +894,15 @@ struct QuadUnitCbrtMeshFactory : public QuadUnitMeshFactory {
 template<typename T> 
 static T cubed(const T& t) { return t * t * t; }
 
-struct QuadUnitCubedMeshFactory : public QuadUnitMeshFactory {
-	QuadUnitCubedMeshFactory() : QuadUnitMeshFactory("unit square of quads, cubed mapping") {}
+struct Quad2DCubeMeshFactory : public Quad2DMeshFactory {
+	Quad2DCubeMeshFactory() : Quad2DMeshFactory("unit square of quads, cubed mapping") {}
 	virtual real2 coordChart(real2 v) const {
 		return real2(cubed(v(0)), cubed(v(1)));
 	}
 };
 
-struct TwistQuadUnitMeshFactory : public QuadUnitMeshFactory {
-	TwistQuadUnitMeshFactory() : QuadUnitMeshFactory("unit square of quads, twist in the middle") {}
+struct Quad2DTwistMeshFactory : public Quad2DMeshFactory {
+	Quad2DTwistMeshFactory() : Quad2DMeshFactory("unit square of quads, twist in the middle") {}
 	virtual real2 coordChart(real2 v) const {
 		real r = real2::length(v);
 		//real theta = std::max(0., 1. - r);
@@ -890,25 +916,25 @@ struct TwistQuadUnitMeshFactory : public QuadUnitMeshFactory {
 	}
 };
 
-struct DonutQuadUnitMeshFactory : public QuadUnitMeshFactory {
-	using Super = QuadUnitMeshFactory;
-	DonutQuadUnitMeshFactory() : Super("polar") {
+struct PolarMeshFactory : public Quad2DMeshFactory {
+	using Super = Quad2DMeshFactory;
+	PolarMeshFactory() : Super("polar") {
 		Super::size = int2(50, 200);
-		Super::mins = real2(.5, 0);
+		Super::mins = real2(0, 0);
 		Super::maxs = real2(1, 2*M_PI);
 		Super::repeat = bool2(false, true);
-		//Super::capmin = int2(true, false);
+		Super::capmin = bool2(true, false);
 	}
 	virtual real2 coordChart(real2 v) const {
 		return real2(cos(v(1)), sin(v(1))) * v(0);
 	}
 };
 
-//not inheriting from QuadUnitMeshFactory because it has variable size and we want fixed size (based on image size)
-struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
-	using This = QuadUnitBasedOnImageMeshFactory;
+//not inheriting from Quad2DMeshFactory because it has variable size and we want fixed size (based on image size)
+struct Quad2DImageMeshFactory : public Chart2DMeshFactory {
+	using This = Quad2DImageMeshFactory;
 	using Super = Chart2DMeshFactory;
-	QuadUnitBasedOnImageMeshFactory() : Super("unit based on image") {}
+	Quad2DImageMeshFactory() : Super("unit based on image") {}
 
 	std::string imageFilename = "layout.png";
 	//std::string imageFilename = "layout.bmp";
@@ -923,30 +949,32 @@ struct QuadUnitBasedOnImageMeshFactory : public Chart2DMeshFactory {
 		auto img = std::dynamic_pointer_cast<Image::Image>(iimg);
 
 		Super::size = img->getSize();
-		
-		int m = Super::size(0) + 1;
-		int n = Super::size(1) + 1;
-	
-		mesh->vtxs.resize(m * n);
-		for (int j = 0; j < n; ++j) {
-			for (int i = 0; i < m; ++i) {
-				real2 x = real2(
-					(real)i / (real)Super::size(0) * (Super::maxs(0) - Super::mins(0)) + Super::mins(0),
-					(real)j / (real)Super::size(1) * (Super::maxs(1) - Super::mins(1)) + Super::mins(1));
+		int2 n = Super::size + 1;
+		int2 step(1, n(0));	
+		mesh->vtxs.resize(n.volume());
+		int2 i;
+		for (i(1) = 0; i(1) < n(1); ++i(1)) {
+			for (i(0) = 0; i(0) < n(0); ++i(0)) {
+				real2 x = (real2)i / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
 				
 				real2 u = Super::coordChart(x);
-				mesh->vtxs[i + m * j].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
+				mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
 			}
 		}
 
-		int imax = m-1;
-		int jmax = n-1;
-		for (int j = 0; j < jmax; ++j) {
-			int jn = (j + 1) % n;
-			for (int i = 0; i < imax; ++i) {
-				int in = (i + 1) % m;
-				if ((*img)(i, jmax-1-j)) {
-					mesh->addCell(std::vector<int>{i + m * j, in + m * j, in + m * jn, i + m * jn});
+		int2 imax = n - 1;
+		int2 in;
+		for (i(1) = 0; i(1) < imax(1); ++i(1)) {
+			in(1) = (i(1) + 1) % n(1);
+			for (i(0) = 0; i(0) < imax(0); ++i(0)) {
+				in(0) = (i(0) + 1) % n(0);
+				if ((*img)(i(0), imax(1)-1-i(1))) {
+					mesh->addCell(std::vector<int>{
+						i(0) + n(0) * i(1),
+						in(0) + n(0) * i(1),
+						in(0) + n(0) * in(1),
+						i(0) + n(0) * in(1)
+					});
 				}
 			}
 		}
@@ -984,7 +1012,7 @@ struct Chart3DMeshFactory : public MeshFactory {
 		std::make_pair("size", &This::size),
 		std::make_pair("mins", &This::mins),
 		std::make_pair("maxs", &This::maxs),
-		std::make_pair("repeat", &This::maxs)
+		std::make_pair("repeat", &This::repeat)
 	);
 
 	Chart3DMeshFactory(const char* name_ = "3D chart mesh") : MeshFactory(name_) {}
@@ -996,9 +1024,10 @@ struct Chart3DMeshFactory : public MeshFactory {
 	}
 };
 
-struct CubeUnitMeshFactory : public Chart3DMeshFactory {
+struct Cube3DMeshFactory : public Chart3DMeshFactory {
 	using Super = Chart3DMeshFactory;
-	CubeUnitMeshFactory(const char* name_ = "unit cube of cubes") : Super(name_) {}
+	
+	Cube3DMeshFactory(const char* name_ = "cube mesh") : Super(name_) {}
 	
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
@@ -1011,7 +1040,7 @@ struct CubeUnitMeshFactory : public Chart3DMeshFactory {
 			for (i(1) = 0; i(1) < n(1); ++i(1)) {
 				for (i(0) = 0; i(0) < n(0); ++i(0)) {
 					real3 x = (real3)i / (real3)Super::size * (Super::maxs - Super::mins) + Super::mins;
-					mesh->vtxs[i(0) + n(0) * (i(1) + n(1) * i(2))].pos = Super::coordChart(x);
+					mesh->vtxs[i(0) + n(0) * (i(1) + n(1) * i(2))].pos = this->coordChart(x);
 				}
 			}
 		}
@@ -1048,21 +1077,82 @@ struct CubeUnitMeshFactory : public Chart3DMeshFactory {
 	}
 };
 
+struct Sphere3DMeshFactory : public Cube3DMeshFactory {
+	using Super = Cube3DMeshFactory;
+	
+	Sphere3DMeshFactory() : Super("sphere") {
+		Super::size = int3(10, 10, 10);
+		Super::mins = real3(.5, .5, 0);
+		Super::maxs = real3(1, 1., 1);
+		//Super::repeat = bool3(false, false, true);
+		//Super::capmin = bool3(true, false, false);	//TODO
+	}
+	
+	virtual real3 coordChart(real3 x) const {
+		real r = x(0);
+		real theta = x(1) * M_PI;
+		real phi = x(2) * 2 * M_PI;
+		real sinth = sin(theta);
+		return real3(
+			r * cos(phi) * sinth,
+			r * sin(phi) * sinth,
+			r * cos(theta));
+	}
+};
+
+struct Torus3DMeshFactory : public Cube3DMeshFactory {
+	using This = Torus3DMeshFactory;
+	using Super = Cube3DMeshFactory;
+
+	real R = 3.;
+
+	static constexpr auto fields = std::tuple_cat(
+		Super::fields,
+		std::make_tuple(
+			std::make_pair("R", &This::R)
+		)
+	);
+
+	Torus3DMeshFactory() : Super("torus") {
+		Super::size = int3(10, 10, 10);
+		Super::mins = real3(0, 0, 0);
+		Super::maxs = real3(1, .5, .5);
+		//Super::repeat = bool3(false, true, true);
+	}
+
+	virtual real3 coordChart(real3 x) const {
+		real r = x(0);
+		real theta = x(1) * 2 * M_PI;
+		real phi = x(2) * 2 * M_PI;
+		return real3(
+			(r * cos(theta) + R) * cos(phi), 
+			(r * cos(theta) + R) * sin(phi), 
+			-r * sin(theta)
+		);
+	}
+
+	virtual void updateGUI() {
+		CFDMesh::updateGUI(this);
+	}
+};
+
 static std::vector<std::shared_ptr<MeshFactory>> getGens() {
 	if constexpr (dim == 2) {
 		return std::vector<std::shared_ptr<MeshFactory>>{
-			std::make_shared<QuadUnitMeshFactory>(),
-			std::make_shared<TriUnitMeshFactory>(),
-			std::make_shared<QuadUnitCbrtMeshFactory>(),
-			std::make_shared<QuadUnitCubedMeshFactory>(),
-			std::make_shared<TwistQuadUnitMeshFactory>(),
-			std::make_shared<DonutQuadUnitMeshFactory>(),
-			std::make_shared<QuadUnitBasedOnImageMeshFactory>(),
-			std::make_shared<FileMeshFactory>(),
+			std::make_shared<Quad2DMeshFactory>(),
+			std::make_shared<Tri2DMeshFactory>(),
+			std::make_shared<Quad2DCbrtMeshFactory>(),
+			std::make_shared<Quad2DCubeMeshFactory>(),
+			std::make_shared<Quad2DTwistMeshFactory>(),
+			std::make_shared<PolarMeshFactory>(),
+			std::make_shared<Quad2DImageMeshFactory>(),
+			std::make_shared<P2DFMTMeshFactory>(),
 		};
 	} else if constexpr (dim == 3) {
 		return std::vector<std::shared_ptr<MeshFactory>>{
-			std::make_shared<CubeUnitMeshFactory>(),
+			std::make_shared<Cube3DMeshFactory>(),
+			std::make_shared<Sphere3DMeshFactory>(),
+			std::make_shared<Torus3DMeshFactory>(),
 		};
 	}
 	throw Common::Exception() << "here";
