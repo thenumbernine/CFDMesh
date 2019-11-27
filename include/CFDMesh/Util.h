@@ -5,6 +5,7 @@
 #include <map>
 #include <regex>
 #include <string>
+#include <sstream>
 
 
 template<typename T>
@@ -20,6 +21,7 @@ std::ostream& ostreamForFields(std::ostream& a, const T& b) {
 	});
 	return a << "]";
 }
+
 
 template<typename T>
 std::string objectStringFromOStream(const T& x) {

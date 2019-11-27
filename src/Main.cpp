@@ -224,16 +224,8 @@ struct Simulation : public ISimulation {
 					real dx = e->area;
 					if (dx && e->cells(0) != -1 && e->cells(1) != -1) {
 						CalcLambdaVars vars(eqn, U, e->normal);
-						
-						real lambdaMin, lambdaMax;
-						std::pair<real, real> lambdaMinMax = eqn.calcLambdaMinMax(vars);
-						lambdaMin = lambdaMinMax.first;
-						lambdaMax = lambdaMinMax.second;
-						lambdaMin = std::min<real>(0, lambdaMin);
-						lambdaMax = std::max<real>(0, lambdaMax);
-						
-						real dum = dx / (abs(lambdaMax - lambdaMin) + 1e-9);
-						result = std::min(result, dum);
+						auto [lambdaMin, lambdaMax] = eqn.calcLambdaMinMax(vars);
+						result = std::min(result, dx / (std::max(fabs(lambdaMin), fabs(lambdaMax)) + 1e-9));
 					}
 				}
 				return result;
@@ -335,14 +327,14 @@ struct Simulation : public ISimulation {
 				auto [UL, UR] = getEdgeStates(&e);
 #ifdef DEBUG
 for (int i = 0; i < Cons::size; ++i) {
-	if (!std::isfinite(UL(i))) { std::cerr << "got non-finite " << UL << std::endl; }
-	if (!std::isfinite(UR(i))) { std::cerr << "got non-finite " << UR << std::endl; }
+	if (!std::isfinite(UL(i))) { throw Common::Exception() << "got non-finite " << UL; }
+	if (!std::isfinite(UR(i))) { throw Common::Exception() << "got non-finite " << UR; }
 }
 #endif
 				e.flux = (this->*calcFluxes[calcFluxIndex])(UL, UR, e.cellDist, dt, e.normal);
 #ifdef DEBUG
 for (int i = 0; i < Cons::size; ++i) {
-	if (!std::isfinite(e.flux(i))) { std::cerr << "got non-finite " << e.flux << std::endl; break; }
+	if (!std::isfinite(e.flux(i))) { throw Common::Exception() << "got non-finite " << e.flux; break; }
 }
 #endif
 			}

@@ -3,27 +3,21 @@
 #include "Tensor/Vector.h"
 #include "Tensor/Quat.h"
 
-//TODO move these to Tensor/Vector.h
-
-using bool2 = Tensor::Vector<bool, 2>;
-using bool3 = Tensor::Vector<bool, 3>;
-using bool4 = Tensor::Vector<bool, 4>;
-
-using uchar2 = Tensor::Vector<unsigned char, 2>;
-using uchar3 = Tensor::Vector<unsigned char, 3>;
-using uchar4 = Tensor::Vector<unsigned char, 4>;
-
-using int2 = Tensor::Vector<int, 2>;
-using int3 = Tensor::Vector<int, 3>;
-using int4 = Tensor::Vector<int, 4>;
-
-using float2 = Tensor::Vector<float, 2>;
-using float3 = Tensor::Vector<float, 3>;
-using float4 = Tensor::Vector<float, 4>;
-
-using double2 = Tensor::Vector<double, 2>;
-using double3 = Tensor::Vector<double, 3>;
-using double4 = Tensor::Vector<double, 4>;
+using bool2 = Tensor::bool2;
+using bool3 = Tensor::bool3;
+using bool4 = Tensor::bool4;
+using uchar2 = Tensor::uchar2;
+using uchar3 = Tensor::uchar3;
+using uchar4 = Tensor::uchar4;
+using int2 = Tensor::int2;
+using int3 = Tensor::int3;
+using int4 = Tensor::int4;
+using float2 = Tensor::float2;
+using float3 = Tensor::float3;
+using float4 = Tensor::float4;
+using double2 = Tensor::double2;
+using double3 = Tensor::double3;
+using double4 = Tensor::double4;
 
 //for giving operators to the Cons and Prim vector classes
 //how can you add correctly-typed ops via crtp to a union?

@@ -218,7 +218,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		Cons U;
 		U.rho = W.rho;
 		U.m = W.v * U.rho;
-		U.ETotal = W.P / (heatCapacityRatio - 1.) + .5 * U.rho * real3::lenSq(W.v);
+		U.ETotal = W.P / (heatCapacityRatio - 1.) + .5 * U.rho * W.v.lenSq();
 		return U;
 	}
 
@@ -226,7 +226,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		Prim W;
 		W.rho = U.rho;
 		W.v = U.m / W.rho;
-		W.P = (heatCapacityRatio - 1.) * (U.ETotal - .5 * W.rho * real3::lenSq(W.v));
+		W.P = (heatCapacityRatio - 1.) * (U.ETotal - .5 * W.rho * W.v.lenSq());
 		return W;
 	}
 
@@ -276,7 +276,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real invDenom = 1. / (sqrtRhoL + sqrtRhoR);
 
 		vars.v = (vL * sqrtRhoL + vR * sqrtRhoR) * invDenom;
-		vars.vSq = real3::lenSq(vars.v);
+		vars.vSq = vars.v.lenSq();
 		vars.hTotal = (sqrtRhoL * hTotalL + sqrtRhoR * hTotalR) * invDenom;
 		vars.Cs = calc_Cs_from_vSq_hTotal(vars.vSq, vars.hTotal);
 		vars.CsSq = vars.Cs * vars.Cs;
@@ -311,7 +311,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	};
 
 	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) const {
-		return std::make_pair<real, real>(vars.v - vars.Cs, vars.v + vars.Cs);
+		return std::pair<real, real>(vars.v - vars.Cs, vars.v + vars.Cs);
 	}
 
 	real calcLambdaMin(const CalcLambdaVars& vars) const {
@@ -380,7 +380,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	Cons apply_evL(Cons x, const Eigen& vars, real3 n) {
 		const real& Cs = vars.Cs;
 		const real3& v = vars.v;
-		const real& vSq = real3::lenSq(v);
+		const real& vSq = v.lenSq();
 	
 		real vn = real3::dot(v, n);
 
@@ -390,11 +390,9 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real denom = 2. * CsSq;
 		real invDenom = 1. / denom;
 
-		//TODO FIXME this only works for cartesian basis normals
 		Tensor::Vector<real3, 2> t;
 		BuildPerpendicularBasis::go(n, t);
 
-		//eigenvector inverses:
 		Cons y;
 		//min row	
 		y.ptr[0] = (
@@ -437,12 +435,11 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	Cons apply_evR(Cons x, const Eigen& vars, real3 n) {
 		const real& Cs = vars.Cs;
 		const real3& v = vars.v;
-		const real& vSq = real3::lenSq(v);
+		const real& vSq = v.lenSq();
 		const real& hTotal = vars.hTotal;
 
 		real vn = real3::dot(v, n);
 		
-		//TODO FIXME this only works for cartesian basis normals
 		Tensor::Vector<real3, 2> t;
 		BuildPerpendicularBasis::go(n, t);
 
@@ -464,22 +461,22 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 			+ x.ptr[1] * (.5 * vSq);
 		//mid eigenvectors (tangents)
 		y.ptr[2] =
-			x.ptr[0+2] * t(0)(0)
-			+ x.ptr[0+2] * t(0)(1)
-			+ x.ptr[0+2] * t(0)(2)
-			+ x.ptr[0+2] * real3::dot(v, t(0));
+			x.ptr[2] * t(0)(0)
+			+ x.ptr[2] * t(0)(1)
+			+ x.ptr[2] * t(0)(2)
+			+ x.ptr[2] * real3::dot(v, t(0));
 		y.ptr[3] =
-			x.ptr[1+2] * t(1)(0)
-			+ x.ptr[1+2] * t(1)(1)
-			+ x.ptr[1+2] * t(1)(2)
-			+ x.ptr[1+2] * real3::dot(v, t(1));
+			x.ptr[3] * t(1)(0)
+			+ x.ptr[3] * t(1)(1)
+			+ x.ptr[3] * t(1)(2)
+			+ x.ptr[3] * real3::dot(v, t(1));
 		//max eigenvector
 		y.ptr[4] =
-			x.ptr[3+1]
-			+ x.ptr[3+1] * (v(0) + Cs * n(0))
-			+ x.ptr[3+1] * (v(1) + Cs * n(1))
-			+ x.ptr[3+1] * (v(2) + Cs * n(2))
-			+ x.ptr[3+1] * (hTotal + Cs * vn);
+			x.ptr[4]
+			+ x.ptr[4] * (v(0) + Cs * n(0))
+			+ x.ptr[4] * (v(1) + Cs * n(1))
+			+ x.ptr[4] * (v(2) + Cs * n(2))
+			+ x.ptr[4] * (hTotal + Cs * vn);
 		
 		return y;
 	}

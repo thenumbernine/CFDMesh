@@ -99,7 +99,7 @@ struct Equation {
 	}
 	
 	void addDisplayVector(const std::string& name, std::function<float3(const Base* eqn, const Cons& U)> func) {
-		displayMethods.push_back(std::make_shared<DisplayMethod>(name + " len", [func](const Base* eqn, const Cons& U) -> float { return real3::length(func(eqn, U)); }));
+		displayMethods.push_back(std::make_shared<DisplayMethod>(name + " len", [func](const Base* eqn, const Cons& U) -> float { return func(eqn, U).length(); }));
 		for (int i = 0; i < 3; ++i) {
 			displayMethods.push_back(std::make_shared<DisplayMethod>(name + std::to_string(i), [i, func](const Base* eqn, const Cons& U) -> float { return func(eqn, U)(i); }));
 		}
