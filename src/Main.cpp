@@ -26,6 +26,12 @@
 
 #include <cassert>
 
+
+//do we rotate to align fluxes with x-axis and only use the x-axis flux,
+// or do we use the general normal-based flux computation
+#define ROTATE_TO_ALIGN	0
+
+
 namespace CFDMesh {
 
 //config for everything, to hold everything in one place
@@ -35,7 +41,7 @@ using real = double;
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
-static Parallel::Parallel parallel;
+static Parallel::Parallel parallel;//(1);
 
 struct CFDMeshApp;
 
@@ -80,17 +86,9 @@ struct Simulation : public ISimulation {
 	double time = 0;
 	
 	using ValueRange = std::pair<float, float>; //min, max
-	ValueRange displayValueRange = ValueRange(0, 1);
-	
-	int selectedCellIndex = -1;
-	
-	bool showCells = true;
-	bool showVtxs = false;
-	bool showFaces = false;
-	bool showFaceCenters = false;
-	bool showCellCenters = false;
 
-	float cellScale = 1;
+	//passed to mesh.draw
+	typename Mesh::DrawArgs drawArgs;
 
 	bool displayAutomaticRange = true;
 	int displayMethodIndex = 0;
@@ -100,7 +98,10 @@ struct Simulation : public ISimulation {
 	//1 = mirror boundary, -1 = freeflow boundary
 	float restitution = 1;
 	
-	float cfl = .5;
+	real cfl = .5;
+
+	real dt = {};
+	bool useFixedDT = false;
 
 	int meshGenerationIndex = 0;
 
@@ -116,20 +117,16 @@ struct Simulation : public ISimulation {
 		//std::make_pair("mousepos", &Super::mousepos),		//TODO as a hover text / readonly
 
 		std::make_pair("cfl", &This::cfl),
+		std::make_pair("dt", &This::dt),
+		std::make_pair("useFixedDT", &This::useFixedDT),
 		
-		std::make_pair("show cells", &This::showCells),
-		std::make_pair("show vtxs", &This::showVtxs),
-		std::make_pair("show faces", &This::showFaces),
-		std::make_pair("show face centers", &This::showFaceCenters),
-		std::make_pair("show cell centers", &This::showCellCenters),
-		std::make_pair("cell scale", &This::cellScale),
 		GUISeparator(),
 		
 		std::make_pair("display method", &This::displayMethodIndex),	//TODO combo from displayMethodNames
 		std::make_pair("auto display range", &This::displayAutomaticRange),
-		std::make_pair("display value range", &This::displayValueRange),
-		GUISeparator(),
-		
+
+		std::make_pair("", &This::drawArgs),
+
 		std::make_pair("restitution", &This::restitution),
 		GUISeparator(),
 		
@@ -217,13 +214,12 @@ struct Simulation : public ISimulation {
 			m->cells.end(),
 			[this](Cell& c) -> real {
 				const Cons& U = c.U;
-				
 				real result = std::numeric_limits<real>::infinity();
-				for (int ei = 0; ei < c.faceCount; ++ei) {
-					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
-					real dx = e->area;
-					if (dx && e->cells(0) != -1 && e->cells(1) != -1) {
-						CalcLambdaVars vars(eqn, U, e->normal);
+				for (int i = 0; i < c.faceCount; ++i) {
+					Face* f = &m->faces[m->cellFaceIndexes[i+c.faceOffset]];
+					real dx = f->area;
+					if (dx > 1e-7 && f->cells(0) != -1 && f->cells(1) != -1) {
+						CalcLambdaVars vars(eqn, U, f->normal);
 						auto [lambdaMin, lambdaMax] = eqn.calcLambdaMinMax(vars);
 						result = std::min(result, dx / (std::max(fabs(lambdaMin), fabs(lambdaMax)) + 1e-9));
 					}
@@ -234,8 +230,7 @@ struct Simulation : public ISimulation {
 			[](real a, real b) -> real { return std::min(a,b); }
 		);
 		// calculate dt
-		real dt = result * cfl;
-		return dt;
+		return result * cfl;
 	}
 
 	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt, real3 n) {
@@ -261,6 +256,24 @@ struct Simulation : public ISimulation {
 	
 		Cons flux = eqn.apply_evR(fluxTilde, vars, n);
 		// here's the flux, aligned along the normal
+
+#if 1	//print eigenbasis error
+		real value = 0;
+		for (int k = 0; k < eqn.numWaves; ++k) {
+			Cons basis;
+			for (int j = 0; j < eqn.numStates; ++j) {
+				basis.ptr[j] = k == j ? 1 : 0;
+			}
+			
+			WaveVec charVars = eqn.apply_evL(basis, vars, n);
+			Cons newbasis = eqn.apply_evR(charVars, vars, n);
+		
+			for (int j = 0; j < eqn.numStates; ++j) {
+				value += fabs(newbasis.ptr[j] - basis.ptr[j]);
+			}
+		}
+		std::cout << "ortho error = " << value << std::endl;
+#endif
 
 		return flux;
 	}
@@ -318,24 +331,61 @@ struct Simulation : public ISimulation {
 	};
 	
 	void step() {
-		real dt = calcDT();
+		if (!useFixedDT) {
+			dt = calcDT();
+		}
+//std::cout << "dt " << dt << std::endl;
 
 		parallel.foreach(
 			m->faces.begin(),
 			m->faces.end(),
-			[this, dt](Face& e) {
-				auto [UL, UR] = getEdgeStates(&e);
-#ifdef DEBUG
+			[this](Face& face) {
+				if (face.area <= 1e-7) return;
+
+				auto [UL, UR] = getEdgeStates(&face);
+
+#if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
 	if (!std::isfinite(UL(i))) { throw Common::Exception() << "got non-finite " << UL; }
 	if (!std::isfinite(UR(i))) { throw Common::Exception() << "got non-finite " << UR; }
 }
 #endif
-				e.flux = (this->*calcFluxes[calcFluxIndex])(UL, UR, e.cellDist, dt, e.normal);
-#ifdef DEBUG
+
+#if ROTATE_TO_ALIGN	//rotate normal to x-axis
+				Cons oldUL = UL;
+				Cons oldUR = UR;
+				UL = eqn.rotateFrom(UL, face.normal);
+				UR = eqn.rotateFrom(UR, face.normal);
+				real3 fluxNormal = real3(1, 0, 0);
+#else
+				const auto& fluxNormal = face.normal;
+#endif
+
+#if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
-	if (!std::isfinite(e.flux(i))) { throw Common::Exception() << "got non-finite " << e.flux; break; }
+	if (!std::isfinite(UL(i))) { 
+#if ROTATE_TO_ALIGN
+std::cout << " from " << oldUL << " to " << UL << std::endl << " along normal " << face.normal << std::endl;
+#endif		
+		throw Common::Exception() << "got non-finite " << UL; 
+	}
+	if (!std::isfinite(UR(i))) { 
+#if ROTATE_TO_ALIGN
+std::cout << " from " << oldUR << " to " << UR << std::endl << " along normal " << face.normal << std::endl;
+#endif		
+		throw Common::Exception() << "got non-finite " << UR; 
+	}
 }
+#endif
+				face.flux = (this->*calcFluxes[calcFluxIndex])(UL, UR, face.cellDist, dt, fluxNormal);
+#if DEBUG
+for (int i = 0; i < Cons::size; ++i) {
+	if (!std::isfinite(face.flux(i))) { throw Common::Exception() << "got non-finite " << face.flux; break; }
+}
+#endif
+
+#if ROTATE_TO_ALIGN
+				face.flux = eqn.rotateTo(face.flux, face.normal);
 #endif
 			}
 		);
@@ -343,7 +393,7 @@ for (int i = 0; i < Cons::size; ++i) {
 		parallel.foreach(
 			m->cells.begin(),
 			m->cells.end(),
-			[this, dt](Cell& c) {
+			[this](Cell& c) {
 				Cons dU_dt;
 				for (int ei = 0; ei < c.faceCount; ++ei) {
 					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
@@ -372,7 +422,7 @@ for (int i = 0; i < Cons::size; ++i) {
 		);
 
 		if (displayAutomaticRange) {
-			displayValueRange = parallel.reduce(
+			drawArgs.displayValueRange = parallel.reduce(
 				m->cells.begin(),
 				m->cells.end(),
 				[](const Cell& c) -> ValueRange {
@@ -403,10 +453,10 @@ for (int i = 0; i < Cons::size; ++i) {
 };
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
-	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real, 3>>>(app); }},
-	
 	{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real, 2>>>(app); }},
 //	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
+	
+//	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real, 3>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<
@@ -566,14 +616,11 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	
 	if (igSmallButton("step")) singleStep = true;
 
-	igInputFloat("cfl", &cfl, .1, 1, "%f", 0);
+	CFDMesh::updateGUI(&cfl, "cfl");
+	CFDMesh::updateGUI(&dt, "dt");
+	CFDMesh::updateGUI(&useFixedDT, "use fixed dt");
 
-	igCheckbox("showCells", &showCells);
-	igCheckbox("showVtxs", &showVtxs);
-	igCheckbox("showFaceCenters", &showFaceCenters);
-	igCheckbox("showCellCenters", &showCellCenters);
-	igCheckbox("showFaces", &showFaces);
-	igInputFloat("cell scale", &cellScale, .1, 1, "%f", 0);
+	CFDMesh::updateGUI(&drawArgs);
 
 	igSeparator();
 
@@ -582,8 +629,6 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	}
 
 	igCheckbox("auto display range", &displayAutomaticRange);
-	igInputFloat("display range min", &displayValueRange.first, .1, 1, "%f", 0);
-	igInputFloat("display range max", &displayValueRange.second, .1, 1, "%f", 0);
 	
 	igSeparator();
 	
@@ -633,7 +678,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 			igEndTooltip();
 		}
 
-		selectedCellIndex = -1;
+		drawArgs.selectedCellIndex = -1;
 		for (int i = 0; i < (int)m->cells.size(); ++i) {
 			Cell* c = &m->cells[i];
 			if (ThisMeshNamespace::polygonContains(
@@ -645,13 +690,13 @@ void Simulation<real, dim, Equation>::updateGUI() {
 					return real2([&vi](int j) -> real { return vi.pos(j); });
 				}
 			)) {
-				selectedCellIndex = i;
+				drawArgs.selectedCellIndex = i;
 				break;
 			}
 		}
 
-		if (selectedCellIndex != -1) {
-			Cell* c = &m->cells[selectedCellIndex];
+		if (drawArgs.selectedCellIndex != -1) {
+			Cell* c = &m->cells[drawArgs.selectedCellIndex];
 			
 			if (canHandleMouse) {
 				igBeginTooltip();
@@ -670,7 +715,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 						toRemoveEdges.push_back(ei);
 					}
 				}
-				m->cells.erase(m->cells.begin() + selectedCellIndex);
+				m->cells.erase(m->cells.begin() + drawArgs.selectedCellIndex);
 			
 				//sort largest -> smallest
 				std::sort(toRemoveEdges.begin(), toRemoveEdges.end(), [](int a, int b) -> bool { return a > b; });
@@ -686,17 +731,8 @@ void Simulation<real, dim, Equation>::updateGUI() {
 
 template<typename real, int dim, typename ThisEquation>
 void Simulation<real, dim, ThisEquation>::draw() {
-	typename Mesh::DrawArgs args;
-	args.gradientTex = app->gradientTex;
-	args.displayValueRange = displayValueRange;
-	args.selectedCellIndex = selectedCellIndex;
-	args.showCells = showCells;
-	args.showVtxs = showVtxs;
-	args.showFaces = showFaces;
-	args.showFaceCenters = showFaceCenters;
-	args.showCellCenters = showCellCenters;
-	args.cellScale = cellScale;
-	m->draw(args);
+	drawArgs.gradientTex = app->gradientTex;
+	m->draw(drawArgs);
 }
 
 }

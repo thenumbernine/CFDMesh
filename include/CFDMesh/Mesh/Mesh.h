@@ -218,6 +218,30 @@ public:
 
 
 	int addFaceForVtxs(const int* vs, int n) {
+#if 0
+		std::vector<int> uniquevs(vs, vs + n);
+std::cout << "requesting to build a face from " << uniquevs << std::endl;
+		if constexpr (dim == 3) {
+			//remove any degenerate vertexes
+			for (int i = uniquevs.size()-2; i >= 0; --i) {
+std::cout << "comparing vtx " << vtxs[uniquevs[i]].pos << " and " << vtxs[uniquevs[i+1]].pos << std::endl;
+				if (i < uniquevs.size()-1 && (vtxs[uniquevs[i]].pos - vtxs[uniquevs[i+1]].pos).lenLInf() < 1e-7) {
+std::cout << " ... is less than threshold, removing" << std::endl;					
+					uniquevs.erase(uniquevs.begin() + i);
+					++i;
+				}
+			}
+#if 0			
+			if (uniquevs.size() < 3) {
+std::cout << "removed too many vtxs, bailing on face" << std::endl;				
+				return -1;
+			}
+#endif		
+		}
+//		n = vs.size();
+//std::cout << "after pruning redundant vertexes, building a face from " << vs << std::endl;
+#endif
+
 		int fi = 0;
 		for (; fi < (int)faces.size(); ++fi) {
 			Face* f = &faces[fi];
@@ -279,9 +303,24 @@ public:
 			for (int i = 0; i < n; ++i) {
 				polyVtxs[i] = vtxs[vs[i]].pos;
 			}
-			f.normal = cross(polyVtxs[1] - polyVtxs[0], polyVtxs[2] - polyVtxs[1]).unit();
+			for (int i = 0; i < n; ++i) {
+				int i2 = (i+1)%n;
+				int i3 = (i2+1)%n;
+				f.normal += cross(polyVtxs[i2] - polyVtxs[i], polyVtxs[i3] - polyVtxs[i2]);
+			}
+			f.normal = f.normal.unit();
+#if 0
+std::cout << "building face with vertexes " << polyVtxs << std::endl;
+std::cout << "assigning normal to " 
+	<< (polyVtxs[1] - polyVtxs[0]) << " x " 
+	<< (polyVtxs[2] - polyVtxs[1]) << " = "
+	<< f.normal << std::endl;
+#endif
 			f.area = polygon3DVolume(polyVtxs, f.normal);
 			f.pos = polygon3DCOM(polyVtxs, f.area, f.normal);
+#if 0
+std::cout << "getting area " << f.area << " pos " << f.pos << std::endl;
+#endif
 		} else {
 			throw Common::Exception() << "here";
 		}
@@ -291,6 +330,7 @@ public:
 	
 	int addFace(const int* vs, int n, int ci) {
 		int fi = addFaceForVtxs(vs, n);
+//		if (fi != -1) return fi;
 		Face& f = faces[fi];	
 		if (f.cells(0) == -1) {
 			f.cells(0) = ci;
@@ -299,11 +339,18 @@ public:
 		} else {
 			throw Common::Exception() << "tried to add too many cells to an edge";
 		}
+#if 0
+std::cout << "adding face " << fi << " as " << std::to_string(f) << " with vtx indexes " << std::vector<int>(vs, vs+n) << std::endl;
+if (f.cells(0) == -1 && f.cells(1) == -1) throw Common::Exception() << "here " << __FILE__ << ":" << __LINE__;
+#endif
 		return fi;
 	}
 
 
 	void addCell(std::vector<int> vis) {
+#if 0
+std::cout << "adding cell " << vis << std::endl;		
+#endif
 		int ci = (int)cells.size();
 		cells.push_back(Cell());
 		Cell& c = cells.back();
@@ -315,12 +362,17 @@ public:
 		cellVtxIndexes.insert(cellVtxIndexes.end(), vis.begin(), vis.end());
 		c.vtxCount = (int)cellVtxIndexes.size() - c.vtxOffset;
 
+		int lastFaceSize = (int)faces.size();
 		c.faceOffset = (int)cellFaceIndexes.size();
 		if constexpr (dim == 2) {
 			//face is a 1-form
 			for (size_t i = 0; i < n; ++i) {
 				int vtxs[2] = {vis[i], vis[(i+1)%n]}; 
-				cellFaceIndexes.push_back(addFace(vtxs, numberof(vtxs), ci));
+				int fi = addFace(vtxs, numberof(vtxs), ci);
+//				if (fi != -1) 
+				{
+					cellFaceIndexes.push_back(fi);
+				}
 			}
 			std::vector<real2> polyVtxs = map<
 				decltype(vis),
@@ -355,12 +407,10 @@ public:
 				{4,5,7,6},	//z+
 			};
 
-			//cube sides transformed for this cube
-			std::vector<std::vector<int>> thisCubeSides;
-
+			//vector of per-face vector-of-vertexes
 			//to pass to the polyhedron functions
 			std::vector<std::vector<real3>> cubeVtxs;
-	
+
 			for (const auto& side : identityCubeSides) {
 				
 				std::vector<int> thisFaceVtxIndexes = map<
@@ -371,47 +421,78 @@ public:
 				});
 				
 				int fi = addFace(thisFaceVtxIndexes.data(), thisFaceVtxIndexes.size(), ci);
-				const Face& f = faces[fi];
-				
-				//if face area is zero then don't add it to cell's faces
-				// and don't use it later for determining cell's volume
-				if (f.area > 0) {
-					thisCubeSides.push_back(thisFaceVtxIndexes);
-					cellFaceIndexes.push_back(fi);
+//				if (fi != -1) 
+				{
+					const Face& f = faces[fi];
+					
+					//if face area is zero then don't add it to cell's faces
+					// and don't use it later for determining cell's volume
+					if (f.area <= 1e-7) {
+#if 0
+std::cout << "disregarding face with area " << f.area << std::endl;
+#endif
+					} else {
+						cellFaceIndexes.push_back(fi);
 
-					cubeVtxs.push_back(map<
-						decltype(thisFaceVtxIndexes),
-						std::vector<real3>
-					>(
-						thisFaceVtxIndexes,
-						[this](int i) -> real3 { return vtxs[i].pos; }
-					));
+						cubeVtxs.push_back(map<
+							decltype(thisFaceVtxIndexes),
+							std::vector<real3>
+						>(
+							thisFaceVtxIndexes,
+							[this](int i) -> real3 { return vtxs[i].pos; }
+						));
+					}
 				}
 			}
 
-			c.volume = polyhedronVolume(cubeVtxs);
-
-#if DEBUG
-if (c.volume <= 0) throw Common::Exception() << "got a non-positive volume " << std::to_string(c) << "\n"
-						<< "with vtxs " << std::to_string(cubeVtxs);
-#endif
-			c.pos = polyhedronCOM(cubeVtxs, c.volume);
-		
+			if (cellFaceIndexes.size() - lastFaceSize < 4) {	//not enough sides to even form a tetrahedron
+#if 0
+std::cout << "cell didn't have enough faces, setting volume to zero" << std::endl;				
+#endif				
+				c.volume = 0;
+			} else {
+				c.volume = polyhedronVolume(cubeVtxs);
+				c.pos = polyhedronCOM(cubeVtxs, c.volume);
+			}
 		} else {
 			throw Common::Exception() << "you are here";
 		}
 		
-#if DEBUG
-if (c.volume <= 0) throw Common::Exception() << "got a non-positive volume " << std::to_string(c);
-#endif
-		
 		c.faceCount = (int)cellFaceIndexes.size() - c.faceOffset;
+
+#if 0
+std::cout << "cell before testing validity " << c << std::endl;
+#endif
+
+#if 0
+		//remove the cell
+		if (c.volume <= 1e-7) {
+std::cout << "cell had zero volume -- removing." << std::endl;			
+			for (int i = 0; i < c.faceCount; ++i) {
+				int fi = cellFaceIndexes[c.faceOffset + i];
+				if (fi < lastFaceSize) {
+					auto& f = faces[fi];
+int2 before = f.cells;
+					f.removeCell(ci);
+if (f.cells(0) == -1 && f.cells(1) == -1) {
+	throw Common::Exception() << "before " << before << " after = (-1, -1), here " << __FILE__ << ":" << __LINE__;
+}
+				}
+			}
+			faces.resize(lastFaceSize);
+			cellFaceIndexes.resize(c.faceOffset);
+			cellVtxIndexes.resize(c.vtxOffset);
+			cells.resize(ci);
+		}
+#endif
+
 	}
 
 	//calculate edge info
 	//calculate cell volume info
 	void calcAux() {
 
+#if 0
 		//while we're here ...
 		//cycle through all vertexes, collapse mathcing vertexes, build a map from src to collapsed
 		// then apply that map to the cellVtxIndexes and faceVtxIndexes
@@ -423,7 +504,7 @@ if (c.volume <= 0) throw Common::Exception() << "got a non-positive volume " << 
 			for (int j = (int)vtxs.size() - 1; j > 1; --j) {
 				//as long as we cycle first-to-last, our collapseVtxs map old entries will not need to be updated as we add new entries into it
 				for (int i = 0; i < j; ++i) {
-					if ((vtxs[i].pos - vtxs[j].pos).lenL1() < 1e-10) {
+					if ((vtxs[i].pos - vtxs[j].pos).lenLInf() < 1e-7) {
 						collapseVtxs[j] = i;			//replace all 'j's with 'i'
 						vtxs.erase(vtxs.begin() + j);	//erase 'j'
 						break;
@@ -446,8 +527,9 @@ if (c.volume <= 0) throw Common::Exception() << "got a non-positive volume " << 
 				}
 			}
 		}
+#endif
 
-#if 1
+#if 0
 		std::cout << "vtxs" << std::endl;
 		for (const auto& v : vtxs) {
 			std::cout << v << std::endl;
@@ -468,28 +550,31 @@ if (c.volume <= 0) throw Common::Exception() << "got a non-positive volume " << 
 		std::cout << "cellFaceIndexes " << cellFaceIndexes << std::endl;
 #endif
 		
-		for (auto& e : faces) {
-			int a = e.cells(0);
-			int b = e.cells(1);
+		for (auto& f : faces) {
+			int a = f.cells(0);
+			int b = f.cells(1);
 			if (a != -1 && b != -1) {
-				if (real3::dot(cells[a].pos - cells[b].pos, e.normal) < 0) {
+				if (real3::dot(cells[a].pos - cells[b].pos, f.normal) < 0) {
+#if 0
+std::cout << "swapping cells so normal points to b" << std::endl;					
+#endif					
 					std::swap(a, b);
-					e.cells(0) = a;
-					e.cells(1) = b;
-					e.normal *= -1;
+					f.cells(0) = a;
+					f.cells(1) = b;
+					f.normal *= -1;
 				}
 				//distance between cell centers
-				//e.cellDist = (cells[b].pos - cells[a].pos).length();
+				//f.cellDist = (cells[b].pos - cells[a].pos).length();
 				//distance projected to edge normal
-				e.cellDist = fabs(real3::dot(e.normal, cells[b].pos - cells[a].pos));
+				f.cellDist = fabs(real3::dot(f.normal, cells[b].pos - cells[a].pos));
 			} else if (a != -1) {
-				e.cellDist = (cells[a].pos - e.pos).length() * 2.;
+				f.cellDist = (cells[a].pos - f.pos).length() * 2.;
 			} else {
 				throw Common::Exception() << "looks like you created a face that isn't touching any cells...";
 			}
 	
-#if DEBUG
-if (e.cellDist <= 0) throw Common::Exception() << "got non-positive cell distance ";// << e;
+#if 0	//DEBUG	//if we allow degenerate cells then we can have non-positive cell distances
+if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell distance " << std::to_string(f);
 #endif
 		}
 	}
@@ -503,15 +588,19 @@ if (e.cellDist <= 0) throw Common::Exception() << "got non-positive cell distanc
 		bool showCells = true;
 		bool showVtxs = false;
 		bool showFaces = false;
+		bool showFaceNormals = false;
 		bool showFaceCenters = false;
 		bool showCellCenters = false;
 		float cellScale = 1;
 
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("display value range", &This::displayValueRange),
+			GUISeparator(),
+			
 			std::make_pair("show cells", &This::showCells),
 			std::make_pair("show vertexes", &This::showVtxs),
 			std::make_pair("show faces", &This::showFaces),
+			std::make_pair("show face normals", &This::showFaceNormals),
 			std::make_pair("show face centers", &This::showFaceCenters),
 			std::make_pair("show cell centers", &This::showCellCenters),
 			std::make_pair("cell scale", &This::cellScale)
@@ -606,7 +695,16 @@ if (e.cellDist <= 0) throw Common::Exception() << "got non-positive cell distanc
 				glEnd();
 			}
 		}
-
+		
+		if (args.showFaceNormals) {
+			glColor3f(1,0,1);
+			glBegin(GL_LINES);
+			for (const auto& f : faces) {
+				glVertex3v(f.pos.v);
+				glVertex3v((f.pos + f.normal).v);
+			}	
+			glEnd();
+		}
 	}
 };
 
@@ -1131,7 +1229,8 @@ struct Cube3DMeshFactory : public Chart3DMeshFactory {
 	
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
-	
+
+#if 1
 		int3 n = Super::size + 1;
 		int vtxsize = n.volume();
 		mesh->vtxs.resize(vtxsize);
@@ -1171,7 +1270,22 @@ struct Cube3DMeshFactory : public Chart3DMeshFactory {
 				}
 			}
 		}
-	
+#endif
+
+#if  0	//wedge test
+		mesh->vtxs.resize(8);
+		for (int i = 0; i < 8; ++i) {
+			mesh->vtxs[i] = real3(
+				i & 1 ? 1 : -1,
+				i & 2 ? 1 : -1,
+				i & 4 ? 1 : -1
+			);
+			if (i & 1) mesh->vtxs[i].pos(2) = 0;
+		}
+
+		mesh->addCell(std::vector<int>{0,1,2,3,4,5,6,7});
+#endif
+		
 		mesh->calcAux();
 		return mesh;
 	}

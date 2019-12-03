@@ -2,6 +2,7 @@
 
 #include "Tensor/Vector.h"
 #include "Tensor/Quat.h"
+#include <cassert>
 
 using bool2 = Tensor::bool2;
 using bool3 = Tensor::bool3;
@@ -103,13 +104,13 @@ template<typename real>
 struct Rotate<Tensor::Vector<real, 2>> {
 	using real2 = Tensor::Vector<real, 2>;
 	
-	static real2 to(real2 v, real2 n) {
+	static real2 from(real2 v, real2 n) {
 		return real2(
 			v(0) * n(0) + v(1) * n(1),
 			v(1) * n(0) - v(0) * n(1));
 	}
 
-	static real2 from(real2 v, real2 n) {
+	static real2 to(real2 v, real2 n) {
 		return real2(
 			v(0) * n(0) - v(1) * n(1),
 			v(1) * n(0) + v(0) * n(1));
@@ -138,6 +139,12 @@ struct Rotate<Tensor::Vector<real, 3>> {
 		2 sin theta cos theta = sin(2 theta)
 		*/
 		real cosTheta = n(0);
+		if (cosTheta >= 1 - 1e-7) {
+			return v;
+		} else if (cosTheta <= -1 + 1e-7) {
+			//rotating 180' on any axis will do, as long as it is consistent between 'from' and 'to'
+			return real3(-v(0), -v(1), v(2));
+		}	
 		real cosHalfTheta = sqrt(std::clamp<real>(.5 * (1. + cosTheta), 0, 1));
 		real sinHalfTheta = sqrt(std::clamp<real>(1. - cosHalfTheta * cosHalfTheta, 0, 1));
 		real n2 = sqrt(n(1) * n(1) + n(2) * n(2));
@@ -159,12 +166,25 @@ struct Rotate<Tensor::Vector<real, 3>> {
 	// rotate vx,vy,vz such that the x dir now points along n 
 	static real3 from(real3 v, real3 n) {
 		real cosTheta = n(0);
+		if (cosTheta >= 1 - 1e-7) {
+			return v;
+		} else if (cosTheta <= -1 + 1e-7) {
+			//rotating 180' on any axis will do, as long as it is consistent between 'from' and 'to'
+			return real3(-v(0), -v(1), v(2));
+		}
+assert(std::isfinite(cosTheta));
 		real cosHalfTheta = sqrt(std::clamp<real>(.5 * (1. + cosTheta), 0, 1));
+assert(std::isfinite(cosHalfTheta));
 		real sinHalfTheta = sqrt(std::clamp<real>(1. - cosHalfTheta * cosHalfTheta, 0, 1));
+assert(std::isfinite(sinHalfTheta));
 		real n2 = sqrt(n(1) * n(1) + n(2) * n(2));
+assert(std::isfinite(n2));
 		real ax = 0.;
+assert(std::isfinite(ax));
 		real ay = n(2) / n2;
+assert(std::isfinite(ay));
 		real az = -n(1) / n2;
+assert(std::isfinite(az));
 		Quat q(
 			ax * sinHalfTheta,
 			ay * sinHalfTheta,
@@ -173,19 +193,22 @@ struct Rotate<Tensor::Vector<real, 3>> {
 		Quat qInv = q.unitConj();
 		Quat _v(v(0), v(1), v(2), 0);
 		Quat vres = Quat::mul(Quat::mul(q, _v), qInv);
+assert(std::isfinite(vres(0)));
+assert(std::isfinite(vres(1)));
+assert(std::isfinite(vres(2)));
 		return real3(vres(0), vres(1), vres(2));
 
 	}
 };
 
 template<typename T>
-inline T rotateFrom(T v, T n) {
-	return Rotate<T>::from(v, n);
+inline T rotateTo(T v, T n) {
+	return Rotate<T>::to(v, n);
 }
 
 template<typename T>
-inline T rotateTo(T v, T n) {
-	return Rotate<T>::to(v, n);
+inline T rotateFrom(T v, T n) {
+	return Rotate<T>::from(v, n);
 }
 
 }

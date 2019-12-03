@@ -40,6 +40,9 @@ struct Equation {
 	
 	using Cons = Cons_;
 	using Prim = Prim_;
+	
+	enum { numStates = Cons::size };
+	enum { numIntStates = Cons::size };
 
 	struct InitCond {
 		virtual ~InitCond() {}
@@ -130,6 +133,30 @@ struct Equation {
 			displayMethods,
 			[](const std::shared_ptr<DisplayMethod>& m) -> const char* { return m->name.c_str(); }
 		);
+	}
+
+	Cons rotateFrom(Cons U, const real3& normal) {
+		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
+			auto field = std::get<1>(x);
+			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
+			if constexpr (std::is_same_v<FieldType, real3>) {
+				U.*field = CFDMesh::rotateFrom<real3>(U.*field, normal);
+				
+			}
+		});
+		return U;
+	}
+
+	Cons rotateTo(Cons U, const real3& normal) {
+		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
+			auto field = std::get<1>(x);
+			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
+			if constexpr (std::is_same_v<FieldType, real3>) {
+				U.*field = CFDMesh::rotateTo<real3>(U.*field, normal);
+				
+			}
+		});
+		return U;
 	}
 
 	//TODO - restitution isn't the only solution
