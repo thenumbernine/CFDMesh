@@ -135,26 +135,6 @@ struct Cell_ {
 
 }
 
-namespace std {
-
-template<typename T>
-std::string to_string(const CFDMesh::Vertex_<T>& x) {
-	return objectStringFromOStream(x);
-}
-
-template<typename T, typename C>
-std::string to_string(const CFDMesh::Face_<T, C>& x) {
-	return objectStringFromOStream(x);
-}
-
-template<typename T, typename C>
-std::string to_string(const CFDMesh::Cell_<T, C>& x) {
-	return objectStringFromOStream(x);
-}
-
-}
-
-
 namespace CFDMesh {
 
 //dim is the dimension of the manifold, not of the vectors (which are all 3D atm)

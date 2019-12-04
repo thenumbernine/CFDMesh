@@ -55,6 +55,14 @@ std::ostream& operator<<(std::ostream& o, const T& x) {
 	return ostreamForFields(o, x);
 }
 
+template<
+	typename T,
+	std::enable_if_t<std::experimental::is_detected_v<has_field_t, T>, int> = 0
+>
+std::string to_string(const T& x) {
+	return objectStringFromOStream(x);
+}
+
 namespace std {
 
 const std::string& to_string(const std::string& s) {
