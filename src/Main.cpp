@@ -29,7 +29,7 @@
 
 //do we rotate to align fluxes with x-axis and only use the x-axis flux,
 // or do we use the general normal-based flux computation
-#define ROTATE_TO_ALIGN	0
+#define ROTATE_TO_ALIGN	1
 
 
 namespace CFDMesh {
@@ -41,7 +41,7 @@ using real = double;
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
-static Parallel::Parallel parallel;//(1);
+static Parallel::Parallel parallel(1);
 
 struct CFDMeshApp;
 
@@ -272,6 +272,26 @@ struct Simulation : public ISimulation {
 				value += fabs(newbasis.ptr[j] - basis.ptr[j]);
 			}
 		}
+
+		std::cout << "vars " << vars << std::endl;
+		std::cout << "n " << n << std::endl;
+		std::cout << "evL rows" << std::endl;
+		for (int k = 0; k < eqn.numWaves; ++k) {
+			Cons basis;
+			for (int j = 0; j < eqn.numStates; ++j) {
+				basis.ptr[j] = k == j ? 1 : 0;
+			}
+			std::cout << eqn.apply_evL(basis, vars, n) << std::endl;
+		}
+
+		std::cout << "evR rows" << std::endl;
+		for (int k = 0; k < eqn.numWaves; ++k) {
+			WaveVec basis;
+			for (int j = 0; j < eqn.numWaves; ++j) {
+				basis.ptr[j] = k == j ? 1 : 0;
+			}
+			std::cout << eqn.apply_evR(basis, vars, n) << std::endl;
+		}
 		std::cout << "ortho error = " << value << std::endl;
 #endif
 
@@ -318,7 +338,7 @@ struct Simulation : public ISimulation {
 
 	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real, real3);
 
-	int calcFluxIndex = 1;
+	int calcFluxIndex = 0;
 	
 	std::vector<CalcFluxFunc> calcFluxes = {
 		&Simulation::calcFluxRoe,
@@ -357,6 +377,10 @@ for (int i = 0; i < Cons::size; ++i) {
 				UL = eqn.rotateFrom(UL, face.normal);
 				UR = eqn.rotateFrom(UR, face.normal);
 				real3 fluxNormal = real3(1, 0, 0);
+#if DEBUG
+std::cout << " from " << oldUL << " to " << UL << std::endl << " along normal " << face.normal << std::endl;
+std::cout << " from " << oldUR << " to " << UR << std::endl << " along normal " << face.normal << std::endl;
+#endif
 #else
 				const auto& fluxNormal = face.normal;
 #endif
@@ -364,15 +388,9 @@ for (int i = 0; i < Cons::size; ++i) {
 #if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
 	if (!std::isfinite(UL(i))) { 
-#if ROTATE_TO_ALIGN
-std::cout << " from " << oldUL << " to " << UL << std::endl << " along normal " << face.normal << std::endl;
-#endif		
 		throw Common::Exception() << "got non-finite " << UL; 
 	}
 	if (!std::isfinite(UR(i))) { 
-#if ROTATE_TO_ALIGN
-std::cout << " from " << oldUR << " to " << UR << std::endl << " along normal " << face.normal << std::endl;
-#endif		
 		throw Common::Exception() << "got non-finite " << UR; 
 	}
 }

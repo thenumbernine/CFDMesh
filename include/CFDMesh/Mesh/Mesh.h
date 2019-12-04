@@ -135,23 +135,6 @@ struct Cell_ {
 
 }
 
-
-template<typename T>
-std::ostream& operator<<(std::ostream& a, const CFDMesh::Vertex_<T>& b) {
-	return ostreamForFields(a, b);
-}
-
-template<typename T, typename C>
-std::ostream& operator<<(std::ostream& a, const CFDMesh::Face_<T, C>& b) {
-	return ostreamForFields(a, b);
-}
-
-template<typename T, typename C>
-std::ostream& operator<<(std::ostream& a, const CFDMesh::Cell_<T, C>& b) {
-	return ostreamForFields(a, b);
-}
-
-
 namespace std {
 
 template<typename T>

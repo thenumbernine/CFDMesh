@@ -244,12 +244,24 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 
 	//variables used by the roe avg, eigen basis, etc
 	struct Eigen {
+		using This = Eigen;
+		
 		Prim WL, WR;
 		real3 v;
 		real vSq;
 		real hTotal;
 		real Cs;
 		real CsSq;
+	
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("WL", &This::WL),
+			std::make_pair("WR", &This::WR),
+			std::make_pair("v", &This::v),
+			std::make_pair("vSq", &This::vSq),
+			std::make_pair("hTotal", &This::hTotal),
+			std::make_pair("Cs", &This::Cs),
+			std::make_pair("CsSq", &This::CsSq)
+		);
 	};
 
 	Eigen calcRoeAvg(Cons UL, Cons UR) {

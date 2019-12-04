@@ -6,6 +6,7 @@
 #include <regex>
 #include <string>
 #include <sstream>
+#include <experimental/type_traits>	//is_detected_v
 
 
 template<typename T>
@@ -39,6 +40,19 @@ std::ostream& operator<<(std::ostream& o, const std::vector<T>& v) {
 		sep = ", ";
 	}
 	return o << "]";
+}
+
+//TODO also in GUI.h
+template<typename T>
+using has_field_t = decltype(std::declval<T&>().fields);
+
+//if a class has 'fields' then automatically use ostreamForFields as its serialization
+template<
+	typename T,
+	std::enable_if_t<std::experimental::is_detected_v<has_field_t, T>, int> = 0
+>
+std::ostream& operator<<(std::ostream& o, const T& x) {
+	return ostreamForFields(o, x);
 }
 
 namespace std {
