@@ -41,14 +41,14 @@ using real = double;
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
-static Parallel::Parallel parallel(1);
+static Parallel::Parallel parallel;
 
 struct CFDMeshApp;
 
 struct ISimulation {
 	//written by app SDL events:
-	bool running = {};
-	bool singleStep = {};
+	bool running = true;
+	bool singleStep = false;
 	float2 mousepos;
 
 	CFDMeshApp* app = {};
@@ -96,7 +96,7 @@ struct Simulation : public ISimulation {
 	int initCondIndex = 0;
 
 	//1 = mirror boundary, -1 = freeflow boundary
-	float restitution = 1;
+	float restitution = -1;
 	
 	real cfl = .5;
 
@@ -239,7 +239,7 @@ struct Simulation : public ISimulation {
 		WaveVec lambdas = eqn.getEigenvalues(vars, n);
 
 		Cons dU = UR - UL;
-		WaveVec dUTilde = eqn.apply_evL(dU, vars, n);
+		WaveVec dUTilde = eqn.applyEigL(dU, vars, n);
 	
 		WaveVec fluxTilde;
 		for (int j = 0; j < ThisEquation::numWaves; ++j) {
@@ -251,13 +251,13 @@ struct Simulation : public ISimulation {
 		}
 	
 		Cons UAvg = (UR + UL) * .5;
-		WaveVec UAvgTilde = eqn.apply_evL(UAvg, vars, n);
+		WaveVec UAvgTilde = eqn.applyEigL(UAvg, vars, n);
 		fluxTilde = fluxTilde + lambdas * UAvgTilde;
 	
-		Cons flux = eqn.apply_evR(fluxTilde, vars, n);
+		Cons flux = eqn.applyEigR(fluxTilde, vars, n);
 		// here's the flux, aligned along the normal
 
-#if 1	//print eigenbasis error
+#if 0	//debug print eigenbasis error
 		real value = 0;
 		for (int k = 0; k < eqn.numWaves; ++k) {
 			Cons basis;
@@ -265,23 +265,23 @@ struct Simulation : public ISimulation {
 				basis.ptr[j] = k == j ? 1 : 0;
 			}
 			
-			WaveVec charVars = eqn.apply_evL(basis, vars, n);
-			Cons newbasis = eqn.apply_evR(charVars, vars, n);
+			WaveVec charVars = eqn.applyEigL(basis, vars, n);
+			Cons newbasis = eqn.applyEigR(charVars, vars, n);
 		
 			for (int j = 0; j < eqn.numStates; ++j) {
 				value += fabs(newbasis.ptr[j] - basis.ptr[j]);
 			}
 		}
 
-		std::cout << "vars " << vars << std::endl;
-		std::cout << "n " << n << std::endl;
+		std::cout << "vars=" << vars << std::endl;
+		std::cout << "n=" << n << std::endl;
 		std::cout << "evL rows" << std::endl;
 		for (int k = 0; k < eqn.numWaves; ++k) {
 			Cons basis;
 			for (int j = 0; j < eqn.numStates; ++j) {
 				basis.ptr[j] = k == j ? 1 : 0;
 			}
-			std::cout << eqn.apply_evL(basis, vars, n) << std::endl;
+			std::cout << eqn.applyEigL(basis, vars, n) << std::endl;
 		}
 
 		std::cout << "evR rows" << std::endl;
@@ -290,7 +290,7 @@ struct Simulation : public ISimulation {
 			for (int j = 0; j < eqn.numWaves; ++j) {
 				basis.ptr[j] = k == j ? 1 : 0;
 			}
-			std::cout << eqn.apply_evR(basis, vars, n) << std::endl;
+			std::cout << eqn.applyEigR(basis, vars, n) << std::endl;
 		}
 		std::cout << "ortho error = " << value << std::endl;
 #endif
@@ -372,15 +372,9 @@ for (int i = 0; i < Cons::size; ++i) {
 #endif
 
 #if ROTATE_TO_ALIGN	//rotate normal to x-axis
-				Cons oldUL = UL;
-				Cons oldUR = UR;
 				UL = eqn.rotateFrom(UL, face.normal);
 				UR = eqn.rotateFrom(UR, face.normal);
 				real3 fluxNormal = real3(1, 0, 0);
-#if DEBUG
-std::cout << " from " << oldUL << " to " << UL << std::endl << " along normal " << face.normal << std::endl;
-std::cout << " from " << oldUR << " to " << UR << std::endl << " along normal " << face.normal << std::endl;
-#endif
 #else
 				const auto& fluxNormal = face.normal;
 #endif
@@ -412,6 +406,8 @@ for (int i = 0; i < Cons::size; ++i) {
 			m->cells.begin(),
 			m->cells.end(),
 			[this](Cell& c) {
+				Cons U = c.U;
+				
 				Cons dU_dt;
 				for (int ei = 0; ei < c.faceCount; ++ei) {
 					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
@@ -422,6 +418,8 @@ for (int i = 0; i < Cons::size; ++i) {
 					}
 				}
 				c.U += dU_dt * dt;
+			
+//std::cout << "cell before " << U << " after " << c << std::endl;			
 			}
 		);
 

@@ -56,9 +56,6 @@ union Cons_ {
 	);
 };
 
-template<typename T>
-ADD_OSTREAM(Cons_<T>)
-
 
 template<typename T>
 using Prim_ = Cons_<T>;

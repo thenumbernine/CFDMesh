@@ -1,13 +1,11 @@
 #pragma once
 
+#include "CFDMesh/Util.h"
 #include "Common/Meta.h"
 #include "cimgui.h"
 #include <experimental/type_traits>	//is_detected_v
 
 namespace CFDMesh {
-
-template<typename T>
-using has_field_t = decltype(std::declval<T&>().fields);
 
 template<typename T>
 struct UpdateGUI {

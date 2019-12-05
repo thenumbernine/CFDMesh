@@ -45,8 +45,16 @@ union Cons_ {
 	);
 };
 
-template<typename T>
-ADD_OSTREAM(Cons_<T>)
+//hmm, fields enable_if detect_v works for Eigen struct below, but not for this ... why so?
+template<typename real>
+std::ostream& operator<<(std::ostream& o, const Cons_<real>& b) {
+	o << "[";
+	Common::TupleForEach(Cons_<real>::fields, [&o, &b](auto x, size_t i) constexpr {
+		if (i > 0) o << ", ";
+		o << std::get<0>(x) << "=" << b.*(std::get<1>(x));
+	});
+	return o << "]";
+}
 
 
 template<typename real>
@@ -78,8 +86,16 @@ union Prim_ {
 	);
 };
 
-template<typename T>
-ADD_OSTREAM(Prim_<T>)
+//hmm, fields enable_if detect_v works for Eigen struct below, but not for this ... why so?
+template<typename real>
+std::ostream& operator<<(std::ostream& o, const Prim_<real>& b) {
+	o << "[";
+	Common::TupleForEach(Prim_<real>::fields, [&o, &b](auto x, size_t i) constexpr {
+		if (i > 0) o << ", ";
+		o << std::get<0>(x) << "=" << b.*(std::get<1>(x));
+	});
+	return o << "]";
+}
 
 
 template<typename real, int dim_>
@@ -335,163 +351,369 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	}
 
 
-	struct BuildPerpendicularBasis {
-		static void go(
-			real3 normal, 
-			Tensor::Vector<real3, 2> &tangents) 
-		{
-			//1) pick normal's max abs component
-			//2) fill in all axii but that component
-			//3) apply Graham-Schmidt
-			// what about coordinate system handedness?
-
-			int maxAxis = -1;
-			real maxValue = -HUGE_VAL;
-			for (int k = 0; k < dim; ++k) {
-				real absNormal = fabs(normal(k));
-				if (absNormal > maxValue) {
-					maxValue = absNormal;
-					maxAxis = k;
-				}
-			}
-
-			for (int j = 0; j < dim-1; ++j) {
-				if (j < maxAxis) {
-					tangents(j)(j) = 1;
-				} else {
-					tangents(j)(j+1) = 1;
-				}
-			
-				for (int k = j-1; k >= 0; --k) {
-					real num = real(0), denom = real(0);
-					for (int i = 0; i < dim; ++i) {
-						num += tangents(j)(i) * tangents(k)(i);
-						denom += tangents(j)(i) * tangents(j)(i);
-					}
-					tangents(j) -= tangents(j) * (num / denom);
-				}
-				{
-					real num = real(0), denom = real(0);
-					for (int i = 0; i < dim; ++i) {
-						num += tangents(j)(i) * normal(i);
-						denom += tangents(j)(i) * tangents(j)(i);
-					}
-					tangents(j) -= tangents(j) * (num / denom);
-				}
-				{
-					real len = real(0);
-					for (int k = 0; k < dim; ++k) {
-						len += sqrt(tangents(j)(k) * tangents(j)(k));
-					}
-					tangents(j) *= real(1) / len;
-				}
-			}
-		}
-	};
-
-	Cons apply_evL(Cons x, const Eigen& vars, real3 n) {
+	WaveVec applyEigL(Cons X, const Eigen& vars, real3 n) {
 		const real& Cs = vars.Cs;
-		const real3& v = vars.v;
-		const real& vSq = v.lenSq();
-	
-		real vn = real3::dot(v, n);
+		const real3& v = vars.v;	//v^i ... upper
+		const auto& vL = v;			//v_i ... lower (not left)
+		const real& vSq = real3::dot(v, vL);
 
 		real CsSq = Cs * Cs;
-		real gamma_1 = heatCapacityRatio - 1;
+		real heatRatioMinusOne = heatCapacityRatio - 1;
 
 		real denom = 2. * CsSq;
 		real invDenom = 1. / denom;
 
-		Tensor::Vector<real3, 2> t;
-		BuildPerpendicularBasis::go(n, t);
+		real3 nSq = n * n;	//per-element multiply
 
-		Cons y;
-		//min row	
-		y.ptr[0] = (
-				x.ptr[0] * (.5 * gamma_1 * vSq + Cs * vn)
-				+ x.ptr[1] * -(n(0) * Cs + gamma_1 * v(0))
-				+ x.ptr[2] * -(n(1) * Cs + gamma_1 * v(1))
-				+ x.ptr[3] * -(n(2) * Cs + gamma_1 * v(2))
-				+ x.ptr[4] * gamma_1
-			) * invDenom;
-		//mid normal row
-		y.ptr[1] =
-			x.ptr[0] * (1. - gamma_1 * vSq * invDenom)
-			+ x.ptr[1] * (gamma_1 * v(0) * 2. * invDenom)
-			+ x.ptr[2] * (gamma_1 * v(1) * 2. * invDenom)
-			+ x.ptr[3] * (gamma_1 * v(2) * 2. * invDenom)
-			+ x.ptr[4] * (-gamma_1 * 2. * invDenom);
-		//mid tangent row
-		y.ptr[2] =
-			x.ptr[0] * -real3::dot(v, t(0))
-			+ x.ptr[1] * t(0)(0)
-			+ x.ptr[2] * t(0)(1)
-			+ x.ptr[3] * t(0)(2);
-		y.ptr[3] =
-			x.ptr[0] * -real3::dot(v, t(1))
-			+ x.ptr[1] * t(1)(0)
-			+ x.ptr[2] * t(1)(1)
-			+ x.ptr[3] * t(1)(2);
-		//max row
-		y.ptr[4] = (
-				x.ptr[0] * (.5 * gamma_1 * vSq - Cs * vn)
-				+ x.ptr[1] * (n(0) * Cs - gamma_1 * v(0))
-				+ x.ptr[2] * (n(1) * Cs - gamma_1 * v(1))
-				+ x.ptr[3] * (n(2) * Cs - gamma_1 * v(2))
-				+ x.ptr[4] * gamma_1
-			) * invDenom;
+		const real gU_xx = 1;
+		const real gU_yy = 1;
+		const real gU_zz = 1;
+		const real gU_xy = 0;
+		const real gU_xz = 0;
+		const real gU_yz = 0;
+		const real sqrt_gUxx = 1.;//sqrt_gUxx;
+		const real sqrt_gUyy = 1.;//sqrt_gUjj;
+		const real sqrt_gUzz = 1.;//sqrt_gUjj;
 
-		return y;
+		WaveVec Y;
+
+		//x dir
+		Y.ptr[0] += nSq(0) * (
+			(
+				X.ptr[0] * (.5 * heatRatioMinusOne * vSq + Cs * v(0) / sqrt_gUxx)
+				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) - Cs / sqrt_gUxx)
+				+ X.ptr[2] * -heatRatioMinusOne * vL(1)
+				+ X.ptr[3] * -heatRatioMinusOne * vL(2)
+				+ X.ptr[4] * heatRatioMinusOne
+			) * invDenom
+		);
+		Y.ptr[1] += nSq(0) * (
+			(
+				X.ptr[0] * (denom - heatRatioMinusOne * vSq)
+				+ X.ptr[1] * 2. * heatRatioMinusOne * vL(0)
+				+ X.ptr[2] * 2. * heatRatioMinusOne * vL(1)
+				+ X.ptr[3] * 2. * heatRatioMinusOne * vL(2)
+				+ X.ptr[4] * -2. * heatRatioMinusOne
+			) * invDenom
+		);
+		Y.ptr[2] += nSq(0) * (
+			X.ptr[0] * (v(0) * gU_xy / gU_xx - v(1))
+			+ X.ptr[1] * -gU_xy / gU_xx
+			+ X.ptr[2]
+		);
+		Y.ptr[3] += nSq(0) * (
+			X.ptr[0] * (v(0) * gU_xz / gU_xx - v(2))
+			+ X.ptr[1] * -gU_xz / gU_xx
+			+ X.ptr[3]
+		);
+		Y.ptr[4] += nSq(0) * (
+			(
+				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v(0) / sqrt_gUxx)
+				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) + Cs / sqrt_gUxx)
+				+ X.ptr[2] * -heatRatioMinusOne * vL(1)
+				+ X.ptr[3] * -heatRatioMinusOne * vL(2)
+				+ X.ptr[4] * heatRatioMinusOne
+			) * invDenom
+		);
+
+		//y dir
+		Y.ptr[0] += nSq(1) * (
+			(
+				X.ptr[0] * (.5 * heatRatioMinusOne * vSq + Cs * v(1) / sqrt_gUyy)
+				+ X.ptr[1] * -heatRatioMinusOne * vL(0)
+				+ X.ptr[2] * (-heatRatioMinusOne * vL(1) - Cs / sqrt_gUyy)
+				+ X.ptr[3] * -heatRatioMinusOne * vL(2)
+				+ X.ptr[4] * heatRatioMinusOne
+			) * invDenom
+		);
+		Y.ptr[1] += nSq(1) * (
+			X.ptr[0] * (v(1) * gU_xy / gU_yy - v(0))
+			+ X.ptr[1]
+			+ X.ptr[2] * -gU_xy / gU_yy
+		);
+		Y.ptr[2] += nSq(1) * (	
+			(
+				X.ptr[0] * (denom - heatRatioMinusOne * vSq)
+				+ X.ptr[1] * 2. * heatRatioMinusOne * vL(0)
+				+ X.ptr[2] * 2. * heatRatioMinusOne * vL(1)
+				+ X.ptr[3] * 2. * heatRatioMinusOne * vL(2)
+				+ X.ptr[4] * -2. * heatRatioMinusOne
+			) * invDenom
+		);
+		Y.ptr[3] += nSq(1) * (
+			X.ptr[0] * (v(1) * gU_yz / gU_yy - v(2))
+			+ X.ptr[2] * -gU_yz / gU_yy
+			+ X.ptr[3]
+		);
+		Y.ptr[4] += nSq(1) * (
+			(
+				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v(1) / sqrt_gUyy)
+				+ X.ptr[1] * -heatRatioMinusOne * vL(0)
+				+ X.ptr[2] * (-heatRatioMinusOne * vL(1) + Cs / sqrt_gUyy)
+				+ X.ptr[3] * -heatRatioMinusOne * vL(2)
+				+ X.ptr[4] * heatRatioMinusOne
+			) * invDenom
+		);
+
+		//z dir
+		Y.ptr[0] += nSq(2) * (
+			(
+				X.ptr[0] * (.5 * heatRatioMinusOne * vSq + Cs * v(2) / sqrt_gUzz)
+				+ X.ptr[1] * -heatRatioMinusOne * vL(0)
+				+ X.ptr[2] * -heatRatioMinusOne * vL(1)
+				+ X.ptr[3] * (-heatRatioMinusOne * vL(2) - Cs / sqrt_gUzz)
+				+ X.ptr[4] * heatRatioMinusOne
+			) * invDenom
+		);
+		Y.ptr[1] += nSq(2) * (
+			X.ptr[0] * (v(2) * gU_xz / gU_zz - v(0))
+			+ X.ptr[1]
+			+ X.ptr[3] * -gU_xz / gU_zz
+		);
+		Y.ptr[2] += nSq(2) * (
+			X.ptr[0] * (v(2) * gU_yz / gU_zz - v(1))
+			+ X.ptr[2]
+			+ X.ptr[3] * -gU_yz / gU_zz
+		);
+		Y.ptr[3] += nSq(2) * (	
+			(
+				X.ptr[0] * (denom - heatRatioMinusOne * vSq)
+				+ X.ptr[1] * 2. * heatRatioMinusOne * vL(0)
+				+ X.ptr[2] * 2. * heatRatioMinusOne * vL(1)
+				+ X.ptr[3] * 2. * heatRatioMinusOne * vL(2)
+				+ X.ptr[4] * -2. * heatRatioMinusOne
+			) * invDenom
+		);
+		Y.ptr[4] += nSq(2) * (
+			(
+				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v(2) / sqrt_gUzz)
+				+ X.ptr[1] * -heatRatioMinusOne * vL(0)
+				+ X.ptr[2] * -heatRatioMinusOne * vL(1)
+				+ X.ptr[3] * (-heatRatioMinusOne * vL(2) + Cs / sqrt_gUzz)
+				+ X.ptr[4] * heatRatioMinusOne
+			) * invDenom
+		);
+
+		return Y;
 	}
 
-	Cons apply_evR(Cons x, const Eigen& vars, real3 n) {
+	Cons applyEigR(Cons X, const Eigen& vars, real3 n) {
 		const real& Cs = vars.Cs;
-		const real3& v = vars.v;
-		const real& vSq = v.lenSq();
+		const real3& v = vars.v;	//v^i ... upper
+		const auto& vL = v;			//v_i ... lower (not left)
+		const real& vSq = real3::dot(v, vL);
 		const real& hTotal = vars.hTotal;
 
-		real vn = real3::dot(v, n);
+		real3 nSq = n * n;	//per-component multiply
 		
-		Tensor::Vector<real3, 2> t;
-		BuildPerpendicularBasis::go(n, t);
+//		const real gU_xx = 1;
+//		const real gU_yy = 1;
+//		const real gU_zz = 1;
+		const real gU_xy = 0;
+		const real gU_xz = 0;
+		const real gU_yz = 0;
+		const real sqrt_gUxx = 1.;//sqrt_gUxx;
+		const real sqrt_gUyy = 1.;//sqrt_gUjj;
+		const real sqrt_gUzz = 1.;//sqrt_gUjj;
 
-		Cons y;
-		
-		//min eigenvector
-		y.ptr[0] =
-			x.ptr[0]
-			+ x.ptr[0] * (v(0) - Cs * n(0))
-			+ x.ptr[0] * (v(1) - Cs * n(1))
-			+ x.ptr[0] * (v(2) - Cs * n(2))
-			+ x.ptr[0] * (hTotal - Cs * vn);
-		//mid eigenvectors (n)
-		y.ptr[1] =
-			x.ptr[1]
-			+ x.ptr[1] * (v(0))
-			+ x.ptr[1] * (v(1))
-			+ x.ptr[1] * (v(2))
-			+ x.ptr[1] * (.5 * vSq);
-		//mid eigenvectors (tangents)
-		y.ptr[2] =
-			x.ptr[2] * t(0)(0)
-			+ x.ptr[2] * t(0)(1)
-			+ x.ptr[2] * t(0)(2)
-			+ x.ptr[2] * real3::dot(v, t(0));
-		y.ptr[3] =
-			x.ptr[3] * t(1)(0)
-			+ x.ptr[3] * t(1)(1)
-			+ x.ptr[3] * t(1)(2)
-			+ x.ptr[3] * real3::dot(v, t(1));
-		//max eigenvector
-		y.ptr[4] =
-			x.ptr[4]
-			+ x.ptr[4] * (v(0) + Cs * n(0))
-			+ x.ptr[4] * (v(1) + Cs * n(1))
-			+ x.ptr[4] * (v(2) + Cs * n(2))
-			+ x.ptr[4] * (hTotal + Cs * vn);
-		
-		return y;
+		Cons Y;
+	
+		//x dir
+		Y.ptr[0] += nSq(0) * (
+			X.ptr[0] + X.ptr[1] + X.ptr[4]
+		);
+		Y.ptr[1] += nSq(0) * (
+			X.ptr[0] * (v(0) - Cs * sqrt_gUxx)
+			+ X.ptr[1] * v(0)
+			+ X.ptr[4] * (v(0) + Cs * sqrt_gUxx)
+		);
+		Y.ptr[2] += nSq(0) * (
+			X.ptr[0] * (v(1) - Cs * gU_xy / sqrt_gUxx)
+			+ X.ptr[1] * v(1)
+			+ X.ptr[2]
+			+ X.ptr[4] * (v(1) + Cs * gU_xy / sqrt_gUxx)
+		);
+		Y.ptr[3] += nSq(0) * (
+			X.ptr[0] * (v(2) - Cs * gU_xz / sqrt_gUxx)
+			+ X.ptr[1] * v(2)
+			+ X.ptr[3]
+			+ X.ptr[4] * (v(2) + Cs * gU_xz / sqrt_gUxx)
+		);
+		Y.ptr[4] += nSq(0) * (
+			X.ptr[0] * (hTotal - Cs * v(0) / sqrt_gUxx)
+			+ X.ptr[1] * vSq / 2.
+			+ X.ptr[2] * vL(1)
+			+ X.ptr[3] * vL(2)
+			+ X.ptr[4] * (hTotal + Cs * v(0) / sqrt_gUxx)
+		);
+
+		//y dir
+		Y.ptr[0] += nSq(1) * (
+			X.ptr[0] + X.ptr[2] + X.ptr[4]
+		);
+		Y.ptr[1] += nSq(1) * (
+			X.ptr[0] * (v(0) - Cs * gU_xy / sqrt_gUyy)
+			+ X.ptr[1]
+			+ X.ptr[2] * v(0)
+			+ X.ptr[4] * (v(0) + Cs * gU_xy / sqrt_gUyy)
+		);
+		Y.ptr[2] += nSq(1) * (
+			X.ptr[0] * (v(1) - Cs * sqrt_gUyy)
+			+ X.ptr[2] * v(1)
+			+ X.ptr[4] * (v(1) + Cs * sqrt_gUyy)
+		);
+		Y.ptr[3] += nSq(1) * (
+			X.ptr[0] * (v(2) - Cs * gU_yz / sqrt_gUyy)
+			+ X.ptr[2] * v(2)
+			+ X.ptr[3]
+			+ X.ptr[4] * (v(2) + Cs * gU_yz / sqrt_gUyy)
+		);
+		Y.ptr[4] += nSq(1) * (
+			X.ptr[0] * (hTotal - Cs * v(1) / sqrt_gUyy)
+			+ X.ptr[1] * vL(0)
+			+ X.ptr[2] * vSq / 2.
+			+ X.ptr[3] * vL(2)
+			+ X.ptr[4] * (hTotal + Cs * v(1) / sqrt_gUyy)
+		);
+
+		//z dir
+		Y.ptr[0] += nSq(2) * (
+			X.ptr[0] + X.ptr[3] + X.ptr[4]
+		);
+		Y.ptr[1] += nSq(2) * (
+			X.ptr[0] * (v(0) - Cs * gU_xz / sqrt_gUzz)
+			+ X.ptr[1]
+			+ X.ptr[3] * v(0)
+			+ X.ptr[4] * (v(0) + Cs * gU_xz / sqrt_gUzz)
+		);
+		Y.ptr[2] += nSq(2) * (
+			X.ptr[0] * (v(1) - Cs * gU_yz / sqrt_gUzz)
+			+ X.ptr[2]
+			+ X.ptr[3] * v(1)
+			+ X.ptr[4] * (v(1) + Cs * gU_yz / sqrt_gUzz)
+		);
+		Y.ptr[3] += nSq(2) * (
+			X.ptr[0] * (v(2) - Cs * sqrt_gUzz)
+			+ X.ptr[3] * v(2)
+			+ X.ptr[4] * (v(2) + Cs * sqrt_gUzz)
+		);
+		Y.ptr[4] += nSq(2) * (
+			X.ptr[0] * (hTotal - Cs * v(2) / sqrt_gUzz)
+			+ X.ptr[1] * vL(0)
+			+ X.ptr[2] * vL(1)
+			+ X.ptr[3] * vSq / 2.
+			+ X.ptr[4] * (hTotal + Cs * v(2) / sqrt_gUzz)
+		);
+
+		return Y;
 	}
+
+#if 0
+	//notice applyFlux(vars, U) == applyEigL(vars, lambdas * applyEigR(vars, U)) when vars are derived from U alone (instead of from a pair across an interface)
+	Cons applyFlux(WaveVec x, const Eigen& vars, real3 n) {
+		const real3& v = vars.v;	//v^i ... upper
+		const auto& vL = v;			//v_i ... lower (not left)
+		
+		real heatRatioMinusOne = heatCapacityRatio - 1;
+
+		Cons Y;
+		
+		//x dir
+		//TODO replace n with (1,0,0)
+		Y.ptr[0] =
+			X.ptr[1] * n(0) 
+			+ X.ptr[2] * n(1) 
+			+ X.ptr[3] * n(2);
+		Y.ptr[1] =
+			X.ptr[0] * (-v_n * v(0) + heatRatioMinusOne * .5 * vSq * gUj.x)
+			+ X.ptr[1] * (v(0) * n(0) - heatRatioMinusOne * gUj.x * vL(0) + v_n)
+			+ X.ptr[2] * (v(0) * n(1) - heatRatioMinusOne * gUj.x * vL(1))
+			+ X.ptr[3] * (v(0) * n(2) - heatRatioMinusOne * gUj.x * vL(2))
+			+ X.ptr[4] * heatRatioMinusOne * n(0);
+		Y.ptr[2] = 
+			X.ptr[0] * (-v_n * v(1) + heatRatioMinusOne * .5 * vSq * gUj.y)
+			+ X.ptr[1] * (v(1) * n(0) - heatRatioMinusOne * gUj.y * vL(0))
+			+ X.ptr[2] * (v(1) * n(1) - heatRatioMinusOne * gUj.y * vL(1) + v_n)
+			+ X.ptr[3] * (v(1) * n(2) - heatRatioMinusOne * gUj.y * vL(2))
+			+ X.ptr[4] * heatRatioMinusOne * n(1);
+		Y.ptr[3] = 
+			X.ptr[0] * (-v_n * v(2) + heatRatioMinusOne * .5 * vSq * gUj.z)
+			+ X.ptr[1] * (v(2) * n(0) - heatRatioMinusOne * gUj.z * vL(0))
+			+ X.ptr[2] * (v(2) * n(1) - heatRatioMinusOne * gUj.z * vL(1))
+			+ X.ptr[3] * (v(2) * n(2) - heatRatioMinusOne * gUj.z * vL(2) + v_n)
+			+ X.ptr[4] * heatRatioMinusOne * n(2);
+		Y.ptr[4] = 
+			X.ptr[0] * v_n * (heatRatioMinusOne * .5 * vSq - hTotal)
+			+ X.ptr[1] * (-heatRatioMinusOne * v_n * vL(0) + n(0) * hTotal)
+			+ X.ptr[2] * (-heatRatioMinusOne * v_n * vL(1) + n(1) * hTotal)
+			+ X.ptr[3] * (-heatRatioMinusOne * v_n * vL(2) + n(2) * hTotal)
+			+ X.ptr[4] * heatCapacityRatio * v_n:
+
+		//y dir
+		//TODO replace n with (0,1,0)
+		Y.ptr[0] =
+			X.ptr[1] * n(0) 
+			+ X.ptr[2] * n(1) 
+			+ X.ptr[3] * n(2);
+		Y.ptr[1] =
+			X.ptr[0] * (-v_n * v(0) + heatRatioMinusOne * .5 * vSq * gUj.x)
+			+ X.ptr[1] * (v(0) * n(0) - heatRatioMinusOne * gUj.x * vL(0) + v_n)
+			+ X.ptr[2] * (v(0) * n(1) - heatRatioMinusOne * gUj.x * vL(1))
+			+ X.ptr[3] * (v(0) * n(2) - heatRatioMinusOne * gUj.x * vL(2))
+			+ X.ptr[4] * heatRatioMinusOne * n(0);
+		Y.ptr[2] = 
+			X.ptr[0] * (-v_n * v(1) + heatRatioMinusOne * .5 * vSq * gUj.y)
+			+ X.ptr[1] * (v(1) * n(0) - heatRatioMinusOne * gUj.y * vL(0))
+			+ X.ptr[2] * (v(1) * n(1) - heatRatioMinusOne * gUj.y * vL(1) + v_n)
+			+ X.ptr[3] * (v(1) * n(2) - heatRatioMinusOne * gUj.y * vL(2))
+			+ X.ptr[4] * heatRatioMinusOne * n(1);
+		Y.ptr[3] = 
+			X.ptr[0] * (-v_n * v(2) + heatRatioMinusOne * .5 * vSq * gUj.z)
+			+ X.ptr[1] * (v(2) * n(0) - heatRatioMinusOne * gUj.z * vL(0))
+			+ X.ptr[2] * (v(2) * n(1) - heatRatioMinusOne * gUj.z * vL(1))
+			+ X.ptr[3] * (v(2) * n(2) - heatRatioMinusOne * gUj.z * vL(2) + v_n)
+			+ X.ptr[4] * heatRatioMinusOne * n(2);
+		Y.ptr[4] = 
+			X.ptr[0] * v_n * (heatRatioMinusOne * .5 * vSq - hTotal)
+			+ X.ptr[1] * (-heatRatioMinusOne * v_n * vL(0) + n(0) * hTotal)
+			+ X.ptr[2] * (-heatRatioMinusOne * v_n * vL(1) + n(1) * hTotal)
+			+ X.ptr[3] * (-heatRatioMinusOne * v_n * vL(2) + n(2) * hTotal)
+			+ X.ptr[4] * heatCapacityRatio * v_n:
+
+		//z dir
+		//TODO replace n with (0,0,1)
+		Y.ptr[0] =
+			X.ptr[1] * n(0) 
+			+ X.ptr[2] * n(1) 
+			+ X.ptr[3] * n(2);
+		Y.ptr[1] =
+			X.ptr[0] * (-v_n * v(0) + heatRatioMinusOne * .5 * vSq * gUj.x)
+			+ X.ptr[1] * (v(0) * n(0) - heatRatioMinusOne * gUj.x * vL(0) + v_n)
+			+ X.ptr[2] * (v(0) * n(1) - heatRatioMinusOne * gUj.x * vL(1))
+			+ X.ptr[3] * (v(0) * n(2) - heatRatioMinusOne * gUj.x * vL(2))
+			+ X.ptr[4] * heatRatioMinusOne * n(0);
+		Y.ptr[2] = 
+			X.ptr[0] * (-v_n * v(1) + heatRatioMinusOne * .5 * vSq * gUj.y)
+			+ X.ptr[1] * (v(1) * n(0) - heatRatioMinusOne * gUj.y * vL(0))
+			+ X.ptr[2] * (v(1) * n(1) - heatRatioMinusOne * gUj.y * vL(1) + v_n)
+			+ X.ptr[3] * (v(1) * n(2) - heatRatioMinusOne * gUj.y * vL(2))
+			+ X.ptr[4] * heatRatioMinusOne * n(1);
+		Y.ptr[3] = 
+			X.ptr[0] * (-v_n * v(2) + heatRatioMinusOne * .5 * vSq * gUj.z)
+			+ X.ptr[1] * (v(2) * n(0) - heatRatioMinusOne * gUj.z * vL(0))
+			+ X.ptr[2] * (v(2) * n(1) - heatRatioMinusOne * gUj.z * vL(1))
+			+ X.ptr[3] * (v(2) * n(2) - heatRatioMinusOne * gUj.z * vL(2) + v_n)
+			+ X.ptr[4] * heatRatioMinusOne * n(2);
+		Y.ptr[4] = 
+			X.ptr[0] * v_n * (heatRatioMinusOne * .5 * vSq - hTotal)
+			+ X.ptr[1] * (-heatRatioMinusOne * v_n * vL(0) + n(0) * hTotal)
+			+ X.ptr[2] * (-heatRatioMinusOne * v_n * vL(1) + n(1) * hTotal)
+			+ X.ptr[3] * (-heatRatioMinusOne * v_n * vL(2) + n(2) * hTotal)
+			+ X.ptr[4] * heatCapacityRatio * v_n:
+
+		return Y;
+	}
+#endif
 
 	Cons calcFluxFromCons(Cons U, real3 n) {
 		Prim W = primFromCons(U);

@@ -10,21 +10,6 @@
 
 
 template<typename T>
-std::ostream& ostreamForFields(std::ostream& a, const T& b) {
-	a << "[";
-	const char* sep = "";
-	Common::TupleForEach(T::fields, [&a, &b, &sep](auto x, size_t i) constexpr {
-		auto name = std::get<0>(x);
-		auto field = std::get<1>(x);
-		auto& value = b.*field;
-		a << sep << name << " = " << value;
-		sep = ", ";
-	});
-	return a << "]";
-}
-
-
-template<typename T>
 std::string objectStringFromOStream(const T& x) {
 	std::ostringstream ss;
 	ss << x;
@@ -42,19 +27,24 @@ std::ostream& operator<<(std::ostream& o, const std::vector<T>& v) {
 	return o << "]";
 }
 
-//TODO also in GUI.h
 template<typename T>
-using has_field_t = decltype(std::declval<T&>().fields);
+using has_field_t = decltype(T::fields);
 
-//if a class has 'fields' then automatically use ostreamForFields as its serialization
+//if a typename has 'fields'...
 template<
 	typename T,
 	std::enable_if_t<std::experimental::is_detected_v<has_field_t, T>, int> = 0
 >
-std::ostream& operator<<(std::ostream& o, const T& x) {
-	return ostreamForFields(o, x);
+std::ostream& operator<<(std::ostream& o, const T& b) {
+	o << "[";
+	Common::TupleForEach(T::fields, [&o, &b](auto x, size_t i) constexpr {
+		if (i > 0) o << ", ";
+		o << std::get<0>(x) << "=" << b.*(std::get<1>(x));
+	});
+	return o << "]";
 }
 
+//if a typename has 'fields' then to_string uses objectStringFromOStream
 template<
 	typename T,
 	std::enable_if_t<std::experimental::is_detected_v<has_field_t, T>, int> = 0
