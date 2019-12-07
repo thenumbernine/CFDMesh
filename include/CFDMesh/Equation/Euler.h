@@ -45,17 +45,6 @@ union Cons_ {
 	);
 };
 
-//hmm, fields enable_if detect_v works for Eigen struct below, but not for this ... why so?
-template<typename real>
-std::ostream& operator<<(std::ostream& o, const Cons_<real>& b) {
-	o << "[";
-	Common::TupleForEach(Cons_<real>::fields, [&o, &b](auto x, size_t i) constexpr {
-		if (i > 0) o << ", ";
-		o << std::get<0>(x) << "=" << b.*(std::get<1>(x));
-	});
-	return o << "]";
-}
-
 
 template<typename real>
 union Prim_ {
@@ -85,17 +74,6 @@ union Prim_ {
 		std::make_pair("P", &This::P)
 	);
 };
-
-//hmm, fields enable_if detect_v works for Eigen struct below, but not for this ... why so?
-template<typename real>
-std::ostream& operator<<(std::ostream& o, const Prim_<real>& b) {
-	o << "[";
-	Common::TupleForEach(Prim_<real>::fields, [&o, &b](auto x, size_t i) constexpr {
-		if (i > 0) o << ", ";
-		o << std::get<0>(x) << "=" << b.*(std::get<1>(x));
-	});
-	return o << "]";
-}
 
 
 template<typename real, int dim_>
@@ -736,6 +714,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		CFDMesh::updateGUI(this);
 	}
 };
+
 
 }
 }

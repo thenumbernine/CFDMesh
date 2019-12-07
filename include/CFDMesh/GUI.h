@@ -77,7 +77,7 @@ struct UpdateGUIField<T, std::tuple<const char*, B, GUIReadOnly>> {
 
 template<typename T>
 void UpdateGUI<T>::exec(T* ptr, std::string prefix) {
-	if constexpr (std::experimental::is_detected_v<has_field_t, T>) {
+	if constexpr (std::experimental::is_detected_v<has_fields_t, T>) {
 		igPushIDPtr(ptr);
 		Common::TupleForEach(T::fields, [ptr, &prefix](auto x, size_t i) constexpr {
 			UpdateGUIField<T, decltype(x)>::exec(ptr, prefix, x);

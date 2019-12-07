@@ -97,6 +97,7 @@ struct Face_ {
 	}
 };
 
+
 //n-forms
 template<typename real, typename Cons>
 struct Cell_ {
@@ -544,9 +545,11 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 
 	struct DrawArgs {
 		using This = DrawArgs;
-		
+	
+		using ValueRange = std::pair<float, float>; //min, max
+
 		int gradientTex = 0;
-		std::pair<float, float> displayValueRange = {};
+		ValueRange displayValueRange = {};
 		int selectedCellIndex = -1;
 		bool showCells = true;
 		bool showVtxs = false;
@@ -622,31 +625,31 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		glBindTexture(GL_TEXTURE_1D, 0);
 		glDisable(GL_TEXTURE_1D);
 		
-		if (args.showVtxs || args.showCellCenters || args.showFaceCenters) {
-			glPointSize(3);
-			glBegin(GL_POINTS);
-			if (args.showVtxs) {
-				glColor3f(1,1,0);
-				for (const auto& v : vtxs) {
-					glVertex3v(v.pos.v);
-				}
+		glPointSize(3);
+		glBegin(GL_POINTS);
+		
+		if (args.showVtxs) {
+			glColor3f(1,1,0);
+			for (const auto& v : vtxs) {
+				glVertex3v(v.pos.v);
 			}
-			if (args.showFaceCenters) {
-				glColor3f(1,0,1);
-				for (const auto& f : faces) {
-					glVertex3v(f.pos.v);
-				}
-			}
-			if (args.showCellCenters) {
-				glColor3f(0,1,1);
-				for (const auto& c : cells) {
-					glVertex3v(c.pos.v);
-				}
-			}
-			glEnd();
-			glColor3f(1,1,1);
-			glPointSize(1);
 		}
+		if (args.showFaceCenters) {
+			glColor3f(1,0,1);
+			for (const auto& f : faces) {
+				glVertex3v(f.pos.v);
+			}
+		}
+		if (args.showCellCenters) {
+			glColor3f(0,1,1);
+			for (const auto& c : cells) {
+				glVertex3v(c.pos.v);
+			}
+		}
+		glEnd();
+		
+		glColor3f(1,1,1);
+		glPointSize(1);
 		
 		if (args.showFaces) {
 			for (const auto& f : faces) {
@@ -664,7 +667,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			glBegin(GL_LINES);
 			for (const auto& f : faces) {
 				glVertex3v(f.pos.v);
-				glVertex3v((f.pos + f.normal).v);
+				glVertex3v((f.pos + f.normal * f.area * .25).v);
 			}	
 			glEnd();
 		}
@@ -903,7 +906,8 @@ struct P2DFMTMeshFactory : public MeshFactory {
 struct Chart2DMeshFactory : public MeshFactory {
 	using This = Chart2DMeshFactory; 
 	
-	int2 size = int2(100, 100);
+	//int2 size = int2(100, 100);
+int2 size = int2(10, 10);
 	float2 mins = real2(-1, -1);
 	float2 maxs = real2(1, 1);
 	bool2 repeat = bool2(false, false);

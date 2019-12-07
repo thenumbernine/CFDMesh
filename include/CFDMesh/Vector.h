@@ -83,18 +83,6 @@ using double4 = Tensor::double4;
 #endif
 
 
-#define ADD_OSTREAM(classname)\
-std::ostream& operator<<(std::ostream& o, const classname& x) {\
-	o << "[";\
-	const char* sep = "";\
-	for (int i = 0; i < classname::size; ++i) {\
-		o << sep << x.ptr[i];\
-		sep = ", ";\
-	}\
-	return o << "]";\
-}
-
-
 namespace CFDMesh {
 
 template<typename V>

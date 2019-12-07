@@ -15,12 +15,14 @@
 
 #include "Tensor/Tensor.h"
 
+#include "Common/Exception.h"
 #include "Common/File.h"
 
 #include <algorithm>
 #include <memory>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <vector>
 #include <list>
 
@@ -29,7 +31,9 @@
 
 //do we rotate to align fluxes with x-axis and only use the x-axis flux,
 // or do we use the general normal-based flux computation
-#define ROTATE_TO_ALIGN	1
+//ROTATE_TO_ALIGN==0 is not working for Roe solver
+// triangle grid and polar are failing for both ==0 and ==1
+#define ROTATE_TO_ALIGN	0
 
 
 namespace CFDMesh {
@@ -41,7 +45,7 @@ using real = double;
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
-static Parallel::Parallel parallel;
+static Parallel::Parallel parallel(1);
 
 struct CFDMeshApp;
 
@@ -84,8 +88,6 @@ struct Simulation : public ISimulation {
 	ThisEquation eqn;
 
 	double time = 0;
-	
-	using ValueRange = std::pair<float, float>; //min, max
 
 	//passed to mesh.draw
 	typename Mesh::DrawArgs drawArgs;
@@ -257,7 +259,7 @@ struct Simulation : public ISimulation {
 		Cons flux = eqn.applyEigR(fluxTilde, vars, n);
 		// here's the flux, aligned along the normal
 
-#if 0	//debug print eigenbasis error
+#if 1	//debug print eigenbasis error
 		real value = 0;
 		for (int k = 0; k < eqn.numWaves; ++k) {
 			Cons basis;
@@ -366,8 +368,16 @@ struct Simulation : public ISimulation {
 
 #if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
-	if (!std::isfinite(UL(i))) { throw Common::Exception() << "got non-finite " << UL; }
-	if (!std::isfinite(UR(i))) { throw Common::Exception() << "got non-finite " << UR; }
+	if (!std::isfinite(UL(i))) {
+		throw Common::Exception() 
+			<< "got non-finite left edge state " << UL
+			<< " for face " << face;
+	}
+	if (!std::isfinite(UR(i))) {
+		throw Common::Exception() 
+			<< "got non-finite right edge state " << UR
+			<< " for face " << face;
+	}
 }
 #endif
 
@@ -382,17 +392,27 @@ for (int i = 0; i < Cons::size; ++i) {
 #if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
 	if (!std::isfinite(UL(i))) { 
-		throw Common::Exception() << "got non-finite " << UL; 
+		throw Common::Exception() << "got non-finite post-rotate left state " << UL; 
 	}
 	if (!std::isfinite(UR(i))) { 
-		throw Common::Exception() << "got non-finite " << UR; 
+		throw Common::Exception() << "got non-finite post-rotate right state " << UR; 
 	}
 }
 #endif
 				face.flux = (this->*calcFluxes[calcFluxIndex])(UL, UR, face.cellDist, dt, fluxNormal);
 #if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
-	if (!std::isfinite(face.flux(i))) { throw Common::Exception() << "got non-finite " << face.flux; break; }
+	if (!std::isfinite(face.flux(i))) { 
+		throw Common::Exception()
+			<< "got non-finite flux " << face.flux << "\n"
+			<< " face=" << face << "\n"
+			<< " UL=" << UL << "\n"
+			<< " UR=" << UR << "\n"
+			<< " dt=" << dt << "\n"
+			<< " fluxNormal=" << fluxNormal << "\n"
+		;
+		break;
+	}
 }
 #endif
 
@@ -406,7 +426,7 @@ for (int i = 0; i < Cons::size; ++i) {
 			m->cells.begin(),
 			m->cells.end(),
 			[this](Cell& c) {
-				Cons U = c.U;
+//Cons U = c.U;
 				
 				Cons dU_dt;
 				for (int ei = 0; ei < c.faceCount; ++ei) {
@@ -438,6 +458,7 @@ for (int i = 0; i < Cons::size; ++i) {
 		);
 
 		if (displayAutomaticRange) {
+			using ValueRange = typename Mesh::DrawArgs::ValueRange;
 			drawArgs.displayValueRange = parallel.reduce(
 				m->cells.begin(),
 				m->cells.end(),
