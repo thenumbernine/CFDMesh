@@ -541,6 +541,39 @@ std::cout << "swapping cells so normal points to b" << std::endl;
 if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell distance " << std::to_string(f);
 #endif
 		}
+
+#if 0
+		//validity check
+		for (int ci = 0; ci < (int)cells.size(); ++ci) {
+			auto& c = cells[ci];
+			std::cout << "cell " << ci << " has faces " << std::vector(cellFaceIndexes.begin() + c.faceOffset, cellFaceIndexes.begin() + c.faceOffset + c.faceCount) << std::endl;
+		}
+		for (int fi = 0; fi < (int)faces.size(); ++fi) {
+			auto& f = faces[fi];
+			std::cout << "face " << fi << " has cells " << f.cells << std::endl;
+		}
+
+		for (int ci = 0; ci < (int)cells.size(); ++ci) {
+			auto& c = cells[ci];
+			for (int i = 0; i < c.faceCount; ++i) {
+				int fi = cellFaceIndexes[c.faceOffset + i];
+				auto& f = faces[fi];
+
+				bool found = false;
+				for (int j = 0; j < f.cells.size; ++j) {
+					if (f.cells(j) == ci) {
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					throw Common::Exception() << "cell " << ci << " attached to face " << fi << " that doesn't have that cell\n"
+						<< "face=" << f << "\n"
+						<< "cell=" << c;
+				}
+			}
+		}
+#endif	
 	}
 
 	struct DrawArgs {
@@ -907,7 +940,7 @@ struct Chart2DMeshFactory : public MeshFactory {
 	using This = Chart2DMeshFactory; 
 	
 	//int2 size = int2(100, 100);
-int2 size = int2(10, 10);
+int2 size = int2(20, 20);
 	float2 mins = real2(-1, -1);
 	float2 maxs = real2(1, 1);
 	bool2 repeat = bool2(false, false);

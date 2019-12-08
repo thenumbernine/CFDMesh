@@ -114,6 +114,35 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		}
 	};
 
+	struct InitCondWave : public InitCond {
+		using InitCond::InitCond;
+	
+		real P0 = 1;
+		real P1 = 2;
+		real sigma = 1;
+		real rho = 1;
+
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("P0", &InitCondWave::P0),
+			std::make_pair("P1", &InitCondWave::P1),
+			std::make_pair("sigma", &InitCondWave::P0),
+			std::make_pair("rho", &InitCondWave::rho)
+		);
+
+		virtual const char* name() const { return "Wave"; }
+		virtual Cons initCell(const This* eqn, real3 x) const {
+			real xSq = x.lenSq();
+			real P = P0 + (P1 - P0) * exp(-xSq / (sigma * sigma));
+			Prim W(rho, real3(), P);
+			return eqn->consFromPrim(W);
+		}
+		
+		virtual void updateGUI() {
+			CFDMesh::updateGUI(this);
+		}
+	};
+
+
 	struct InitCondSod : public InitCond {
 		using InitCond::InitCond;
 		
@@ -201,6 +230,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 
 	void buildInitCondsAndDisplayVars() {
 		Super::initConds = {
+			std::make_shared<InitCondWave>(),
 			std::make_shared<InitCondSod>(),
 			std::make_shared<InitCondConst>(),
 			std::make_shared<InitCondKelvinHelmholtz>(),
@@ -341,22 +371,20 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real denom = 2. * CsSq;
 		real invDenom = 1. / denom;
 
-		real3 nSq = n * n;	//per-element multiply
-
 		const real gU_xx = 1;
-		const real gU_yy = 1;
-		const real gU_zz = 1;
+		//const real gU_yy = 1;
+		//const real gU_zz = 1;
 		const real gU_xy = 0;
 		const real gU_xz = 0;
-		const real gU_yz = 0;
+		//const real gU_yz = 0;
 		const real sqrt_gUxx = 1.;//sqrt_gUxx;
-		const real sqrt_gUyy = 1.;//sqrt_gUjj;
-		const real sqrt_gUzz = 1.;//sqrt_gUjj;
+		//const real sqrt_gUyy = 1.;//sqrt_gUjj;
+		//const real sqrt_gUzz = 1.;//sqrt_gUjj;
 
 		WaveVec Y;
 
 		//x dir
-		Y.ptr[0] += nSq(0) * (
+		Y.ptr[0] += (
 			(
 				X.ptr[0] * (.5 * heatRatioMinusOne * vSq + Cs * v(0) / sqrt_gUxx)
 				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) - Cs / sqrt_gUxx)
@@ -365,7 +393,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 				+ X.ptr[4] * heatRatioMinusOne
 			) * invDenom
 		);
-		Y.ptr[1] += nSq(0) * (
+		Y.ptr[1] += (
 			(
 				X.ptr[0] * (denom - heatRatioMinusOne * vSq)
 				+ X.ptr[1] * 2. * heatRatioMinusOne * vL(0)
@@ -374,17 +402,17 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 				+ X.ptr[4] * -2. * heatRatioMinusOne
 			) * invDenom
 		);
-		Y.ptr[2] += nSq(0) * (
+		Y.ptr[2] += (
 			X.ptr[0] * (v(0) * gU_xy / gU_xx - v(1))
 			+ X.ptr[1] * -gU_xy / gU_xx
 			+ X.ptr[2]
 		);
-		Y.ptr[3] += nSq(0) * (
+		Y.ptr[3] += (
 			X.ptr[0] * (v(0) * gU_xz / gU_xx - v(2))
 			+ X.ptr[1] * -gU_xz / gU_xx
 			+ X.ptr[3]
 		);
-		Y.ptr[4] += nSq(0) * (
+		Y.ptr[4] += (
 			(
 				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v(0) / sqrt_gUxx)
 				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) + Cs / sqrt_gUxx)
@@ -393,85 +421,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 				+ X.ptr[4] * heatRatioMinusOne
 			) * invDenom
 		);
-
-		//y dir
-		Y.ptr[0] += nSq(1) * (
-			(
-				X.ptr[0] * (.5 * heatRatioMinusOne * vSq + Cs * v(1) / sqrt_gUyy)
-				+ X.ptr[1] * -heatRatioMinusOne * vL(0)
-				+ X.ptr[2] * (-heatRatioMinusOne * vL(1) - Cs / sqrt_gUyy)
-				+ X.ptr[3] * -heatRatioMinusOne * vL(2)
-				+ X.ptr[4] * heatRatioMinusOne
-			) * invDenom
-		);
-		Y.ptr[1] += nSq(1) * (
-			X.ptr[0] * (v(1) * gU_xy / gU_yy - v(0))
-			+ X.ptr[1]
-			+ X.ptr[2] * -gU_xy / gU_yy
-		);
-		Y.ptr[2] += nSq(1) * (	
-			(
-				X.ptr[0] * (denom - heatRatioMinusOne * vSq)
-				+ X.ptr[1] * 2. * heatRatioMinusOne * vL(0)
-				+ X.ptr[2] * 2. * heatRatioMinusOne * vL(1)
-				+ X.ptr[3] * 2. * heatRatioMinusOne * vL(2)
-				+ X.ptr[4] * -2. * heatRatioMinusOne
-			) * invDenom
-		);
-		Y.ptr[3] += nSq(1) * (
-			X.ptr[0] * (v(1) * gU_yz / gU_yy - v(2))
-			+ X.ptr[2] * -gU_yz / gU_yy
-			+ X.ptr[3]
-		);
-		Y.ptr[4] += nSq(1) * (
-			(
-				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v(1) / sqrt_gUyy)
-				+ X.ptr[1] * -heatRatioMinusOne * vL(0)
-				+ X.ptr[2] * (-heatRatioMinusOne * vL(1) + Cs / sqrt_gUyy)
-				+ X.ptr[3] * -heatRatioMinusOne * vL(2)
-				+ X.ptr[4] * heatRatioMinusOne
-			) * invDenom
-		);
-
-		//z dir
-		Y.ptr[0] += nSq(2) * (
-			(
-				X.ptr[0] * (.5 * heatRatioMinusOne * vSq + Cs * v(2) / sqrt_gUzz)
-				+ X.ptr[1] * -heatRatioMinusOne * vL(0)
-				+ X.ptr[2] * -heatRatioMinusOne * vL(1)
-				+ X.ptr[3] * (-heatRatioMinusOne * vL(2) - Cs / sqrt_gUzz)
-				+ X.ptr[4] * heatRatioMinusOne
-			) * invDenom
-		);
-		Y.ptr[1] += nSq(2) * (
-			X.ptr[0] * (v(2) * gU_xz / gU_zz - v(0))
-			+ X.ptr[1]
-			+ X.ptr[3] * -gU_xz / gU_zz
-		);
-		Y.ptr[2] += nSq(2) * (
-			X.ptr[0] * (v(2) * gU_yz / gU_zz - v(1))
-			+ X.ptr[2]
-			+ X.ptr[3] * -gU_yz / gU_zz
-		);
-		Y.ptr[3] += nSq(2) * (	
-			(
-				X.ptr[0] * (denom - heatRatioMinusOne * vSq)
-				+ X.ptr[1] * 2. * heatRatioMinusOne * vL(0)
-				+ X.ptr[2] * 2. * heatRatioMinusOne * vL(1)
-				+ X.ptr[3] * 2. * heatRatioMinusOne * vL(2)
-				+ X.ptr[4] * -2. * heatRatioMinusOne
-			) * invDenom
-		);
-		Y.ptr[4] += nSq(2) * (
-			(
-				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v(2) / sqrt_gUzz)
-				+ X.ptr[1] * -heatRatioMinusOne * vL(0)
-				+ X.ptr[2] * -heatRatioMinusOne * vL(1)
-				+ X.ptr[3] * (-heatRatioMinusOne * vL(2) + Cs / sqrt_gUzz)
-				+ X.ptr[4] * heatRatioMinusOne
-			) * invDenom
-		);
-
+		
 		return Y;
 	}
 
@@ -481,106 +431,46 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		const auto& vL = v;			//v_i ... lower (not left)
 		const real& vSq = real3::dot(v, vL);
 		const real& hTotal = vars.hTotal;
-
-		real3 nSq = n * n;	//per-component multiply
 		
-//		const real gU_xx = 1;
-//		const real gU_yy = 1;
-//		const real gU_zz = 1;
+		//const real gU_xx = 1;
+		//const real gU_yy = 1;
+		//const real gU_zz = 1;
 		const real gU_xy = 0;
 		const real gU_xz = 0;
-		const real gU_yz = 0;
+		//const real gU_yz = 0;
 		const real sqrt_gUxx = 1.;//sqrt_gUxx;
-		const real sqrt_gUyy = 1.;//sqrt_gUjj;
-		const real sqrt_gUzz = 1.;//sqrt_gUjj;
+		//const real sqrt_gUyy = 1.;//sqrt_gUjj;
+		//const real sqrt_gUzz = 1.;//sqrt_gUjj;
 
 		Cons Y;
 	
 		//x dir
-		Y.ptr[0] += nSq(0) * (
+		Y.ptr[0] += (
 			X.ptr[0] + X.ptr[1] + X.ptr[4]
 		);
-		Y.ptr[1] += nSq(0) * (
+		Y.ptr[1] += (
 			X.ptr[0] * (v(0) - Cs * sqrt_gUxx)
 			+ X.ptr[1] * v(0)
 			+ X.ptr[4] * (v(0) + Cs * sqrt_gUxx)
 		);
-		Y.ptr[2] += nSq(0) * (
+		Y.ptr[2] += (
 			X.ptr[0] * (v(1) - Cs * gU_xy / sqrt_gUxx)
 			+ X.ptr[1] * v(1)
 			+ X.ptr[2]
 			+ X.ptr[4] * (v(1) + Cs * gU_xy / sqrt_gUxx)
 		);
-		Y.ptr[3] += nSq(0) * (
+		Y.ptr[3] += (
 			X.ptr[0] * (v(2) - Cs * gU_xz / sqrt_gUxx)
 			+ X.ptr[1] * v(2)
 			+ X.ptr[3]
 			+ X.ptr[4] * (v(2) + Cs * gU_xz / sqrt_gUxx)
 		);
-		Y.ptr[4] += nSq(0) * (
+		Y.ptr[4] += (
 			X.ptr[0] * (hTotal - Cs * v(0) / sqrt_gUxx)
 			+ X.ptr[1] * vSq / 2.
 			+ X.ptr[2] * vL(1)
 			+ X.ptr[3] * vL(2)
 			+ X.ptr[4] * (hTotal + Cs * v(0) / sqrt_gUxx)
-		);
-
-		//y dir
-		Y.ptr[0] += nSq(1) * (
-			X.ptr[0] + X.ptr[2] + X.ptr[4]
-		);
-		Y.ptr[1] += nSq(1) * (
-			X.ptr[0] * (v(0) - Cs * gU_xy / sqrt_gUyy)
-			+ X.ptr[1]
-			+ X.ptr[2] * v(0)
-			+ X.ptr[4] * (v(0) + Cs * gU_xy / sqrt_gUyy)
-		);
-		Y.ptr[2] += nSq(1) * (
-			X.ptr[0] * (v(1) - Cs * sqrt_gUyy)
-			+ X.ptr[2] * v(1)
-			+ X.ptr[4] * (v(1) + Cs * sqrt_gUyy)
-		);
-		Y.ptr[3] += nSq(1) * (
-			X.ptr[0] * (v(2) - Cs * gU_yz / sqrt_gUyy)
-			+ X.ptr[2] * v(2)
-			+ X.ptr[3]
-			+ X.ptr[4] * (v(2) + Cs * gU_yz / sqrt_gUyy)
-		);
-		Y.ptr[4] += nSq(1) * (
-			X.ptr[0] * (hTotal - Cs * v(1) / sqrt_gUyy)
-			+ X.ptr[1] * vL(0)
-			+ X.ptr[2] * vSq / 2.
-			+ X.ptr[3] * vL(2)
-			+ X.ptr[4] * (hTotal + Cs * v(1) / sqrt_gUyy)
-		);
-
-		//z dir
-		Y.ptr[0] += nSq(2) * (
-			X.ptr[0] + X.ptr[3] + X.ptr[4]
-		);
-		Y.ptr[1] += nSq(2) * (
-			X.ptr[0] * (v(0) - Cs * gU_xz / sqrt_gUzz)
-			+ X.ptr[1]
-			+ X.ptr[3] * v(0)
-			+ X.ptr[4] * (v(0) + Cs * gU_xz / sqrt_gUzz)
-		);
-		Y.ptr[2] += nSq(2) * (
-			X.ptr[0] * (v(1) - Cs * gU_yz / sqrt_gUzz)
-			+ X.ptr[2]
-			+ X.ptr[3] * v(1)
-			+ X.ptr[4] * (v(1) + Cs * gU_yz / sqrt_gUzz)
-		);
-		Y.ptr[3] += nSq(2) * (
-			X.ptr[0] * (v(2) - Cs * sqrt_gUzz)
-			+ X.ptr[3] * v(2)
-			+ X.ptr[4] * (v(2) + Cs * sqrt_gUzz)
-		);
-		Y.ptr[4] += nSq(2) * (
-			X.ptr[0] * (hTotal - Cs * v(2) / sqrt_gUzz)
-			+ X.ptr[1] * vL(0)
-			+ X.ptr[2] * vL(1)
-			+ X.ptr[3] * vSq / 2.
-			+ X.ptr[4] * (hTotal + Cs * v(2) / sqrt_gUzz)
 		);
 
 		return Y;

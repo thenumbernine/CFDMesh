@@ -33,7 +33,7 @@
 // or do we use the general normal-based flux computation
 //ROTATE_TO_ALIGN==0 is not working for Roe solver
 // triangle grid and polar are failing for both ==0 and ==1
-#define ROTATE_TO_ALIGN	0
+#define ROTATE_TO_ALIGN	1
 
 
 namespace CFDMesh {
@@ -259,7 +259,7 @@ struct Simulation : public ISimulation {
 		Cons flux = eqn.applyEigR(fluxTilde, vars, n);
 		// here's the flux, aligned along the normal
 
-#if 1	//debug print eigenbasis error
+#if 0	//debug print eigenbasis error
 		real value = 0;
 		for (int k = 0; k < eqn.numWaves; ++k) {
 			Cons basis;
@@ -427,22 +427,36 @@ for (int i = 0; i < Cons::size; ++i) {
 			m->cells.end(),
 			[this](Cell& c) {
 //Cons U = c.U;
-				
+//std::cout << "integrating cell " << (&c - &*m->cells.begin()) << " = " << c << std::endl;				
 				Cons dU_dt;
-				for (int ei = 0; ei < c.faceCount; ++ei) {
-					Face* e = &m->faces[m->cellFaceIndexes[ei+c.faceOffset]];
+				for (int i = 0; i < c.faceCount; ++i) {
+					int ei = m->cellFaceIndexes[i+c.faceOffset];
+					Face* e = &m->faces[ei];
 					if (&c == &m->cells[e->cells(0)]) {
+//std::cout << " ... - " << *e << std::endl;
 						dU_dt -= e->flux * (e->area / c.volume);
 					} else {
+//std::cout << " ... + " << *e << std::endl;
 						dU_dt += e->flux * (e->area / c.volume);
 					}
 				}
 				c.U += dU_dt * dt;
 			
-//std::cout << "cell before " << U << " after " << c << std::endl;			
+//std::cout << "cell before " << U << " after " << c << std::endl;
+
+#if 0	//Euler-only
+typename ThisEquation::Prim W = eqn.primFromCons(c.U);
+if (W.P <= 0) {
+	throw Common::Exception() << "pressure negative. "
+		<< " W=" << W
+		<< " oldU=" << U
+		<< " c=" << c
+	;
+}
+#endif
 			}
 		);
-
+		
 		refreshDisplayValues();
 
 		time += dt;
