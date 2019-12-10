@@ -358,12 +358,41 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return vars.v + vars.Cs;
 	}
 
+	static std::pair<real3, real3> getPerpendicularBasis(real3 n) {
+		real3 n_x_x = cross(n, real3(1,0,0));
+		real3 n_x_y = cross(n, real3(0,1,0));
+		real3 n_x_z = cross(n, real3(0,0,1));
+		real n_x_xSq = n_x_x.lenSq();
+		real n_x_ySq = n_x_y.lenSq();
+		real n_x_zSq = n_x_z.lenSq();
+		real3 n2;
+		if (n_x_xSq > n_x_ySq) {
+			if (n_x_xSq > n_x_zSq) {
+				n2 = n_x_x;	//use x
+			} else {
+				n2 = n_x_z;	//use z
+			}
+		} else {
+			if (n_x_ySq > n_x_zSq) {
+				n2 = n_x_y;	//use y
+			} else {
+				n2 = n_x_z;	//use z
+			}
+		}
+		n2 = n2.unit();
+		real3 n3 = cross(n, n2);
+		return std::make_pair(n2, n3);
+	}
 
-	WaveVec applyEigL(Cons X, const Eigen& vars, real3 n) {
+	WaveVec applyEigL(Cons X, const Eigen& vars, real3 nU) {
 		const real& Cs = vars.Cs;
-		const real3& v = vars.v;	//v^i ... upper
-		const auto& vL = v;			//v_i ... lower (not left)
-		const real& vSq = real3::dot(v, vL);
+		const real3& vU = vars.v;	//v^i ... upper
+		const auto& vL = vU;		//v_i ... lower (not left)
+		const real& vSq = real3::dot(vU, vL);
+		
+		auto [n2U, n3U] = getPerpendicularBasis(nU);
+		const auto& n2L = n2U;
+		const auto& n3L = n3U;
 
 		real CsSq = Cs * Cs;
 		real heatRatioMinusOne = heatCapacityRatio - 1;
@@ -371,29 +400,24 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real denom = 2. * CsSq;
 		real invDenom = 1. / denom;
 
-		const real gU_xx = 1;
-		//const real gU_yy = 1;
-		//const real gU_zz = 1;
-		const real gU_xy = 0;
-		const real gU_xz = 0;
-		//const real gU_yz = 0;
-		const real sqrt_gUxx = 1.;//sqrt_gUxx;
-		//const real sqrt_gUyy = 1.;//sqrt_gUjj;
-		//const real sqrt_gUzz = 1.;//sqrt_gUjj;
+		const auto& nL = nU;
+		const real nlen = 1;	//sqrt(real3::dot(n, nL));
+
+		real v_n = real3::dot(vU, nL);
+		real v_n2 = real3::dot(vU, n2L);
+		real v_n3 = real3::dot(vU, n3L);
 
 		WaveVec Y;
-
-		//x dir
-		Y.ptr[0] += (
+		Y.ptr[0] = (
 			(
-				X.ptr[0] * (.5 * heatRatioMinusOne * vSq + Cs * v(0) / sqrt_gUxx)
-				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) - Cs / sqrt_gUxx)
-				+ X.ptr[2] * -heatRatioMinusOne * vL(1)
-				+ X.ptr[3] * -heatRatioMinusOne * vL(2)
+				X.ptr[0] * (.5 * heatRatioMinusOne * vSq + Cs * v_n / nlen)
+				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) - Cs * nL(0) / nlen)
+				+ X.ptr[2] * (-heatRatioMinusOne * vL(1) - Cs * nL(1) / nlen)
+				+ X.ptr[3] * (-heatRatioMinusOne * vL(2) - Cs * nL(2) / nlen)
 				+ X.ptr[4] * heatRatioMinusOne
 			) * invDenom
 		);
-		Y.ptr[1] += (
+		Y.ptr[1] = (
 			(
 				X.ptr[0] * (denom - heatRatioMinusOne * vSq)
 				+ X.ptr[1] * 2. * heatRatioMinusOne * vL(0)
@@ -402,22 +426,24 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 				+ X.ptr[4] * -2. * heatRatioMinusOne
 			) * invDenom
 		);
-		Y.ptr[2] += (
-			X.ptr[0] * (v(0) * gU_xy / gU_xx - v(1))
-			+ X.ptr[1] * -gU_xy / gU_xx
-			+ X.ptr[2]
+		Y.ptr[2] = (
+			X.ptr[0] * -v_n2
+			+ X.ptr[1] * n2L(0)
+			+ X.ptr[2] * n2L(1)
+			+ X.ptr[3] * n2L(2)
 		);
-		Y.ptr[3] += (
-			X.ptr[0] * (v(0) * gU_xz / gU_xx - v(2))
-			+ X.ptr[1] * -gU_xz / gU_xx
-			+ X.ptr[3]
+		Y.ptr[3] = (
+			X.ptr[0] * -v_n3
+			+ X.ptr[1] * n3L(0)
+			+ X.ptr[2] * n3L(1)
+			+ X.ptr[3] * n3L(2)
 		);
-		Y.ptr[4] += (
+		Y.ptr[4] = (
 			(
-				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v(0) / sqrt_gUxx)
-				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) + Cs / sqrt_gUxx)
-				+ X.ptr[2] * -heatRatioMinusOne * vL(1)
-				+ X.ptr[3] * -heatRatioMinusOne * vL(2)
+				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v_n / nlen)
+				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) + Cs * nL(0) / nlen)
+				+ X.ptr[2] * (-heatRatioMinusOne * vL(1) + Cs * nL(1) / nlen)
+				+ X.ptr[3] * (-heatRatioMinusOne * vL(2) + Cs * nL(1) / nlen)
 				+ X.ptr[4] * heatRatioMinusOne
 			) * invDenom
 		);
@@ -425,52 +451,54 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return Y;
 	}
 
-	Cons applyEigR(Cons X, const Eigen& vars, real3 n) {
+	Cons applyEigR(Cons X, const Eigen& vars, real3 nU) {
 		const real& Cs = vars.Cs;
-		const real3& v = vars.v;	//v^i ... upper
-		const auto& vL = v;			//v_i ... lower (not left)
-		const real& vSq = real3::dot(v, vL);
+		const real3& vU = vars.v;	//v^i ... upper
+		const auto& vL = vU;		//v_i ... lower (not left)
 		const real& hTotal = vars.hTotal;
+
+		auto [n2U, n3U] = getPerpendicularBasis(nU);
+
+		const real& vSq = real3::dot(vU, vL);
+
+		real v_n = real3::dot(vL, nU);
+		real v_n2 = real3::dot(vL, n2U);
+		real v_n3 = real3::dot(vL, n3U);
 		
-		//const real gU_xx = 1;
-		//const real gU_yy = 1;
-		//const real gU_zz = 1;
-		const real gU_xy = 0;
-		const real gU_xz = 0;
-		//const real gU_yz = 0;
-		const real sqrt_gUxx = 1.;//sqrt_gUxx;
-		//const real sqrt_gUyy = 1.;//sqrt_gUjj;
-		//const real sqrt_gUzz = 1.;//sqrt_gUjj;
+		//const auto& nL = nU;
+		const real nlen = 1;	//sqrt(real3::dot(n, nL));
 
 		Cons Y;
-	
-		//x dir
-		Y.ptr[0] += (
+		Y.ptr[0] = (
 			X.ptr[0] + X.ptr[1] + X.ptr[4]
 		);
-		Y.ptr[1] += (
-			X.ptr[0] * (v(0) - Cs * sqrt_gUxx)
-			+ X.ptr[1] * v(0)
-			+ X.ptr[4] * (v(0) + Cs * sqrt_gUxx)
+		Y.ptr[1] = (
+			X.ptr[0] * (vU(0) - Cs * nU(0) / nlen)
+			+ X.ptr[1] * vU(0)
+			+ X.ptr[2] * n2U(0)
+			+ X.ptr[3] * n3U(0)
+			+ X.ptr[4] * (vU(0) + Cs * nU(0) / nlen)
 		);
-		Y.ptr[2] += (
-			X.ptr[0] * (v(1) - Cs * gU_xy / sqrt_gUxx)
-			+ X.ptr[1] * v(1)
-			+ X.ptr[2]
-			+ X.ptr[4] * (v(1) + Cs * gU_xy / sqrt_gUxx)
+		Y.ptr[2] = (
+			X.ptr[0] * (vU(1) - Cs * nU(1) / nlen)
+			+ X.ptr[1] * vU(1)
+			+ X.ptr[2] * n2U(1)
+			+ X.ptr[3] * n3U(1)
+			+ X.ptr[4] * (vU(1) + Cs * nU(1) / nlen)
 		);
-		Y.ptr[3] += (
-			X.ptr[0] * (v(2) - Cs * gU_xz / sqrt_gUxx)
-			+ X.ptr[1] * v(2)
-			+ X.ptr[3]
-			+ X.ptr[4] * (v(2) + Cs * gU_xz / sqrt_gUxx)
+		Y.ptr[3] = (
+			X.ptr[0] * (vU(2) - Cs * nU(2) / nlen)
+			+ X.ptr[1] * vU(2)
+			+ X.ptr[2] * n2U(2)
+			+ X.ptr[3] * n3U(2)
+			+ X.ptr[4] * (vU(2) + Cs * nU(2) / nlen)
 		);
-		Y.ptr[4] += (
-			X.ptr[0] * (hTotal - Cs * v(0) / sqrt_gUxx)
+		Y.ptr[4] = (
+			X.ptr[0] * (hTotal - Cs * v_n / nlen)
 			+ X.ptr[1] * vSq / 2.
-			+ X.ptr[2] * vL(1)
-			+ X.ptr[3] * vL(2)
-			+ X.ptr[4] * (hTotal + Cs * v(0) / sqrt_gUxx)
+			+ X.ptr[2] * v_n2
+			+ X.ptr[3] * v_n3
+			+ X.ptr[4] * (hTotal + Cs * v_n / nlen)
 		);
 
 		return Y;

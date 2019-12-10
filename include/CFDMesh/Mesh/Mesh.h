@@ -22,14 +22,6 @@ template<> void glVertex3v<float>(const float* v) { glVertex3fv(v); }
 template<> void glVertex3v<double>(const double* v) { glVertex3dv(v); }
 
 
-template<typename real3>
-inline real3 cross(real3 a, real3 b) {
-	return real3(
-		a(1) * b(2) - a(2) * b(1),
-		a(2) * b(0) - a(0) * b(2),
-		a(0) * b(1) - a(1) * b(0));
-}
-
 namespace CFDMesh {
 
 //zero-forms

@@ -45,7 +45,7 @@ using real = double;
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
 
-static Parallel::Parallel parallel(1);
+static Parallel::Parallel parallel;//(1);
 
 struct CFDMeshApp;
 
