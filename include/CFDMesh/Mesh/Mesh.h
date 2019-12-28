@@ -1138,12 +1138,13 @@ struct PolarMeshFactory : public Quad2DMeshFactory {
 	PolarMeshFactory() : Super("polar") {
 		Super::size = int2(50, 200);
 		Super::mins = real2(0, 0);
-		Super::maxs = real2(1, 2*M_PI);
+		Super::maxs = real2(1, 1);
 		Super::repeat = bool2(false, true);
 		Super::capmin = bool2(true, false);
 	}
 	virtual real2 coordChart(real2 v) const {
-		return real2(cos(v(1)), sin(v(1))) * v(0);
+		real theta = 2. * M_PI * v(1);
+		return real2(cos(theta), sin(theta)) * v(0);
 	}
 };
 

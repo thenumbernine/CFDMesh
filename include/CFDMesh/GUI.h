@@ -87,7 +87,7 @@ void UpdateGUI<T>::exec(T* ptr, std::string prefix) {
 		igCheckbox(prefix.c_str(), ptr);
 	} else if constexpr (std::is_floating_point_v<T>) {
 		float f = *ptr;
-		if (igInputFloat(prefix.c_str(), &f, .1, 1, "%f", 0)) {
+		if (igInputFloat(prefix.c_str(), &f, .1, 1, "%e", 0)) {
 			*ptr = f;
 		}
 	} else if constexpr (std::is_integral_v<T>) {

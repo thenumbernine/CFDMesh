@@ -761,7 +761,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	
 	igSeparator();
 	
-	igText("time: %f", time);
+	igText("time: %e", time);
 	igCheckbox("running", &running);
 	
 	if (igSmallButton("step")) singleStep = true;
@@ -784,7 +784,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 
 	igCheckbox("rotate to align", &rotateToAlign);
 
-	igInputFloat("restitution", &restitution, .1, 1., "%f", 0);
+	igInputFloat("restitution", &restitution, .1, 1., "%e", 0);
 	
 	igSeparator();
 
@@ -826,7 +826,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 		
 		if (canHandleMouse) {
 			igBeginTooltip();
-			igText("%f %f\n", pos(0), pos(1));
+			igText("%e %e\n", pos(0), pos(1));
 			igEndTooltip();
 		}
 
@@ -852,7 +852,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 			
 			if (canHandleMouse) {
 				igBeginTooltip();
-				igText("%f", c->displayValue);
+				igText("%e", c->displayValue);
 				igEndTooltip();
 			}
 
