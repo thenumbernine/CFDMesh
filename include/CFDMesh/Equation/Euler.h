@@ -224,35 +224,6 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		}
 	};
 
-	Euler() : Super() {
-#if 0
-		//TODO gui fields for DisplayMethod ?
-		addDisplayScalar("eigenbasis orthogonality", [](const This* eqn, const Cell* c) -> float {
-			
-			Eigen vars = eqn.calcRoeAvg(UL, UR);
-			
-			real value = 0;
-			for (int k = 0; k < eqn.numWaves; ++k) {
-				Cons basis;
-				for (int j = 0; j < eqn.numStates; ++j) {
-					basis.ptr[j] = k == j ? 1 : 0;
-				}
-				
-				WaveVec charVars = eqn.applyEigL(basis, vars, n);
-				Cons newbasis = eqn.applyEigR(charVars, vars, n);
-			
-				for (int j = 0; j < eqn.numStates; ++j) {
-					value += fabs(newbasis.ptr[j] - basis.ptr[j]);
-				}
-			}
-
-			return (float)value;
-		});
-
-		updateNames();
-#endif	
-	}
-
 	void buildInitCondsAndDisplayVars() {
 		Super::initConds = {
 			std::make_shared<InitCondWave>(),
@@ -313,7 +284,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		);
 	};
 
-	Eigen calcRoeAvg(Cons UL, Cons UR) {
+	Eigen calcRoeAvg(Cons UL, Cons UR) const {
 		Eigen vars;
 		Prim& WL = vars.WL;
 		Prim& WR = vars.WR;
@@ -341,10 +312,11 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		vars.hTotal = (sqrtRhoL * hTotalL + sqrtRhoR * hTotalR) * invDenom;
 		vars.Cs = calc_Cs_from_vSq_hTotal(vars.vSq, vars.hTotal);
 		vars.CsSq = vars.Cs * vars.Cs;
+		
 		return vars;
 	}
 
-	WaveVec getEigenvalues(const Eigen& vars, real3 n) {
+	WaveVec getEigenvalues(const Eigen& vars, real3 n) const {
 		real v = real3::dot(vars.v, n);
 		const real& Cs = vars.Cs;
 		WaveVec lambdas;
@@ -410,7 +382,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	}
 
 	//nU = n^i
-	WaveVec applyEigL(Cons X, const Eigen& vars, real3 nU) {
+	WaveVec applyEigL(Cons X, const Eigen& vars, real3 nU) const {
 		const real& Cs = vars.Cs;
 		const real3& vU = vars.v;	//v^i ... upper
 		const auto& vL = vU;		//v_i ... lower (not left)
@@ -477,7 +449,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return Y;
 	}
 
-	Cons applyEigR(Cons X, const Eigen& vars, real3 nU) {
+	Cons applyEigR(Cons X, const Eigen& vars, real3 nU) const {
 		const real& Cs = vars.Cs;
 		const real3& vU = vars.v;	//v^i ... upper
 		const auto& vL = vU;		//v_i ... lower (not left)
@@ -637,7 +609,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	}
 #endif
 
-	Cons calcFluxFromCons(Cons U, real3 n) {
+	Cons calcFluxFromCons(Cons U, real3 n) const {
 		Prim W = primFromCons(U);
 		real hTotal = calc_hTotal(W.rho, W.P, U.ETotal);
 		Cons flux;

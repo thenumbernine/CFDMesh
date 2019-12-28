@@ -70,6 +70,9 @@ struct Simulation : public ISimulation {
 	using MeshFactory = typename ThisMeshNamespace::MeshFactory;
 	using Cell = typename ThisMeshNamespace::Cell;
 	using Face = typename ThisMeshNamespace::Face;
+	
+	using DisplayMethod = typename ThisEquation::DisplayMethod;
+
 
 	std::vector<std::shared_ptr<MeshFactory>> meshGenerators;
 	std::vector<const char*> meshGenerationNames;
@@ -104,6 +107,12 @@ struct Simulation : public ISimulation {
 	//in 3D rotateToAlign==false is not working for Roe solver 
 	// triangle grid and polar are failing for both ==0 and ==1
 	bool rotateToAlign = true;//false;
+
+	
+	std::vector<std::shared_ptr<DisplayMethod>> displayMethods;
+	std::vector<const char*> displayMethodNames;
+
+
 
 	//TODO
 	//this is not just reflection, but also has a lot of gui-specific data tied into it
@@ -173,6 +182,50 @@ results: looks like the flux is aligned with the normal, and the flux magnitude 
 	}
 exit(0);
 #endif
+
+
+		//first copy display methods from equation
+		displayMethods = eqn.displayMethods;
+
+		//next incorporate any simulation-based display methods
+		//this is a face-based display.  for now I'll just use the first face.
+		//TODO gui fields for DisplayMethod ?
+		displayMethods.push_back(std::make_shared<DisplayMethod>(
+			"eigenbasis orthogonality",
+			[this](const ThisEquation* eqn, const Cell* c) -> float {
+				const Face& face = this->m->faces[m->cellFaceIndexes[c->faceOffset]];
+				auto [UL, UR] = this->getEdgeStates(&face);
+				Eigen vars = eqn->calcRoeAvg(UL, UR);
+				
+				real value = 0;
+				for (int k = 0; k < eqn->numWaves; ++k) {
+					Cons basis;
+					for (int j = 0; j < eqn->numStates; ++j) {
+						basis.ptr[j] = k == j ? 1 : 0;
+					}
+					
+					WaveVec charVars = eqn->applyEigL(basis, vars, face.normal);
+					Cons newbasis = eqn->applyEigR(charVars, vars, face.normal);
+				
+					for (int j = 0; j < eqn->numStates; ++j) {
+						value += fabs(newbasis.ptr[j] - basis.ptr[j]);
+					}
+				}
+
+				return (float)value;
+			}
+		));
+
+		//last update the names
+		displayMethodNames = map<
+			decltype(displayMethods),
+			std::vector<const char*>
+		>(
+			displayMethods,
+			[](const std::shared_ptr<DisplayMethod>& m) -> const char* {
+				return m->name.c_str();
+			}
+		);
 
 
 
@@ -504,7 +557,7 @@ if (W.P <= 0) {
 			m->cells.begin(),
 			m->cells.end(),
 			[this](Cell& c) {
-				c.displayValue = eqn.displayMethods[displayMethodIndex]->f(&eqn, &c);
+				c.displayValue = displayMethods[displayMethodIndex]->f(&eqn, &c);
 			}
 		);
 
@@ -712,7 +765,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 
 	igSeparator();
 
-	if (igCombo("display method", &displayMethodIndex, eqn.displayMethodNames.data(), eqn.displayMethodNames.size(), -1)) {
+	if (igCombo("display method", &displayMethodIndex, displayMethodNames.data(), displayMethodNames.size(), -1)) {
 		refreshDisplayValues();
 	}
 

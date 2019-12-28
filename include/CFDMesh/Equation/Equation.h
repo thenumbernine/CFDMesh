@@ -67,7 +67,6 @@ struct Equation {
 	std::vector<const char*> initCondNames;
 
 	std::vector<std::shared_ptr<DisplayMethod>> displayMethods;
-	std::vector<const char*> displayMethodNames;
 
 	Equation() {
 		crtp_cast<Base>(*this).buildInitCondsAndDisplayVars();
@@ -130,14 +129,6 @@ struct Equation {
 		>(
 			initConds,
 			[](std::shared_ptr<InitCond> ic) -> const char* { return ic->name(); }
-		);
-		
-		displayMethodNames = map<
-			decltype(displayMethods),
-			std::vector<const char*>
-		>(
-			displayMethods,
-			[](const std::shared_ptr<DisplayMethod>& m) -> const char* { return m->name.c_str(); }
 		);
 	}
 

@@ -107,6 +107,14 @@ struct UpdateGUI<bool> {
 	}
 };
 
+template<typename A, typename B>
+struct UpdateGUI<std::pair<A, B>> {
+	static void exec(std::pair<A, B>* ptr, std::string prefix) {
+		UpdateGUI<A>::exec(&ptr->first, prefix + " 0");
+		UpdateGUI<B>::exec(&ptr->second, prefix + " 1");
+	}
+};
+
 template<typename T>
 struct UpdateGUI<Tensor::Vector<T, 2>> {
 	static void exec(Tensor::Vector<T, 2>* ptr, std::string prefix) {
