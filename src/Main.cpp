@@ -104,9 +104,7 @@ struct Simulation : public ISimulation {
 
 	//do we rotate to align fluxes with x-axis and only use the x-axis flux,
 	// or do we use the general normal-based flux computation
-	//in 3D rotateToAlign==false is not working for Roe solver 
-	// triangle grid and polar are failing for both ==0 and ==1
-	bool rotateToAlign = true;//false;
+	bool rotateToAlign = false;
 
 	
 	std::vector<std::shared_ptr<DisplayMethod>> displayMethods;
@@ -191,10 +189,21 @@ exit(0);
 		//this is a face-based display.  for now I'll just use the first face.
 		//TODO gui fields for DisplayMethod ?
 		displayMethods.push_back(std::make_shared<DisplayMethod>(
-			"eigenbasis orthogonality",
+			"eigenbasis orthogonality error",
 			[this](const ThisEquation* eqn, const Cell* c) -> float {
-				const Face& face = this->m->faces[m->cellFaceIndexes[c->faceOffset]];
-				auto [UL, UR] = this->getEdgeStates(&face);
+				const Face& face = m->faces[m->cellFaceIndexes[c->faceOffset]];
+				auto [UL, UR] = getEdgeStates(&face);
+				
+				real3 fluxNormal;
+				if (rotateToAlign) {	//rotate normal to x-axis
+					UL = eqn->rotateFrom(UL, face.normal);
+					UR = eqn->rotateFrom(UR, face.normal);
+					fluxNormal = real3(1, 0, 0);
+				} else {
+					fluxNormal = face.normal;
+				}
+			
+
 				Eigen vars = eqn->calcRoeAvg(UL, UR);
 				
 				real value = 0;

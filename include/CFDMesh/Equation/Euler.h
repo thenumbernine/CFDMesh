@@ -441,7 +441,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 				X.ptr[0] * (.5 * heatRatioMinusOne * vSq - Cs * v_n / nlen)
 				+ X.ptr[1] * (-heatRatioMinusOne * vL(0) + Cs * nL(0) / nlen)
 				+ X.ptr[2] * (-heatRatioMinusOne * vL(1) + Cs * nL(1) / nlen)
-				+ X.ptr[3] * (-heatRatioMinusOne * vL(2) + Cs * nL(1) / nlen)
+				+ X.ptr[3] * (-heatRatioMinusOne * vL(2) + Cs * nL(2) / nlen)
 				+ X.ptr[4] * heatRatioMinusOne
 			) * invDenom
 		);

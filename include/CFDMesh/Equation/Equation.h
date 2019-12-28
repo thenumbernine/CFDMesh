@@ -99,7 +99,13 @@ struct Equation {
 			});	
 		}
 
-		updateNames();
+		initCondNames = map<
+			decltype(initConds),
+			std::vector<const char*>
+		>(
+			initConds,
+			[](std::shared_ptr<InitCond> ic) -> const char* { return ic->name(); }
+		);
 	}
 
 	void addDisplayScalar(const std::string& name, DisplayFunc func) {
@@ -122,35 +128,23 @@ struct Equation {
 		}
 	}
 
-	void updateNames() {
-		initCondNames = map<
-			decltype(initConds),
-			std::vector<const char*>
-		>(
-			initConds,
-			[](std::shared_ptr<InitCond> ic) -> const char* { return ic->name(); }
-		);
-	}
-
-	Cons rotateFrom(Cons U, const real3& normal) {
+	Cons rotateFrom(Cons U, const real3& normal) const {
 		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = CFDMesh::rotateFrom<real3>(U.*field, normal);
-				
 			}
 		});
 		return U;
 	}
 
-	Cons rotateTo(Cons U, const real3& normal) {
+	Cons rotateTo(Cons U, const real3& normal) const {
 		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = CFDMesh::rotateTo<real3>(U.*field, normal);
-				
 			}
 		});
 		return U;
