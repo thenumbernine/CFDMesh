@@ -2,6 +2,7 @@
 
 #include "CFDMesh/Vector.h"
 #include "CFDMesh/Util.h"
+#include "CFDMesh/GUI.h"
 #include "GLApp/gl.h"
 #include "Image/Image.h"
 #include "Common/File.h"
@@ -50,7 +51,6 @@ struct Face_ {
 	using real3 = Tensor::Vector<real, 3>;
 	
 	real3 pos;
-	real3 delta;
 	real3 normal;
 	real area = 0;	//space taken up by the face
 	real cellDist = 0;	//dist between adjacent cell centers
@@ -69,7 +69,6 @@ struct Face_ {
 	
 	static constexpr auto fields = std::make_tuple(
 		std::make_pair("pos", &This::pos),
-		std::make_pair("delta", &This::delta),
 		std::make_pair("normal", &This::normal),
 		std::make_pair("area", &This::area),
 		std::make_pair("cellDist", &This::cellDist),
@@ -251,9 +250,9 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 			auto& a = vtxs[vs[0]];
 			auto& b = vtxs[vs[1]];
 			f.pos = (a.pos + b.pos) * .5;
-			f.delta = a.pos - b.pos;
-			f.area = f.delta.length();
-			f.normal = real3(f.delta(1), -f.delta(0)).unit();
+			real3 delta = a.pos - b.pos;
+			f.area = delta.length();
+			f.normal = real3(delta(1), -delta(0)).unit();
 		} else if constexpr (dim == 3) {
 			std::vector<real3> polyVtxs(n);
 			for (int i = 0; i < n; ++i) {

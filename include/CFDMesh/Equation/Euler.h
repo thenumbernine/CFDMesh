@@ -8,7 +8,6 @@
 #include <utility>
 #include <tuple>
 #include <cmath>
-#include <cassert>
 
 namespace CFDMesh {
 namespace Equation {
@@ -141,8 +140,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 			CFDMesh::updateGUI(this);
 		}
 	};
-
-
+	
 	struct InitCondSod : public InitCond {
 		using InitCond::InitCond;
 		
@@ -226,7 +224,34 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		}
 	};
 
-	using Super::Super;
+	Euler() : Super() {
+#if 0
+		//TODO gui fields for DisplayMethod ?
+		addDisplayScalar("eigenbasis orthogonality", [](const This* eqn, const Cell* c) -> float {
+			
+			Eigen vars = eqn.calcRoeAvg(UL, UR);
+			
+			real value = 0;
+			for (int k = 0; k < eqn.numWaves; ++k) {
+				Cons basis;
+				for (int j = 0; j < eqn.numStates; ++j) {
+					basis.ptr[j] = k == j ? 1 : 0;
+				}
+				
+				WaveVec charVars = eqn.applyEigL(basis, vars, n);
+				Cons newbasis = eqn.applyEigR(charVars, vars, n);
+			
+				for (int j = 0; j < eqn.numStates; ++j) {
+					value += fabs(newbasis.ptr[j] - basis.ptr[j]);
+				}
+			}
+
+			return (float)value;
+		});
+
+		updateNames();
+#endif	
+	}
 
 	void buildInitCondsAndDisplayVars() {
 		Super::initConds = {
@@ -384,6 +409,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return std::make_pair(n2, n3);
 	}
 
+	//nU = n^i
 	WaveVec applyEigL(Cons X, const Eigen& vars, real3 nU) {
 		const real& Cs = vars.Cs;
 		const real3& vU = vars.v;	//v^i ... upper
@@ -632,7 +658,6 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		CFDMesh::updateGUI(this);
 	}
 };
-
 
 }
 }

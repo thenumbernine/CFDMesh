@@ -4,6 +4,7 @@
 #include "CFDMesh/GUI.h"
 #include "CFDMesh/Util.h"
 #include "Tensor/Vector.h"
+#include "Common/Macros.h"
 #include <utility>
 #include <tuple>
 #include <cmath>
@@ -17,6 +18,7 @@ enum { numCons = 12 };
 
 template<typename real>
 union Cons_ {
+	using This = Cons_;
 	using real3 = Tensor::Vector<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
@@ -45,14 +47,14 @@ union Cons_ {
 	ADD_OPS(Cons_)
 
 	static constexpr auto fields = std::make_tuple(
-		std::make_pair("D", &Cons_::D),
-		std::make_pair("B", &Cons_::B),
-		std::make_pair("phi", &Cons_::phi),
-		std::make_pair("psi", &Cons_::psi),
-		std::make_pair("rhoCharge", &Cons_::rhoCharge),
-		std::make_pair("sigma", &Cons_::sigma),
-		std::make_pair("sqrt_1_eps", &Cons_::sqrt_1_eps),
-		std::make_pair("sqrt_1_mu", &Cons_::sqrt_1_mu)
+		std::make_pair("D", &This::D),
+		std::make_pair("B", &This::B),
+		std::make_pair("phi", &This::phi),
+		std::make_pair("psi", &This::psi),
+		std::make_pair("rhoCharge", &This::rhoCharge),
+		std::make_pair("sigma", &This::sigma),
+		std::make_pair("sqrt_1_eps", &This::sqrt_1_eps),
+		std::make_pair("sqrt_1_mu", &This::sqrt_1_mu)
 	);
 };
 
@@ -61,10 +63,10 @@ template<typename T>
 using Prim_ = Cons_<T>;
 
 
-template<typename real>
-struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>> {
+template<typename real, int dim_>
+struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, Prim_<real>> {
 	using This = GLMMaxwell;
-	using Super = Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<real>>;
+	using Super = Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, Prim_<real>>;
 	using Cons = typename Super::Cons;
 	using Prim = typename Super::Prim;
 
@@ -79,8 +81,8 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 	struct InitCondDefault : public InitCond {
 		using InitCond::InitCond;
 		
-		Cons UL = Cons(float3(1, 1, 0), float3(0, -1, 1), 0, 0, 1, 1);
-		Cons UR = Cons(float3(-1, 1, 0), float3(0, -1, -1), 0, 0, 1, 1);
+		Cons UL = Cons(real3(1, 1, 0), real3(0, -1, 1), 0, 0, 1, 1);
+		Cons UR = Cons(real3(-1, 1, 0), real3(0, -1, -1), 0, 0, 1, 1);
 	
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("UL", &InitCondDefault::UL),
@@ -130,13 +132,13 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 		return vars;
 	}
 
-	static constexpr float sqrt_2 = sqrt(2);
-	static constexpr float sqrt_1_2 = 1. / sqrt_2;
-	static constexpr float speedOfLight = 1;
-	float divPhiWavespeed = speedOfLight;
-	float divPsiWavespeed = speedOfLight;
+	static constexpr real sqrt_2 = sqrt(2);
+	static constexpr real sqrt_1_2 = 1. / sqrt_2;
+	static constexpr real speedOfLight = 1;
+	real divPhiWavespeed = speedOfLight;
+	real divPsiWavespeed = speedOfLight;
 
-	WaveVec getEigenvalues(const Eigen& vars) {
+	WaveVec getEigenvalues(const Eigen& vars, real3 n) {
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
 		WaveVec lambdas;
 		lambdas(0) = divPhiWavespeed;
@@ -161,8 +163,8 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 
 	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) {
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
-		real lambda = std::max((real)std::max<float>(divPsiWavespeed, divPhiWavespeed), v_p);
-		return std::pair<real, real>(-lambda, lambda);
+		real lambda = std::max(std::max(divPsiWavespeed, divPhiWavespeed), v_p);
+		return std::make_pair(-lambda, lambda);
 	}
 
 	real calcLambdaMin(const CalcLambdaVars& vars) {
@@ -171,10 +173,10 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 
 	real calcLambdaMax(const CalcLambdaVars& vars) {
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
-		return std::max((real)std::max<float>(divPsiWavespeed, divPhiWavespeed), v_p);
+		return std::max(std::max(divPsiWavespeed, divPhiWavespeed), v_p);
 	}
 
-	WaveVec apply_evL(const Cons& x, const Eigen& vars) {
+	WaveVec applyEigL(const Cons& x, const Eigen& vars, real3 n) {
 		real sqrt_eps = 1. / vars.sqrt_1_eps;
 		real sqrt_mu = 1. / vars.sqrt_1_mu;
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
@@ -191,7 +193,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 		return y;
 	}
 
-	Cons apply_evR(const WaveVec& x, const Eigen& vars) {
+	Cons applyEigR(const WaveVec& x, const Eigen& vars, real3 n) {
 		real sqrt_eps = 1. / vars.sqrt_1_eps;
 		real sqrt_mu = 1. / vars.sqrt_1_mu;
 
@@ -207,7 +209,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real>, real, Cons_<real>, Prim_<r
 		return y;
 	}
 
-	Cons calcFluxFromCons(const Cons& U) {
+	Cons calcFluxFromCons(const Cons& U, real3 n) {
 		real3 E = calc_E(U);
 		real3 H = calc_H(U);
 		Cons F;

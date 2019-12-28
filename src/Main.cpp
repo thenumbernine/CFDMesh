@@ -1,5 +1,5 @@
 #include "CFDMesh/Equation/Euler.h"
-//#include "CFDMesh/Equation/GLMMaxwell.h"
+#include "CFDMesh/Equation/GLMMaxwell.h"
 
 #include "CFDMesh/Mesh/Mesh.h"
 #include "CFDMesh/Util.h"
@@ -26,14 +26,6 @@
 #include <vector>
 #include <list>
 
-#include <cassert>
-
-
-//do we rotate to align fluxes with x-axis and only use the x-axis flux,
-// or do we use the general normal-based flux computation
-//ROTATE_TO_ALIGN==0 is not working for Roe solver
-// triangle grid and polar are failing for both ==0 and ==1
-#define ROTATE_TO_ALIGN	1
 
 
 namespace CFDMesh {
@@ -107,6 +99,12 @@ struct Simulation : public ISimulation {
 
 	int meshGenerationIndex = 0;
 
+	//do we rotate to align fluxes with x-axis and only use the x-axis flux,
+	// or do we use the general normal-based flux computation
+	//in 3D rotateToAlign==false is not working for Roe solver 
+	// triangle grid and polar are failing for both ==0 and ==1
+	bool rotateToAlign = true;//false;
+
 	//TODO
 	//this is not just reflection, but also has a lot of gui-specific data tied into it
 	//maybe I should call it a separate variable, like 'gui =' instead of 'fields =' ... ?
@@ -130,6 +128,7 @@ struct Simulation : public ISimulation {
 		std::make_pair("", &This::drawArgs),
 
 		std::make_pair("restitution", &This::restitution),
+		std::make_pair("rotateToAlign", &This::rotateToAlign),
 		GUISeparator(),
 		
 		std::make_pair("flux", &This::calcFluxIndex),	//TODO combo from calcFluxNames
@@ -154,7 +153,29 @@ struct Simulation : public ISimulation {
 
 
 	Simulation(CFDMeshApp* app_) : Super(app_) {
-		
+
+
+/*
+test case:
+between UL and UL, examine the flux for varying angles
+results: looks like the flux is aligned with the normal, and the flux magnitude is constant for all angles
+*/
+#if 0
+	using Prim = typename ThisEquation::Prim;
+	constexpr int n = 500;
+	Cons UL = eqn.consFromPrim(Prim( 1, real3(), 1 ));
+	Cons UR = eqn.consFromPrim(Prim( .125, real3(), .1 ));
+	for (int i = 0; i < n; ++i) {
+		real theta = ((real)i + .5) / (real)n * 2. * M_PI;
+		real3 n(cos(theta), sin(theta), 0);	
+		Cons flux = (this->*calcFluxes[0])(UL, UR, .1, .1, n);
+		std::cout << theta << "\t" << flux << "\t" << normal << std::endl;
+	}
+exit(0);
+#endif
+
+
+
 		meshGenerators = ThisMeshNamespace::getGens();
 		
 		meshGenerationNames = map<
@@ -369,33 +390,39 @@ struct Simulation : public ISimulation {
 #if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
 	if (!std::isfinite(UL(i))) {
-		throw Common::Exception() 
+		std::cerr
 			<< "got non-finite left edge state " << UL
-			<< " for face " << face;
+			<< " for face " << face
+			<< std::endl;
+		running = false;
 	}
 	if (!std::isfinite(UR(i))) {
-		throw Common::Exception() 
+		std::cerr
 			<< "got non-finite right edge state " << UR
 			<< " for face " << face;
+		running = false;
 	}
 }
 #endif
 
-#if ROTATE_TO_ALIGN	//rotate normal to x-axis
-				UL = eqn.rotateFrom(UL, face.normal);
-				UR = eqn.rotateFrom(UR, face.normal);
-				real3 fluxNormal = real3(1, 0, 0);
-#else
-				const auto& fluxNormal = face.normal;
-#endif
+				real3 fluxNormal;
+				if (rotateToAlign) {	//rotate normal to x-axis
+					UL = eqn.rotateFrom(UL, face.normal);
+					UR = eqn.rotateFrom(UR, face.normal);
+					fluxNormal = real3(1, 0, 0);
+				} else {
+					fluxNormal = face.normal;
+				}
 
 #if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
 	if (!std::isfinite(UL(i))) { 
-		throw Common::Exception() << "got non-finite post-rotate left state " << UL; 
+		std::cerr << "got non-finite post-rotate left state " << UL << std::endl;
+		running = false;
 	}
 	if (!std::isfinite(UR(i))) { 
-		throw Common::Exception() << "got non-finite post-rotate right state " << UR; 
+		std::cerr << "got non-finite post-rotate right state " << UR << std::endl;
+		running = false;
 	}
 }
 #endif
@@ -403,22 +430,30 @@ for (int i = 0; i < Cons::size; ++i) {
 #if DEBUG
 for (int i = 0; i < Cons::size; ++i) {
 	if (!std::isfinite(face.flux(i))) { 
-		throw Common::Exception()
+		std::cerr
 			<< "got non-finite flux " << face.flux << "\n"
 			<< " face=" << face << "\n"
+			<< " cellL=" << m->cells[face.cells(0)] << "\n"
+			<< " cellR=" << m->cells[face.cells(1)] << "\n"
 			<< " UL=" << UL << "\n"
 			<< " UR=" << UR << "\n"
+			<< " WL=" << eqn.primFromCons(UL) << "\n"
+			<< " WR=" << eqn.primFromCons(UR) << "\n"
+			<< " vars=" << eqn.calcRoeAvg(UL, UR) << "\n"
+			<< " lambdas=" << eqn.getEigenvalues(eqn.calcRoeAvg(UL, UR), fluxNormal) << "\n"
+			<< " dUTilde=" << eqn.applyEigL(UR - UL, eqn.calcRoeAvg(UL, UR), fluxNormal) << "\n"
 			<< " dt=" << dt << "\n"
 			<< " fluxNormal=" << fluxNormal << "\n"
-		;
+			<< std::endl;
+		running = false;
 		break;
 	}
 }
 #endif
 
-#if ROTATE_TO_ALIGN
-				face.flux = eqn.rotateTo(face.flux, face.normal);
-#endif
+				if (rotateToAlign) {
+					face.flux = eqn.rotateTo(face.flux, face.normal);
+				}
 			}
 		);
 
@@ -444,14 +479,15 @@ for (int i = 0; i < Cons::size; ++i) {
 			
 //std::cout << "cell before " << U << " after " << c << std::endl;
 
-#if 0	//Euler-only
+#if 1	//Euler-only
 typename ThisEquation::Prim W = eqn.primFromCons(c.U);
 if (W.P <= 0) {
-	throw Common::Exception() << "pressure negative. "
+	std::cerr << "pressure negative. "
 		<< " W=" << W
-		<< " oldU=" << U
+		//<< " oldU=" << U
 		<< " c=" << c
-	;
+		<< std::endl;
+	running = false;
 }
 #endif
 			}
@@ -460,6 +496,7 @@ if (W.P <= 0) {
 		refreshDisplayValues();
 
 		time += dt;
+//std::cout << "time=" << time << std::endl;	
 	}
 	
 	void refreshDisplayValues() {
@@ -467,7 +504,7 @@ if (W.P <= 0) {
 			m->cells.begin(),
 			m->cells.end(),
 			[this](Cell& c) {
-				c.displayValue = eqn.displayMethods[displayMethodIndex]->f(&eqn, c.U);
+				c.displayValue = eqn.displayMethods[displayMethodIndex]->f(&eqn, &c);
 			}
 		);
 
@@ -505,9 +542,9 @@ if (W.P <= 0) {
 
 std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
 	{"2D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::Euler::Euler<real, 2>>>(app); }},
-//	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real>>>(app); }},
+//	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real, 2>>>(app); }},
 	
-//	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real, 3>>>(app); }},
+	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real, 3>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<

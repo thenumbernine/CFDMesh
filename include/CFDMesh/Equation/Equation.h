@@ -2,6 +2,7 @@
 
 #include "CFDMesh/Vector.h"
 #include "CFDMesh/Util.h"	//map
+#include "CFDMesh/Mesh/Mesh.h"	//Cell_
 #include "Common/Meta.h"
 #include "Common/crtp_cast.h"
 #include <vector>
@@ -41,6 +42,9 @@ struct Equation {
 	using Cons = Cons_;
 	using Prim = Prim_;
 	
+	using Cell = Cell_<real, Cons>;
+	using Face = Face_<real, Cons>;
+	
 	enum { numStates = Cons::size };
 	enum { numIntStates = Cons::size };
 
@@ -51,7 +55,7 @@ struct Equation {
 		virtual void updateGUI() {}
 	};
 
-	using DisplayFunc = std::function<float(const Base*, const Cons&)>;
+	using DisplayFunc = std::function<float(const Base*, const Cell*)>;
 
 	struct DisplayMethod {
 		std::string name;
@@ -74,7 +78,8 @@ struct Equation {
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			addDisplayForType<FieldType>(
 				std::get<0>(x),
-				[field](const Base* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
+				[field](const Base* eqn, const Cell* c) -> typename FloatTypeForType<FieldType>::Type { 
+					const auto& U = c->U;
 					return U.*field; 
 				}
 			);
@@ -86,8 +91,9 @@ struct Equation {
 				using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 				addDisplayForType<FieldType>(
 					std::get<0>(x),
-					[field](const Base* eqn, const Cons& U) -> typename FloatTypeForType<FieldType>::Type { 
-						Prim W = eqn->primFromCons(U);
+					[field](const Base* eqn, const Cell* c) -> typename FloatTypeForType<FieldType>::Type { 
+						const auto& U = c->U;
+						auto W = eqn->primFromCons(U);
 						return W.*field; 
 					}
 				);
@@ -101,15 +107,15 @@ struct Equation {
 		displayMethods.push_back(std::make_shared<DisplayMethod>(name, func));
 	}
 	
-	void addDisplayVector(const std::string& name, std::function<float3(const Base* eqn, const Cons& U)> func) {
-		displayMethods.push_back(std::make_shared<DisplayMethod>(name + " len", [func](const Base* eqn, const Cons& U) -> float { return func(eqn, U).length(); }));
+	void addDisplayVector(const std::string& name, std::function<float3(const Base* eqn, const Cell* c)> func) {
+		displayMethods.push_back(std::make_shared<DisplayMethod>(name + " len", [func](const Base* eqn, const Cell* c) -> float { return func(eqn, c).length(); }));
 		for (int i = 0; i < 3; ++i) {
-			displayMethods.push_back(std::make_shared<DisplayMethod>(name + std::to_string(i), [i, func](const Base* eqn, const Cons& U) -> float { return func(eqn, U)(i); }));
+			displayMethods.push_back(std::make_shared<DisplayMethod>(name + std::to_string(i), [i, func](const Base* eqn, const Cell* c) -> float { return func(eqn, c)(i); }));
 		}
 	}
 
 	template<typename Type>
-	void addDisplayForType(const std::string& name, std::function<typename FloatTypeForType<Type>::Type(const Base*, const Cons&)> func) {
+	void addDisplayForType(const std::string& name, std::function<typename FloatTypeForType<Type>::Type(const Base*, const Cell*)> func) {
 		if constexpr (std::is_same_v<Type, real>) {
 			addDisplayScalar(name, func);
 		} else if constexpr (std::is_same_v<Type, real3>) {
