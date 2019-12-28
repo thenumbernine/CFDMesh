@@ -616,48 +616,35 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		}
 
-		glEnable(GL_TEXTURE_1D);
-		glBindTexture(GL_TEXTURE_1D, args.gradientTex);
-
-		if (args.showCells) {
-			for (const auto& c : cells) {
-				real f = (c.displayValue - args.displayValueRange.first) / (args.displayValueRange.second - args.displayValueRange.first);
-				glColor3f(1,1,1);
+		
+		if (args.showVtxs) {
+			glPointSize(1);
+			glColor3f(1,1,1);
+			glEnable(GL_TEXTURE_1D);
+			glBindTexture(GL_TEXTURE_1D, args.gradientTex);
+			glBegin(GL_POINTS);
+			for (size_t i = 0; i < vtxs.size(); ++i) {
+				float f = ((float)i + .5) / (float)vtxs.size();
 				glTexCoord1f(f);
-				
-				if constexpr (dim == 2) {
-					glBegin(GL_POLYGON);
-					for (int vi = 0; vi < c.vtxCount; ++vi) {
-						const auto& v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
-						glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
-					}
-					glEnd();
-				} else if constexpr (dim == 3) {
-					for (int i = 0; i < c.faceCount; ++i) {
-						Face& f = faces[cellFaceIndexes[i + c.faceOffset]];
-						glBegin(GL_POLYGON);
-						for (int vi = 0; vi < f.vtxCount; ++vi) {
-							const auto& v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
-							glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
-						}
-						glEnd();
-					}
-				}
+				glVertex3v(vtxs[i].pos.v);
 			}
+			glEnd();
+			glBindTexture(GL_TEXTURE_1D, 0);
+			glDisable(GL_TEXTURE_1D);
+		
+			glPointSize(3);
+			glColor3f(0,0,0);
+			glBegin(GL_POINTS);
+			for (size_t i = 0; i < vtxs.size(); ++i) {
+				float f = ((float)i + .5) / (float)vtxs.size();
+				glTexCoord1f(f);
+				glVertex3v(vtxs[i].pos.v);
+			}
+			glEnd();
 		}
-
-		glBindTexture(GL_TEXTURE_1D, 0);
-		glDisable(GL_TEXTURE_1D);
 		
 		glPointSize(3);
 		glBegin(GL_POINTS);
-		
-		if (args.showVtxs) {
-			glColor3f(1,1,0);
-			for (const auto& v : vtxs) {
-				glVertex3v(v.pos.v);
-			}
-		}
 		if (args.showFaceCenters) {
 			glColor3f(1,0,1);
 			for (const auto& f : faces) {
@@ -695,6 +682,41 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			}	
 			glEnd();
 		}
+
+
+		glEnable(GL_TEXTURE_1D);
+		glBindTexture(GL_TEXTURE_1D, args.gradientTex);
+
+		if (args.showCells) {
+			for (const auto& c : cells) {
+				real f = (c.displayValue - args.displayValueRange.first) / (args.displayValueRange.second - args.displayValueRange.first);
+				glColor3f(1,1,1);
+				glTexCoord1f(f);
+				
+				if constexpr (dim == 2) {
+					glBegin(GL_POLYGON);
+					for (int vi = 0; vi < c.vtxCount; ++vi) {
+						const auto& v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
+						glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
+					}
+					glEnd();
+				} else if constexpr (dim == 3) {
+					for (int i = 0; i < c.faceCount; ++i) {
+						Face& f = faces[cellFaceIndexes[i + c.faceOffset]];
+						glBegin(GL_POLYGON);
+						for (int vi = 0; vi < f.vtxCount; ++vi) {
+							const auto& v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
+							glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
+						}
+						glEnd();
+					}
+				}
+			}
+		}
+
+		glBindTexture(GL_TEXTURE_1D, 0);
+		glDisable(GL_TEXTURE_1D);
+		
 	}
 };
 
@@ -1023,10 +1045,20 @@ struct Quad2DMeshFactory : public Chart2DMeshFactory {
 		int vtxsize = n.volume();
 		if (Super::capmin(0)) vtxsize++;
 		mesh->vtxs.resize(vtxsize);
+		
+		int2 coordRangeMax = Super::size;
+		if (Super::repeat(0) || Super::capmin(0)) ++coordRangeMax(0);
+		if (Super::repeat(1) || Super::capmin(1)) ++coordRangeMax(1);
+
+		int2 iofs;
+		if (Super::capmin(0)) iofs(0) = 1;
+		if (Super::capmin(1)) iofs(1) = 1;
+		
+
 		int2 i;
 		for (i(1) = 0; i(1) < n(1); ++i(1)) {
 			for (i(0) = 0; i(0) < n(0); ++i(0)) {
-				real2 x = (real2)i / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
+				real2 x = (real2)(i + iofs) / (real2)coordRangeMax * (Super::maxs - Super::mins) + Super::mins;
 				real2 u = this->coordChart(x);
 				mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { 
 					return i < real2::size ? u(i) : 0.;
@@ -1136,7 +1168,7 @@ struct Quad2DTwistMeshFactory : public Quad2DMeshFactory {
 struct PolarMeshFactory : public Quad2DMeshFactory {
 	using Super = Quad2DMeshFactory;
 	PolarMeshFactory() : Super("polar") {
-		Super::size = int2(50, 200);
+		Super::size = int2(20, 50);
 		Super::mins = real2(0, 0);
 		Super::maxs = real2(1, 1);
 		Super::repeat = bool2(false, true);
