@@ -1090,6 +1090,34 @@ struct Quad2DCubeMeshFactory : public Quad2DMeshFactory {
 	}
 };
 
+struct Quad2DRotateMeshFactory : public Quad2DMeshFactory {
+	using This = Quad2DRotateMeshFactory;
+	using Super = Quad2DMeshFactory;
+	
+	real thetaOver2Pi = {};
+	
+	static constexpr auto fields = std::tuple_cat(
+		Super::fields,
+		std::make_tuple(
+			std::make_pair("theta / 2pi", &This::thetaOver2Pi)
+		)
+	);
+
+	Quad2DRotateMeshFactory() : Super("quad grid with fixed rotation") {}
+	
+	virtual real2 coordChart(real2 v) const {
+		real theta = 2 * M_PI * thetaOver2Pi;
+		real costh = cos(theta), sinth = sin(theta);
+		return real2(
+			costh * v(0) - sinth * v(1),
+			sinth * v(0) + costh * v(1));
+	}
+
+	virtual void updateGUI() {
+		CFDMesh::updateGUI(this);
+	}
+};
+
 struct Quad2DTwistMeshFactory : public Quad2DMeshFactory {
 	Quad2DTwistMeshFactory() : Quad2DMeshFactory("unit square of quads, twist in the middle") {}
 	virtual real2 coordChart(real2 v) const {
@@ -1346,6 +1374,7 @@ static std::vector<std::shared_ptr<MeshFactory>> getGens() {
 		return std::vector<std::shared_ptr<MeshFactory>>{
 			std::make_shared<Quad2DMeshFactory>(),
 			std::make_shared<Tri2DMeshFactory>(),
+			std::make_shared<Quad2DRotateMeshFactory>(),
 			std::make_shared<Quad2DCbrtMeshFactory>(),
 			std::make_shared<Quad2DCubeMeshFactory>(),
 			std::make_shared<Quad2DTwistMeshFactory>(),

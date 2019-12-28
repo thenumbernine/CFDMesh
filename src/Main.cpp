@@ -781,7 +781,9 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	igCheckbox("auto display range", &displayAutomaticRange);
 	
 	igSeparator();
-	
+
+	igCheckbox("rotate to align", &rotateToAlign);
+
 	igInputFloat("restitution", &restitution, .1, 1., "%f", 0);
 	
 	igSeparator();
