@@ -985,8 +985,10 @@ struct Tri2DMeshFactory : public Chart2DMeshFactory {
 
 		int2 n = Super::size + 1;
 		int2 step(1, n(0));
+		
 		int vtxsize = n.volume();
 		if (Super::capmin(0)) vtxsize++;
+		
 		mesh->vtxs.resize(vtxsize);
 		int2 i;
 		for (i(1) = 0; i(1) < n(1); ++i(1)) {
@@ -1256,13 +1258,15 @@ struct Chart3DMeshFactory : public MeshFactory {
 	float3 mins = float3(-1, -1, -1);
 	float3 maxs = float3(1, 1, 1);
 	bool3 repeat;
+	bool3 capmin;
 
 	//TODO support for inheritence and reflection
 	static constexpr auto fields = std::make_tuple(
 		std::make_pair("size", &This::size),
 		std::make_pair("mins", &This::mins),
 		std::make_pair("maxs", &This::maxs),
-		std::make_pair("repeat", &This::repeat)
+		std::make_pair("repeat", &This::repeat),
+		std::make_pair("capmin", &This::capmin)
 	);
 
 	Chart3DMeshFactory(const char* name_ = "3D chart mesh") : MeshFactory(name_) {}
@@ -1282,24 +1286,27 @@ struct Cube3DMeshFactory : public Chart3DMeshFactory {
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
 
-#if 1
 		int3 n = Super::size + 1;
+		int3 step(1, n(0), n(0) * n(1));
+		
 		int vtxsize = n.volume();
 		mesh->vtxs.resize(vtxsize);
-		int3 i;
-		for (i(2) = 0; i(2) < n(2); ++i(2)) {
-			for (i(1) = 0; i(1) < n(1); ++i(1)) {
-				for (i(0) = 0; i(0) < n(0); ++i(0)) {
-					real3 x = (real3)i / (real3)Super::size * (Super::maxs - Super::mins) + Super::mins;
-					mesh->vtxs[i(0) + n(0) * (i(1) + n(1) * i(2))].pos = this->coordChart(x);
-				}
-			}
-		}
 		
 		int3 imax;
 		for (int j = 0; j < 3; ++j) {
 			imax(j) = Super::repeat(j) ? n(j) : n(j)-1;
 		}
+		
+		int3 i;
+		for (i(2) = 0; i(2) < n(2); ++i(2)) {
+			for (i(1) = 0; i(1) < n(1); ++i(1)) {
+				for (i(0) = 0; i(0) < n(0); ++i(0)) {
+					real3 x = (real3)i / (real3)imax * (Super::maxs - Super::mins) + Super::mins;
+					mesh->vtxs[int3::dot(i, step)].pos = this->coordChart(x);
+				}
+			}
+		}
+		
 		int3 in;
 		for (i(2) = 0; i(2) < imax(2); ++i(2)) {
 			in(2) = (i(2) + 1) % n(2);
@@ -1322,22 +1329,7 @@ struct Cube3DMeshFactory : public Chart3DMeshFactory {
 				}
 			}
 		}
-#endif
 
-#if  0	//wedge test
-		mesh->vtxs.resize(8);
-		for (int i = 0; i < 8; ++i) {
-			mesh->vtxs[i] = real3(
-				i & 1 ? 1 : -1,
-				i & 2 ? 1 : -1,
-				i & 4 ? 1 : -1
-			);
-			if (i & 1) mesh->vtxs[i].pos(2) = 0;
-		}
-
-		mesh->addCell(std::vector<int>{0,1,2,3,4,5,6,7});
-#endif
-		
 		mesh->calcAux();
 		return mesh;
 	}
@@ -1365,6 +1357,28 @@ struct Sphere3DMeshFactory : public Cube3DMeshFactory {
 			r * cos(theta));
 	}
 };
+
+struct Cylinder3DMeshFactory : public Cube3DMeshFactory {
+	using Super = Cube3DMeshFactory;
+	
+	Cylinder3DMeshFactory() : Super("cylinder") {
+		Super::size = int3(10, 10, 10);
+		Super::mins = real3(.5, .5, 0);
+		Super::maxs = real3(1, 1., 1);
+		Super::repeat = bool3(false, true, false);
+		Super::capmin = bool3(true, false, false);
+	}
+	
+	virtual real3 coordChart(real3 x) const {
+		real theta = x(1) * 2 * M_PI;
+		return real3(
+			x(0) * cos(theta),
+			x(0) * sin(theta),
+			x(2));
+	}
+};
+
+
 
 struct Torus3DMeshFactory : public Cube3DMeshFactory {
 	using This = Torus3DMeshFactory;
@@ -1418,6 +1432,7 @@ static std::vector<std::shared_ptr<MeshFactory>> getGens() {
 	} else if constexpr (dim == 3) {
 		return std::vector<std::shared_ptr<MeshFactory>>{
 			std::make_shared<Cube3DMeshFactory>(),
+			std::make_shared<Cylinder3DMeshFactory>(),
 			std::make_shared<Sphere3DMeshFactory>(),
 			std::make_shared<Torus3DMeshFactory>(),
 		};
