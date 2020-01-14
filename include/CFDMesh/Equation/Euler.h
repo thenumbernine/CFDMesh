@@ -264,8 +264,6 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 
 	//variables used by the roe avg, eigen basis, etc
 	struct Eigen {
-		using This = Eigen;
-		
 		Prim WL, WR;
 		real3 v;
 		real vSq;
@@ -274,13 +272,13 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real CsSq;
 	
 		static constexpr auto fields = std::make_tuple(
-			std::make_pair("WL", &This::WL),
-			std::make_pair("WR", &This::WR),
-			std::make_pair("v", &This::v),
-			std::make_pair("vSq", &This::vSq),
-			std::make_pair("hTotal", &This::hTotal),
-			std::make_pair("Cs", &This::Cs),
-			std::make_pair("CsSq", &This::CsSq)
+			std::make_pair("WL", &Eigen::WL),
+			std::make_pair("WR", &Eigen::WR),
+			std::make_pair("v", &Eigen::v),
+			std::make_pair("vSq", &Eigen::vSq),
+			std::make_pair("hTotal", &Eigen::hTotal),
+			std::make_pair("Cs", &Eigen::Cs),
+			std::make_pair("CsSq", &Eigen::CsSq)
 		);
 	};
 

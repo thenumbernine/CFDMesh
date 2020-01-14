@@ -81,8 +81,8 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 	struct InitCondDefault : public InitCond {
 		using InitCond::InitCond;
 		
-		Cons UL = Cons(real3(1, 1, 0), real3(0, -1, 1), 0, 0, 1, 1);
-		Cons UR = Cons(real3(-1, 1, 0), real3(0, -1, -1), 0, 0, 1, 1);
+		Cons UL = Cons(real3(1, 1, 0), real3(0, -1, 1), 0, 1, 1, 1);
+		Cons UR = Cons(real3(-1, 1, 0), real3(0, -1, -1), 0, 1, 1, 1);
 	
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("UL", &InitCondDefault::UL),
@@ -123,12 +123,23 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 	struct Eigen {
 		real sqrt_1_eps;
 		real sqrt_1_mu;
+		
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("sqrt_1_eps", &Eigen::sqrt_1_eps),
+			std::make_pair("sqrt_1_mu", &Eigen::sqrt_1_mu)
+		);
 	};
 
-	Eigen calcRoeAvg(Cons UL, Cons UR) {
+	Eigen calcRoeAvg(Cons UL, Cons UR) const {
 		Eigen vars;
 		vars.sqrt_1_eps = .5 * (UL.sqrt_1_eps + UR.sqrt_1_eps);
 		vars.sqrt_1_mu = .5 * (UL.sqrt_1_mu + UR.sqrt_1_mu);
+#if 0	//TODO map from eigen field to Cons field
+		Common::TupleForEach(Eigen::fields, [&UL, &UR](auto x, size_t i) constexpr {
+			auto field = std::get<1>(x);
+			vars.*field = (UL.*field + UR.*field) * .5;
+		});
+#endif
 		return vars;
 	}
 
@@ -153,12 +164,12 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 	}
 
 	struct CalcLambdaVars : public Eigen {
-		CalcLambdaVars(const GLMMaxwell& eqn, const Cons& U) {
+		CalcLambdaVars(const GLMMaxwell& eqn, const Cons& U, const real3& n_) {
 			Eigen::sqrt_1_eps = U.sqrt_1_eps;
 			Eigen::sqrt_1_mu = U.sqrt_1_mu;
 		}
 
-		CalcLambdaVars(const Eigen& vars) : Eigen(vars) {}
+		CalcLambdaVars(const Eigen& vars, const real3& n_) : Eigen(vars) {}
 	};
 
 	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) {
@@ -167,16 +178,16 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 		return std::make_pair(-lambda, lambda);
 	}
 
-	real calcLambdaMin(const CalcLambdaVars& vars) {
+	real calcLambdaMin(const CalcLambdaVars& vars) const {
 		return -calcLambdaMax(vars);
 	}
 
-	real calcLambdaMax(const CalcLambdaVars& vars) {
+	real calcLambdaMax(const CalcLambdaVars& vars) const {
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
 		return std::max(std::max(divPsiWavespeed, divPhiWavespeed), v_p);
 	}
 
-	WaveVec applyEigL(const Cons& x, const Eigen& vars, real3 n) {
+	WaveVec applyEigL(const Cons& x, const Eigen& vars, real3 n) const {
 		real sqrt_eps = 1. / vars.sqrt_1_eps;
 		real sqrt_mu = 1. / vars.sqrt_1_mu;
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
@@ -193,7 +204,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 		return y;
 	}
 
-	Cons applyEigR(const WaveVec& x, const Eigen& vars, real3 n) {
+	Cons applyEigR(const WaveVec& x, const Eigen& vars, real3 n) const {
 		real sqrt_eps = 1. / vars.sqrt_1_eps;
 		real sqrt_mu = 1. / vars.sqrt_1_mu;
 
@@ -209,7 +220,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 		return y;
 	}
 
-	Cons calcFluxFromCons(const Cons& U, real3 n) {
+	Cons calcFluxFromCons(const Cons& U, real3 n) const {
 		real3 E = calc_E(U);
 		real3 H = calc_H(U);
 		Cons F;
