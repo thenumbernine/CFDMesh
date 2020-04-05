@@ -218,9 +218,20 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	struct InitCondSpiral : public InitCond {
 		using InitCond::InitCond;
 		
+		real v0 = 1.;
+
+		static constexpr auto fields = std::make_tuple(
+			std::make_pair("v0", &InitCondSpiral::v0)
+		);
+
 		virtual const char* name() const { return "Spiral"; }
 		virtual Cons initCell(const This* eqn, real3 x) const {
-			return eqn->consFromPrim(Prim(1, real3(-x(1), x(0)), 1));
+			real r = sqrt(x.lenSq());
+			return eqn->consFromPrim(Prim(1, real3(-x(1), x(0)) * (v0 / r), 1));
+		}
+		
+		virtual void updateGUI() {
+			CFDMesh::updateGUI(this);
 		}
 	};
 
