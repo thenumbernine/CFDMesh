@@ -318,6 +318,9 @@ exit(0);
 		return result * cfl;
 	}
 
+	//NOTICE: dt used for dt/dx with the flux limiter
+	//which needs slope information
+	//which I don't yet have
 	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt, real3 n) {
 		Eigen vars = eqn.calcRoeAvg(UL, UR);
 
@@ -519,6 +522,7 @@ for (int i = 0; i < Cons::size; ++i) {
 			}
 		);
 
+		//TODO instead of f.e. directly into the cell, write to a derivBuf, and make the integrator modular to work with Runge-Kutta etc 
 		parallel.foreach(
 			m->cells.begin(),
 			m->cells.end(),
@@ -559,7 +563,19 @@ if (W.P <= 0) {
 		refreshDisplayValues();
 
 		time += dt;
-//std::cout << "time=" << time << std::endl;	
+	
+#if 0	//display v len min max over time
+		auto iter = std::find(displayMethodNames.begin(), displayMethodNames.end(), std::string("v len"));
+assert(iter != displayMethodNames.end());	
+		int pushDisplayIndex = displayMethodIndex;
+		displayMethodIndex = iter - displayMethodNames.begin();
+		refreshDisplayValues();
+		displayMethodIndex = pushDisplayIndex;
+std::cout << "time=" << time 
+	<< "\tvlenMin=" << drawArgs.displayValueRange.first
+	<< "\tvlenMax=" << drawArgs.displayValueRange.second
+	<< std::endl;
+#endif
 	}
 	
 	void refreshDisplayValues() {
@@ -763,6 +779,20 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	igSeparator();
 	
 	igText("time: %e", time);
+
+	//TODO put the fps calculation somewhere else, maybe so it is not based on gui updates but on simulation updates
+	{
+		static std::chrono::high_resolution_clock::time_point lasttime = std::chrono::high_resolution_clock::now();
+		std::chrono::high_resolution_clock::time_point thistime = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> timespan = std::chrono::duration_cast<std::chrono::duration<double>>(thistime - lasttime);
+		double dt = timespan.count();
+		double fps = 1. / dt;
+		lasttime = thistime;
+		
+		igSameLine(0, 0);
+		igText(" fps: %.2f", fps);
+	}
+
 	igCheckbox("running", &running);
 	
 	if (igSmallButton("step")) singleStep = true;

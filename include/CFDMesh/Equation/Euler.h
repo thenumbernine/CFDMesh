@@ -237,11 +237,11 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 
 	void buildInitCondsAndDisplayVars() {
 		Super::initConds = {
+			std::make_shared<InitCondSpiral>(),
 			std::make_shared<InitCondWave>(),
 			std::make_shared<InitCondSod>(),
 			std::make_shared<InitCondConst>(),
 			std::make_shared<InitCondKelvinHelmholtz>(),
-			std::make_shared<InitCondSpiral>(),
 		};
 	}
 

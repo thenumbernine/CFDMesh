@@ -1171,10 +1171,10 @@ struct PolarMeshFactory : public Quad2DMeshFactory {
 	using Super = Quad2DMeshFactory;
 	PolarMeshFactory() : Super("polar") {
 		Super::size = int2(20, 50);
-		Super::mins = real2(0, 0);
+		Super::mins = real2(.1, 0);
 		Super::maxs = real2(1, 1);
 		Super::repeat = bool2(false, true);
-		Super::capmin = bool2(true, false);
+		Super::capmin = bool2(false, false);
 	}
 	virtual real2 coordChart(real2 v) const {
 		real theta = 2. * M_PI * v(1);
@@ -1419,13 +1419,13 @@ struct Torus3DMeshFactory : public Cube3DMeshFactory {
 static std::vector<std::shared_ptr<MeshFactory>> getGens() {
 	if constexpr (dim == 2) {
 		return std::vector<std::shared_ptr<MeshFactory>>{
+			std::make_shared<PolarMeshFactory>(),
 			std::make_shared<Quad2DMeshFactory>(),
 			std::make_shared<Tri2DMeshFactory>(),
 			std::make_shared<Quad2DRotateMeshFactory>(),
 			std::make_shared<Quad2DCbrtMeshFactory>(),
 			std::make_shared<Quad2DCubeMeshFactory>(),
 			std::make_shared<Quad2DTwistMeshFactory>(),
-			std::make_shared<PolarMeshFactory>(),
 			std::make_shared<Quad2DImageMeshFactory>(),
 			std::make_shared<P2DFMTMeshFactory>(),
 		};
