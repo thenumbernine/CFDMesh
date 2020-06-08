@@ -1,5 +1,9 @@
 #pragma once
 
+#include "CFDMesh/Mesh/MeshFactory.h"
+#include "CFDMesh/Mesh/Vertex.h"
+#include "CFDMesh/Mesh/Face.h"
+#include "CFDMesh/Mesh/Cell.h"
 #include "CFDMesh/Vector.h"
 #include "CFDMesh/Util.h"
 #include "CFDMesh/GUI.h"
@@ -25,110 +29,6 @@ template<> void glVertex3v<double>(const double* v) { glVertex3dv(v); }
 
 namespace CFDMesh {
 
-//zero-forms
-template<typename real>
-struct Vertex_ {	//not required by finite volume algorithm
-	using This = Vertex_;
-	using real3 = Tensor::Vector<real, 3>;
-	
-	real3 pos;
-	
-	//keeping track of Vertex_::faces isn't used by the renderer, mesh generation, or finite-volume integration
-	//std::vector<int> faces;
-	
-	static constexpr auto fields = std::make_tuple(
-		std::make_pair("pos", &This::pos)
-	);
-	
-	Vertex_() {}
-	Vertex_(real3 pos_) : pos(pos_) {}
-};
-
-//(n-1)-forms
-template<typename real, typename Cons>
-struct Face_ {
-	using This = Face_;
-	using real3 = Tensor::Vector<real, 3>;
-	
-	real3 pos;
-	real3 normal;
-	real area = 0;	//space taken up by the face
-	real cellDist = 0;	//dist between adjacent cell centers
-	
-	int2 cells = int2(-1, -1);	//there are always only 2 n-forms on either side of a (n-1)-form
-	
-	//the vertexes of a (n-1)-form are not required by finite volume algorithm
-	//they are required for determining the interface area which is then used by the finite volume algorithm
-	//also used by the renderer
-	//however, note, in n>2 dimensions, a (n-1)-form will be defined by an arbitrary number of vertices (more than just two)
-	//int vtxs[2];
-	int vtxOffset = 0;
-	int vtxCount = 0;
-	
-	Cons flux;
-	
-	static constexpr auto fields = std::make_tuple(
-		std::make_pair("pos", &This::pos),
-		std::make_pair("normal", &This::normal),
-		std::make_pair("area", &This::area),
-		std::make_pair("cellDist", &This::cellDist),
-		std::make_pair("cells", &This::cells),
-		std::make_pair("vtxOffset", &This::vtxOffset),
-		std::make_pair("vtxCount", &This::vtxCount),
-		std::make_pair("flux", &This::flux)
-	);
-
-	bool removeCell(int cellIndex) {
-		if (cells(1) == cellIndex) cells(1) = -1;
-		if (cells(0) == cellIndex) {
-			cells(0) = cells(1);
-			cells(1) = -1;
-		}
-		return cells(0) == -1 && cells(1) == -1;
-	}
-};
-
-
-//n-forms
-template<typename real, typename Cons>
-struct Cell_ {
-	using This = Cell_;
-	using real3 = Tensor::Vector<real, 3>;
-
-	real3 pos;
-	real volume = 0;
-	
-	//required by the finite volume algorithm
-	//std::vector<int> faces;
-	int faceOffset = 0;
-	int faceCount = 0;
-
-	//not required by finite volume algorithm
-	//however the cell volume is required, and is calculated using vtxs
-	//also the renderer requires the vertexes
-	//std::vector<int> vtxs;
-	int vtxOffset = 0;
-	int vtxCount = 0;
-
-	float displayValue = 0;
-	Cons U;
-	
-	static constexpr auto fields = std::make_tuple(
-		std::make_pair("pos", &This::pos),
-		std::make_pair("volume", &This::volume),
-		std::make_pair("faceOffset", &This::faceOffset),
-		std::make_pair("faceCount", &This::faceCount),
-		std::make_pair("vtxOffset", &This::vtxOffset),
-		std::make_pair("vtxCount", &This::vtxCount),
-		std::make_pair("displayValue", &This::displayValue),
-		std::make_pair("U", &This::U)
-	);
-};
-
-}
-
-namespace CFDMesh {
-
 //dim is the dimension of the manifold, not of the vectors (which are all 3D atm)
 template<typename real, int dim, typename Cons>
 struct MeshNamespace {
@@ -138,9 +38,6 @@ using real3 = Tensor::Vector<real, 3>;
 using Vertex = Vertex_<real>;
 using Face = Face_<real, Cons>;
 using Cell = Cell_<real, Cons>;
-
-
-struct MeshFactory;
 
 struct Mesh {
 protected:
@@ -166,7 +63,8 @@ public:
 	std::vector<int> cellVtxIndexes;
 	std::vector<int> faceVtxIndexes;
 
-	friend struct MeshFactory;
+	template<typename, int, typename> 
+	friend struct ::CFDMesh::MeshFactory;
 	
 	explicit Mesh(const ctorkey&) {}
 	virtual ~Mesh() {}
@@ -887,26 +785,13 @@ static real3 polyhedronCOM(const std::vector<std::vector<real3>>& faces, real vo
 }
 
 
-struct MeshFactory {
-	const char* name = nullptr;
-	
-	MeshFactory(const char* name_) : name(name_) {}
-	virtual ~MeshFactory() {}
-	virtual void updateGUI() {}
-	virtual std::shared_ptr<Mesh> createMesh() = 0;
-protected:
-	virtual std::shared_ptr<Mesh> createMeshSuper() const {
-		return Mesh::create();
-	}
-};
-
-struct P2DFMTMeshFactory : public MeshFactory {
+struct P2DFMTMeshFactory : public MeshFactory<real, dim, Cons> {
 	std::string filename = {"grids/n0012_113-33.p2dfmt"};
 	
-	P2DFMTMeshFactory() : MeshFactory("p2dfmt mesh") {}
+	P2DFMTMeshFactory() : MeshFactory<real, dim, Cons>("p2dfmt mesh") {}
 
 	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
 		
 		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(filename), "\n");
 	
@@ -949,7 +834,7 @@ struct P2DFMTMeshFactory : public MeshFactory {
 	}
 };
 
-struct Chart2DMeshFactory : public MeshFactory {
+struct Chart2DMeshFactory : public MeshFactory<real, dim, Cons> {
 	using This = Chart2DMeshFactory; 
 	
 	//int2 size = int2(100, 100);
@@ -967,7 +852,7 @@ int2 size = int2(20, 20);
 		std::make_pair("capmin", &This::capmin)
 	);
 
-	Chart2DMeshFactory(const char* name_) : MeshFactory(name_) {}
+	Chart2DMeshFactory(const char* name_) : MeshFactory<real, dim, Cons>(name_) {}
 
 	virtual real2 coordChart(real2 x) const { return x; }
 	
@@ -981,7 +866,7 @@ struct Tri2DMeshFactory : public Chart2DMeshFactory {
 	Tri2DMeshFactory() : Super("unit square of triangles") {}
 	
 	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
 
 		int2 n = Super::size + 1;
 		int2 step(1, n(0));
@@ -1040,7 +925,7 @@ struct Quad2DMeshFactory : public Chart2DMeshFactory {
 	Quad2DMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
 	
 	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
 
 		int2 n = Super::size + 1;
 		int2 step(1, n(0));
@@ -1193,7 +1078,7 @@ struct Quad2DImageMeshFactory : public Chart2DMeshFactory {
 	//std::string imageFilename = "layout.tiff";
 
 	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
 		
 		//auto iimg = ::Image::system->read(imageFilename);	//TODO fixme, it's not working
 		auto iimg = ::Image::pngIO->read(imageFilename);
@@ -1251,7 +1136,7 @@ struct Quad2DImageMeshFactory : public Chart2DMeshFactory {
 	}
 };
 
-struct Chart3DMeshFactory : public MeshFactory {
+struct Chart3DMeshFactory : public MeshFactory<real, dim, Cons> {
 	using This = Chart3DMeshFactory;
 	
 	int3 size = int3(10,10,10);
@@ -1269,7 +1154,7 @@ struct Chart3DMeshFactory : public MeshFactory {
 		std::make_pair("capmin", &This::capmin)
 	);
 
-	Chart3DMeshFactory(const char* name_ = "3D chart mesh") : MeshFactory(name_) {}
+	Chart3DMeshFactory(const char* name_ = "3D chart mesh") : MeshFactory<real, dim, Cons>(name_) {}
 
 	virtual real3 coordChart(real3 x) const { return x; }
 
@@ -1284,7 +1169,7 @@ struct Cube3DMeshFactory : public Chart3DMeshFactory {
 	Cube3DMeshFactory(const char* name_ = "cube mesh") : Super(name_) {}
 	
 	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory::createMeshSuper();
+		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
 
 		int3 n = Super::size + 1;
 		int3 step(1, n(0), n(0) * n(1));
@@ -1416,9 +1301,9 @@ struct Torus3DMeshFactory : public Cube3DMeshFactory {
 	}
 };
 
-static std::vector<std::shared_ptr<MeshFactory>> getGens() {
+static std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>> getGens() {
 	if constexpr (dim == 2) {
-		return std::vector<std::shared_ptr<MeshFactory>>{
+		return std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>>{
 			std::make_shared<PolarMeshFactory>(),
 			std::make_shared<Quad2DMeshFactory>(),
 			std::make_shared<Tri2DMeshFactory>(),
@@ -1430,7 +1315,7 @@ static std::vector<std::shared_ptr<MeshFactory>> getGens() {
 			std::make_shared<P2DFMTMeshFactory>(),
 		};
 	} else if constexpr (dim == 3) {
-		return std::vector<std::shared_ptr<MeshFactory>>{
+		return std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>>{
 			std::make_shared<Cube3DMeshFactory>(),
 			std::make_shared<Cylinder3DMeshFactory>(),
 			std::make_shared<Sphere3DMeshFactory>(),

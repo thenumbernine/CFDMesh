@@ -67,7 +67,7 @@ struct Simulation : public ISimulation {
 
 	using ThisMeshNamespace = CFDMesh::MeshNamespace<real, dim, Cons>;
 	using Mesh = typename ThisMeshNamespace::Mesh;
-	using MeshFactory = typename ThisMeshNamespace::MeshFactory;
+	using MeshFactory = typename CFDMesh::MeshFactory<real, dim, Cons>;
 	using Cell = typename ThisMeshNamespace::Cell;
 	using Face = typename ThisMeshNamespace::Face;
 	
