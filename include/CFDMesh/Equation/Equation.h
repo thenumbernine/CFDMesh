@@ -2,7 +2,8 @@
 
 #include "CFDMesh/Vector.h"
 #include "CFDMesh/Util.h"	//map
-#include "CFDMesh/Mesh/Mesh.h"	//Cell_
+#include "CFDMesh/Mesh/Cell.h"
+#include "CFDMesh/Mesh/Face.h"
 #include "Common/Meta.h"
 #include "Common/crtp_cast.h"
 #include <vector>
@@ -42,8 +43,8 @@ struct Equation {
 	using Cons = Cons_;
 	using Prim = Prim_;
 	
-	using Cell = Mesh::Cell_<real, Cons>;
-	using Face = Mesh::Face_<real, Cons>;
+	using Cell = Mesh::Cell<real, Cons>;
+	using Face = Mesh::Face<real, Cons>;
 	
 	enum { numStates = Cons::size };
 	enum { numIntStates = Cons::size };

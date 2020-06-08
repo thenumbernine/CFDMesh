@@ -47,9 +47,9 @@ struct Mesh {
 	using real2 = Tensor::Vector<real, 2>;
 	using real3 = Tensor::Vector<real, 3>;
 		
-	using Vertex = Vertex_<real>;
-	using Face = Face_<real, Cons>;
-	using Cell = Cell_<real, Cons>;
+	using Vertex = CFDMesh::Mesh::Vertex<real>;
+	using Face = CFDMesh::Mesh::Face<real, Cons>;
+	using Cell = CFDMesh::Mesh::Cell<real, Cons>;
 
 protected:
 	//https://stackoverflow.com/questions/8147027/how-do-i-call-stdmake-shared-on-a-class-with-only-protected-or-private-const

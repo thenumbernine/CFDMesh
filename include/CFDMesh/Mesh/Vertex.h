@@ -7,21 +7,21 @@ namespace Mesh {
 
 //zero-forms
 template<typename real>
-struct Vertex_ {	//not required by finite volume algorithm
-	using This = Vertex_;
+struct Vertex {	//not required by finite volume algorithm
+	using This = Vertex;
 	using real3 = Tensor::Vector<real, 3>;
 	
 	real3 pos;
 	
-	//keeping track of Vertex_::faces isn't used by the renderer, mesh generation, or finite-volume integration
+	//keeping track of Vertex::faces isn't used by the renderer, mesh generation, or finite-volume integration
 	//std::vector<int> faces;
 	
 	static constexpr auto fields = std::make_tuple(
 		std::make_pair("pos", &This::pos)
 	);
 	
-	Vertex_() {}
-	Vertex_(real3 pos_) : pos(pos_) {}
+	Vertex() {}
+	Vertex(real3 pos_) : pos(pos_) {}
 };
 
 }

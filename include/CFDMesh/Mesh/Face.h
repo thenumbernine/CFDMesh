@@ -7,8 +7,8 @@ namespace Mesh {
 
 //(n-1)-forms
 template<typename real, typename Cons>
-struct Face_ {
-	using This = Face_;
+struct Face {
+	using This = Face;
 	using real3 = Tensor::Vector<real, 3>;
 	
 	real3 pos;
