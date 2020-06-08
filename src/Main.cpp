@@ -625,6 +625,7 @@ std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CF
 	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real, 2>>>(app); }},
 	
 	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real, 3>>>(app); }},
+	{"3D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::GLMMaxwell::GLMMaxwell<real, 3>>>(app); }},
 };
 
 std::vector<const char*> simGenNames = map<

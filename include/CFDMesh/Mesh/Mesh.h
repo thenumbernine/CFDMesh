@@ -2,7 +2,6 @@
 
 #include "CFDMesh/Mesh/MeshFactory.h"
 #include "CFDMesh/Mesh/P2DFMTMeshFactory.h"
-#include "CFDMesh/Mesh/Tri2DMeshFactory.h"
 #include "CFDMesh/Mesh/Quad2DMeshFactory.h"
 #include "CFDMesh/Mesh/Quad2DCbrtMeshFactory.h"
 #include "CFDMesh/Mesh/Quad2DCubeMeshFactory.h"
@@ -800,7 +799,6 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			return std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>>{
 				std::make_shared<PolarMeshFactory<real, dim, Cons>>(),
 				std::make_shared<Quad2DMeshFactory<real, dim, Cons>>(),
-				std::make_shared<Tri2DMeshFactory<real, dim, Cons>>(),
 				std::make_shared<Quad2DCbrtMeshFactory<real, dim, Cons>>(),
 				std::make_shared<Quad2DCubeMeshFactory<real, dim, Cons>>(),
 				std::make_shared<Quad2DRotateMeshFactory<real, dim, Cons>>(),
