@@ -114,4 +114,13 @@ typename T::value_type sum(const T& t) {
 	return std::accumulate(t.begin(), t.end(), typename T::value_type());
 }
 
+inline void timeFunc(std::string name, std::function<void()> cb) {
+	std::cout << name << "..." << std::endl;
+	std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::now();
+	cb();
+	std::chrono::high_resolution_clock::time_point endTime = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<double> dt = std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime);
+	std::cout << "...done " << name << " (" << dt.count() << "s)" << std::endl;
+}
+
 }

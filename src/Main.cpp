@@ -255,7 +255,9 @@ exit(0);
 	virtual void draw();
 
 	void resetMesh() {
-		m = meshGenerators[meshGenerationIndex]->createMesh();
+		timeFunc("building mesh", [this]() {
+			m = meshGenerators[meshGenerationIndex]->createMesh();
+		});
 		resetState();
 	}
 
