@@ -1,22 +1,45 @@
 #pragma once
 
-#include "CFDMesh/Mesh/Chart3DMeshFactory.h"
+#include "CFDMesh/Mesh/MeshFactory.h"
+#include "CFDMesh/Vector.h"
+#include "CFDMesh/GUI.h"
 
 namespace CFDMesh {
 namespace Mesh {
 
 template<typename real, int dim, typename Cons>
-struct Cube3DMeshFactory : public Chart3DMeshFactory<real, dim, Cons> {
-	using Super = Chart3DMeshFactory<real, dim, Cons>;
+struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
+	using This = Cube3DMeshFactory;
+	using Super = MeshFactory<real, dim, Cons>;
 	using Mesh = typename Super::Mesh;
 	using real3 = typename Super::real3;
 
+	int3 size = int3(10,10,10);
+	float3 mins = float3(-1, -1, -1);
+	float3 maxs = float3(1, 1, 1);
+	bool3 repeat;
+	bool3 capmin;
+
+	static constexpr auto fields = std::make_tuple(
+		std::make_pair("size", &This::size),
+		std::make_pair("mins", &This::mins),
+		std::make_pair("maxs", &This::maxs),
+		std::make_pair("repeat", &This::repeat),
+		std::make_pair("capmin", &This::capmin)
+	);
+
 	Cube3DMeshFactory(const char* name_ = "cube mesh") : Super(name_) {}
-	
+
+	virtual void updateGUI() {
+		CFDMesh::updateGUI(this);
+	}
+
+	virtual real3 coordChart(real3 x) const { return x; }
+
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
 
-		int3 n = Super::size + 1;
+		int3 n = size + 1;
 		int3 step(1, n(0), n(0) * n(1));
 		
 		int vtxsize = n.volume();
@@ -24,14 +47,14 @@ struct Cube3DMeshFactory : public Chart3DMeshFactory<real, dim, Cons> {
 		
 		int3 imax;
 		for (int j = 0; j < 3; ++j) {
-			imax(j) = Super::repeat(j) ? n(j) : n(j)-1;
+			imax(j) = repeat(j) ? n(j) : n(j)-1;
 		}
 		
 		int3 i;
 		for (i(2) = 0; i(2) < n(2); ++i(2)) {
 			for (i(1) = 0; i(1) < n(1); ++i(1)) {
 				for (i(0) = 0; i(0) < n(0); ++i(0)) {
-					real3 x = (real3)i / (real3)imax * (Super::maxs - Super::mins) + Super::mins;
+					real3 x = (real3)i / (real3)imax * (maxs - mins) + mins;
 					mesh->vtxs[int3::dot(i, step)].pos = this->coordChart(x);
 				}
 			}
