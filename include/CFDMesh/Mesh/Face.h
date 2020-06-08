@@ -3,6 +3,7 @@
 #include "CFDMesh/Vector.h"
 
 namespace CFDMesh {
+namespace Mesh {
 
 //(n-1)-forms
 template<typename real, typename Cons>
@@ -48,4 +49,5 @@ struct Face_ {
 	}
 };
 
+}
 }

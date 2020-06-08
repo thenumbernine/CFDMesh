@@ -65,11 +65,10 @@ struct Simulation : public ISimulation {
 	using WaveVec = typename ThisEquation::WaveVec;
 	using Cons = typename ThisEquation::Cons;
 
-	using ThisMeshNamespace = CFDMesh::MeshNamespace<real, dim, Cons>;
-	using Mesh = typename ThisMeshNamespace::Mesh;
-	using MeshFactory = typename CFDMesh::MeshFactory<real, dim, Cons>;
-	using Cell = typename ThisMeshNamespace::Cell;
-	using Face = typename ThisMeshNamespace::Face;
+	using Mesh = typename ::CFDMesh::Mesh::Mesh<real, dim, Cons>;
+	using MeshFactory = typename CFDMesh::Mesh::MeshFactory<real, dim, Cons>;
+	using Cell = typename Mesh::Cell;
+	using Face = typename Mesh::Face;
 	
 	using DisplayMethod = typename ThisEquation::DisplayMethod;
 
@@ -238,7 +237,7 @@ exit(0);
 
 
 
-		meshGenerators = ThisMeshNamespace::getGens();
+		meshGenerators = Mesh::getGens();
 		
 		meshGenerationNames = map<
 			decltype(meshGenerators),
@@ -866,12 +865,12 @@ void Simulation<real, dim, Equation>::updateGUI() {
 		drawArgs.selectedCellIndex = -1;
 		for (int i = 0; i < (int)m->cells.size(); ++i) {
 			Cell* c = &m->cells[i];
-			if (ThisMeshNamespace::polygonContains(
+			if (Mesh::polygonContains(
 				pos,
 				m->cellVtxIndexes.begin() + c->vtxOffset,
 				m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount,
 				[this](int i) -> real2 {
-					typename ThisMeshNamespace::Vertex& vi = m->vtxs[i];
+					typename Mesh::Vertex& vi = m->vtxs[i];
 					return real2([&vi](int j) -> real { return vi.pos(j); });
 				}
 			)) {

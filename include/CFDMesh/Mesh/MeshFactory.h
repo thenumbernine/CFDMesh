@@ -3,24 +3,23 @@
 #include "CFDMesh/Mesh/Vertex.h"
 #include "CFDMesh/Mesh/Face.h"
 #include "CFDMesh/Mesh/Cell.h"
+#include "CFDMesh/Vector.h"
 #include <memory>
 
 namespace CFDMesh {
+namespace Mesh {
 
 template<typename, int, typename>
-struct MeshNamespace;
+struct Mesh;
 
 template<typename real, int dim, typename Cons>
 struct MeshFactory {
-	using real2 = Tensor::Vector<real, 2>;
-	using real3 = Tensor::Vector<real, 3>;
-		
-	using Vertex = Vertex_<real>;
-	using Face = Face_<real, Cons>;
-	using Cell = Cell_<real, Cons>;
-
-	using Mesh = typename MeshNamespace<real, dim, Cons>::Mesh;
-
+	using Mesh = typename ::CFDMesh::Mesh::Mesh<real, dim, Cons>;
+	using real2 = typename Mesh::real2;
+	using real3 = typename Mesh::real3;
+	using Vertex = typename Mesh::Vertex;
+	using Face = typename Mesh::Face;
+	using Cell = typename Mesh::Cell;
 
 	const char* name = nullptr;
 	
@@ -34,4 +33,5 @@ protected:
 	}
 };
 
+}
 }

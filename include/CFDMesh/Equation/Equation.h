@@ -42,8 +42,8 @@ struct Equation {
 	using Cons = Cons_;
 	using Prim = Prim_;
 	
-	using Cell = Cell_<real, Cons>;
-	using Face = Face_<real, Cons>;
+	using Cell = Mesh::Cell_<real, Cons>;
+	using Face = Mesh::Face_<real, Cons>;
 	
 	enum { numStates = Cons::size };
 	enum { numIntStates = Cons::size };

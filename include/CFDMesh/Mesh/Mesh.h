@@ -1,6 +1,19 @@
 #pragma once
 
 #include "CFDMesh/Mesh/MeshFactory.h"
+#include "CFDMesh/Mesh/P2DFMTMeshFactory.h"
+#include "CFDMesh/Mesh/Tri2DMeshFactory.h"
+#include "CFDMesh/Mesh/Quad2DMeshFactory.h"
+#include "CFDMesh/Mesh/Quad2DCbrtMeshFactory.h"
+#include "CFDMesh/Mesh/Quad2DCubeMeshFactory.h"
+#include "CFDMesh/Mesh/Quad2DRotateMeshFactory.h"
+#include "CFDMesh/Mesh/Quad2DTwistMeshFactory.h"
+#include "CFDMesh/Mesh/PolarMeshFactory.h"
+#include "CFDMesh/Mesh/Quad2DImageMeshFactory.h"
+#include "CFDMesh/Mesh/Cube3DMeshFactory.h"
+#include "CFDMesh/Mesh/Sphere3DMeshFactory.h"
+#include "CFDMesh/Mesh/Cylinder3DMeshFactory.h"
+#include "CFDMesh/Mesh/Torus3DMeshFactory.h"
 #include "CFDMesh/Mesh/Vertex.h"
 #include "CFDMesh/Mesh/Face.h"
 #include "CFDMesh/Mesh/Cell.h"
@@ -8,8 +21,6 @@
 #include "CFDMesh/Util.h"
 #include "CFDMesh/GUI.h"
 #include "GLApp/gl.h"
-#include "Image/Image.h"
-#include "Common/File.h"
 #include "Common/Macros.h"
 #include "Common/Exception.h"
 #include <vector>
@@ -28,18 +39,18 @@ template<> void glVertex3v<double>(const double* v) { glVertex3dv(v); }
 
 
 namespace CFDMesh {
+namespace Mesh {
 
 //dim is the dimension of the manifold, not of the vectors (which are all 3D atm)
 template<typename real, int dim, typename Cons>
-struct MeshNamespace {
-using real2 = Tensor::Vector<real, 2>;
-using real3 = Tensor::Vector<real, 3>;
-	
-using Vertex = Vertex_<real>;
-using Face = Face_<real, Cons>;
-using Cell = Cell_<real, Cons>;
-
 struct Mesh {
+	using real2 = Tensor::Vector<real, 2>;
+	using real3 = Tensor::Vector<real, 3>;
+		
+	using Vertex = Vertex_<real>;
+	using Face = Face_<real, Cons>;
+	using Cell = Cell_<real, Cons>;
+
 protected:
 	//https://stackoverflow.com/questions/8147027/how-do-i-call-stdmake-shared-on-a-class-with-only-protected-or-private-const
 	struct ctorkey {
@@ -64,7 +75,7 @@ public:
 	std::vector<int> faceVtxIndexes;
 
 	template<typename, int, typename> 
-	friend struct ::CFDMesh::MeshFactory;
+	friend struct MeshFactory;
 	
 	explicit Mesh(const ctorkey&) {}
 	virtual ~Mesh() {}
@@ -616,715 +627,198 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		glDisable(GL_TEXTURE_1D);
 		
 	}
-};
 
 
-//	3D - polygon
+	//	3D - polygon
 
 
-static real polygon3DVolume(const std::vector<real3>& vs, real3 normal) {
-	size_t n = vs.size();
-	real volume = 0;
-	for (size_t i = 0; i < n; ++i) {
-		const real3 &a = vs[i];
-		const real3 &b = vs[(i+1)%n];
-		volume += parallelepipedVolume(a, b, normal);
+	static real polygon3DVolume(const std::vector<real3>& vs, real3 normal) {
+		size_t n = vs.size();
+		real volume = 0;
+		for (size_t i = 0; i < n; ++i) {
+			const real3 &a = vs[i];
+			const real3 &b = vs[(i+1)%n];
+			volume += parallelepipedVolume(a, b, normal);
+		}
+		return .5 * volume;
 	}
-	return .5 * volume;
-}
 
-static real3 polygon3DCOM(const std::vector<real3>& vs, real area, real3 normal) {
-	int n = (int)vs.size();
+	static real3 polygon3DCOM(const std::vector<real3>& vs, real area, real3 normal) {
+		int n = (int)vs.size();
 #if 0
-	for (int i = 0; i < n; ++i) {
-		const real3& a = vs[i];
-		const real3& b = vs[(i+1)%n];
-		com += (a + b) * parallelepipedVolume(a, b, normal);
-	}
-	return com * (1. / (6. * area));
+		for (int i = 0; i < n; ++i) {
+			const real3& a = vs[i];
+			const real3& b = vs[(i+1)%n];
+			com += (a + b) * parallelepipedVolume(a, b, normal);
+		}
+		return com * (1. / (6. * area));
 #else
-	if (area == 0) {
-		if (n == 0) {
-			throw Common::Exception() << "you can't get a COM without any vertexes";
+		if (area == 0) {
+			if (n == 0) {
+				throw Common::Exception() << "you can't get a COM without any vertexes";
+			}
+			return std::accumulate(vs.begin()+1, vs.end(), vs.front()) / (real)n;
 		}
-		return std::accumulate(vs.begin()+1, vs.end(), vs.front()) / (real)n;
-	}
-	real3 com;
-	const real3& a = vs[0];
-	for (int i = 2; i < n; ++i) {
-		const real3& b = vs[i-1];
-		const real3& c = vs[i];
-		com += (a + b + c) * real3::dot(cross(c - a, c - b), normal);
-	}
-	return com * (1. / (6. * area));
+		real3 com;
+		const real3& a = vs[0];
+		for (int i = 2; i < n; ++i) {
+			const real3& b = vs[i-1];
+			const real3& c = vs[i];
+			com += (a + b + c) * real3::dot(cross(c - a, c - b), normal);
+		}
+		return com * (1. / (6. * area));
 #endif
-}
-
-
-
-//	2D - parallelogram
-
-
-static real parallelogramVolume(real2 a, real2 b) {
-	//epsilon_ij a^i b^j
-	return a(0) * b(1)
-		- a(1) * b(0);
-}
-
-
-//	2D - polygon
-
-
-static real polygonVolume(const std::vector<real2>& vs) {
-	size_t n = vs.size();
-	real volume = 0;
-	for (size_t i = 0; i < n; ++i) {
-		const real2 &a = vs[i];
-		const real2 &b = vs[(i+1)%n];
-		volume += parallelogramVolume(a, b);
 	}
-	return .5 * volume;
-}
 
-static real2 polygonCOM(const std::vector<real2>& vs, real volume) {
-	size_t n = vs.size();
-	if (volume == 0) {
-		if (n == 0) {
-			throw Common::Exception() << "you can't get a COM without any vertexes";
+
+
+	//	2D - parallelogram
+
+
+	static real parallelogramVolume(real2 a, real2 b) {
+		//epsilon_ij a^i b^j
+		return a(0) * b(1)
+			- a(1) * b(0);
+	}
+
+
+	//	2D - polygon
+
+
+	static real polygonVolume(const std::vector<real2>& vs) {
+		size_t n = vs.size();
+		real volume = 0;
+		for (size_t i = 0; i < n; ++i) {
+			const real2 &a = vs[i];
+			const real2 &b = vs[(i+1)%n];
+			volume += parallelogramVolume(a, b);
 		}
-		return std::accumulate(vs.begin()+1, vs.end(), vs.front()) / (real)n;
+		return .5 * volume;
 	}
-	real2 com;
-	for (int i = 0; i < (int)n; ++i) {
-		const real2& a = vs[i];
-		const real2& b = vs[(i+1)%n];
-		com += (a + b) * parallelogramVolume(a, b);
-	}
-	return com * (1. / (6. * volume));
-}
 
-template<typename I, typename F>
-static bool polygonContains(real2 pos, I begin, I end, F f) {
-	auto check = [pos](real2 prev, real2 cur) -> bool {
-		return parallelogramVolume(prev - pos, cur - pos) > 0;
-	};
-	
-	I i = begin;
-	real2 first = f(*i);
-	real2 prev = first;
-	if (i != end) {
-		for (++i; i != end; ++i) {
-			real2 cur = f(*i);
-			if (!check(prev, cur)) return false;
-			prev = cur;
+	static real2 polygonCOM(const std::vector<real2>& vs, real volume) {
+		size_t n = vs.size();
+		if (volume == 0) {
+			if (n == 0) {
+				throw Common::Exception() << "you can't get a COM without any vertexes";
+			}
+			return std::accumulate(vs.begin()+1, vs.end(), vs.front()) / (real)n;
 		}
-	}
-	if (!check(prev, first)) return false;
-	return true;
-}
-
-
-//	3D - parallelepiped
-
-
-static real parallelepipedVolume(real3 a, real3 b, real3 c) {
-	//epsilon_ijk a^i b^j c^k
-	return a(0) * b(1) * c(2)
-		+ a(1) * b(2) * c(0)
-		+ a(2) * b(0) * c(1)
-		- c(0) * b(1) * a(2)
-		- c(1) * b(2) * a(0)
-		- c(2) * b(0) * a(1);
-}
-
-
-//	3D - polyhedron
-
-
-static real polyhedronVolume(const std::vector<std::vector<real3>>& faces) {
-	real volume = 0;
-	for (const auto& face : faces) {
-		for (int i = 2; i < (int)face.size(); ++i) {
-			//tri from 0, i-1, 1
-			const real3& a = face[0];
-			const real3& b = face[i-1];
-			const real3& c = face[i];
-			volume += parallelepipedVolume(a, b, c);
+		real2 com;
+		for (int i = 0; i < (int)n; ++i) {
+			const real2& a = vs[i];
+			const real2& b = vs[(i+1)%n];
+			com += (a + b) * parallelogramVolume(a, b);
 		}
+		return com * (1. / (6. * volume));
 	}
-	//volume of n-sided pyramid in nD is volume of parallelogram divided by 1/n!
-	return volume / 6.;
-}
 
-static real3 polyhedronCOM(const std::vector<std::vector<real3>>& faces, real volume) {
-	if (volume == 0) {
-		if (faces.size() == 0) {
-			throw Common::Exception() << "you can't get a COM without any vertexes";
+	template<typename I, typename F>
+	static bool polygonContains(real2 pos, I begin, I end, F f) {
+		auto check = [pos](real2 prev, real2 cur) -> bool {
+			return parallelogramVolume(prev - pos, cur - pos) > 0;
+		};
+		
+		I i = begin;
+		real2 first = f(*i);
+		real2 prev = first;
+		if (i != end) {
+			for (++i; i != end; ++i) {
+				real2 cur = f(*i);
+				if (!check(prev, cur)) return false;
+				prev = cur;
+			}
 		}
-		real3 sum;
-		real total = {};
+		if (!check(prev, first)) return false;
+		return true;
+	}
+
+
+	//	3D - parallelepiped
+
+
+	static real parallelepipedVolume(real3 a, real3 b, real3 c) {
+		//epsilon_ijk a^i b^j c^k
+		return a(0) * b(1) * c(2)
+			+ a(1) * b(2) * c(0)
+			+ a(2) * b(0) * c(1)
+			- c(0) * b(1) * a(2)
+			- c(1) * b(2) * a(0)
+			- c(2) * b(0) * a(1);
+	}
+
+
+	//	3D - polyhedron
+
+
+	static real polyhedronVolume(const std::vector<std::vector<real3>>& faces) {
+		real volume = 0;
 		for (const auto& face : faces) {
-			for (const auto& vtx : face) {
-				sum += vtx;
-				++total;
+			for (int i = 2; i < (int)face.size(); ++i) {
+				//tri from 0, i-1, 1
+				const real3& a = face[0];
+				const real3& b = face[i-1];
+				const real3& c = face[i];
+				volume += parallelepipedVolume(a, b, c);
 			}
 		}
-		return sum * (1. / (real)total);
+		//volume of n-sided pyramid in nD is volume of parallelogram divided by 1/n!
+		return volume / 6.;
 	}
-	real3 com;
-	for (const auto& face : faces) {
-		for (int i = 2; i < (int)face.size(); ++i) {
-			//tri from 0, i-1, 1
-			const real3& a = face[0];
-			const real3& b = face[i-1];
-			const real3& c = face[i];
-			com += ((a + b) * (a + b) + (b + c) * (b + c) + (c + a) * (c + a)) * cross(b - a, c - a) / 48.;
-		}
-	}
-	return com / volume;
-}
 
-
-struct P2DFMTMeshFactory : public MeshFactory<real, dim, Cons> {
-	std::string filename = {"grids/n0012_113-33.p2dfmt"};
-	
-	P2DFMTMeshFactory() : MeshFactory<real, dim, Cons>("p2dfmt mesh") {}
-
-	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
-		
-		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(filename), "\n");
-	
-		std::string first = ls.front();
-		ls.pop_front();
-		std::vector<std::string> m_n = split<std::vector<std::string>>(ls.front(), "\\s+");
-		ls.pop_front();
-		int m = std::stoi(m_n[0]);
-		int n = std::stoi(m_n[1]);
-		std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
-		if (_x.front() == "") _x.pop_front();
-		if (_x.back() == "") _x.pop_back();
-		std::vector<real> x = map<
-			decltype(_x),
-			std::vector<real>
-		>(_x, [](const std::string& s) -> real { return std::stod(s); });
-		assert(x.size() == (size_t)(2 * m * n));
-	
-		auto us = std::vector(x.begin(), x.begin() + m*n);
-		auto vs = std::vector(x.begin() + m*n, x.end());
-		assert(us.size() == vs.size());
-
-		mesh->vtxs.resize(m*n);
-		for (int i = 0; i < (int)us.size(); ++i) {
-			mesh->vtxs[i].pos = real3(us[i], vs[i]);
-		}
-	
-		for (int j = 0; j < n-1; ++j) {
-			for (int i = 0; i < m-1; ++i) {
-				mesh->addCell(std::vector<int>{i + m * j, i + m * (j+1), i+1 + m * (j+1), i+1 + m * j});
+	static real3 polyhedronCOM(const std::vector<std::vector<real3>>& faces, real volume) {
+		if (volume == 0) {
+			if (faces.size() == 0) {
+				throw Common::Exception() << "you can't get a COM without any vertexes";
 			}
-		}
-	
-		mesh->calcAux();
-		return mesh;
-	}
-
-	virtual void updateGUI() {
-		//TODO filename popup
-	}
-};
-
-struct Chart2DMeshFactory : public MeshFactory<real, dim, Cons> {
-	using This = Chart2DMeshFactory; 
-	
-	//int2 size = int2(100, 100);
-int2 size = int2(20, 20);
-	float2 mins = real2(-1, -1);
-	float2 maxs = real2(1, 1);
-	bool2 repeat = bool2(false, false);
-	bool2 capmin = bool2(false, false);
-	
-	static constexpr auto fields = std::make_tuple(
-		std::make_pair("size", &This::size),
-		std::make_pair("mins", &This::mins),
-		std::make_pair("maxs", &This::maxs),
-		std::make_pair("repeat", &This::repeat),
-		std::make_pair("capmin", &This::capmin)
-	);
-
-	Chart2DMeshFactory(const char* name_) : MeshFactory<real, dim, Cons>(name_) {}
-
-	virtual real2 coordChart(real2 x) const { return x; }
-	
-	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
-	}
-};
-
-struct Tri2DMeshFactory : public Chart2DMeshFactory {
-	using Super = Chart2DMeshFactory;
-	Tri2DMeshFactory() : Super("unit square of triangles") {}
-	
-	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
-
-		int2 n = Super::size + 1;
-		int2 step(1, n(0));
-		
-		int vtxsize = n.volume();
-		if (Super::capmin(0)) vtxsize++;
-		
-		mesh->vtxs.resize(vtxsize);
-		int2 i;
-		for (i(1) = 0; i(1) < n(1); ++i(1)) {
-			for (i(0) = 0; i(0) < n(0); ++i(0)) {
-				real2 x = (real2)i / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
-				real2 u = Super::coordChart(x);
-				mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
-			}
-		}
-		
-		int capindex = n.volume();
-		if (Super::capmin(0)) {
 			real3 sum;
-			for (int j = 0; j < n(1); ++j) {
-				sum += mesh->vtxs[0 + n(0) * j].pos;
-			}
-			mesh->vtxs[capindex].pos = sum / (real)n(1);
-		}
-		
-		int2 imax;
-		for (int j = 0; j < 2; ++j) {
-			imax(j) = Super::repeat(j) ? n(j) : n(j)-1;
-		}
-		int2 in;
-		for (i(1) = 0; i(1) < imax(1); ++i(1)) {
-			in(1) = (i(1) + 1) % n(1);
-			for (i(0) = 0; i(0) < imax(0); ++i(0)) {
-				in(0) = (i(0) + 1) % n(0);
-				mesh->addCell(std::vector<int>{
-					i(0) + n(0) * i(1),
-					in(0) + n(0) * i(1),
-					in(0) + n(0) * in(1)
-				});
-				mesh->addCell(std::vector<int>{
-					in(0) + n(0) * in(1),
-					i(0) + n(0) * in(1),
-					i(0) + n(0) * i(1)
-				});
-			}
-		}
-		
-		mesh->calcAux();
-		return mesh;
-	}
-};
-
-struct Quad2DMeshFactory : public Chart2DMeshFactory {
-	using Super = Chart2DMeshFactory;
-	Quad2DMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
-	
-	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
-
-		int2 n = Super::size + 1;
-		int2 step(1, n(0));
-		int vtxsize = n.volume();
-		if (Super::capmin(0)) vtxsize++;
-		mesh->vtxs.resize(vtxsize);
-		
-		int2 coordRangeMax = Super::size;
-		if (Super::repeat(0) || Super::capmin(0)) ++coordRangeMax(0);
-		if (Super::repeat(1) || Super::capmin(1)) ++coordRangeMax(1);
-
-		int2 iofs;
-		if (Super::capmin(0)) iofs(0) = 1;
-		if (Super::capmin(1)) iofs(1) = 1;
-		
-
-		int2 i;
-		for (i(1) = 0; i(1) < n(1); ++i(1)) {
-			for (i(0) = 0; i(0) < n(0); ++i(0)) {
-				real2 x = (real2)(i + iofs) / (real2)coordRangeMax * (Super::maxs - Super::mins) + Super::mins;
-				real2 u = this->coordChart(x);
-				mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { 
-					return i < real2::size ? u(i) : 0.;
-				});
-			}
-		}
-		
-		int capindex = n.volume();
-		if (Super::capmin(0)) {
-			real3 sum;
-			for (int j = 0; j < n(1); ++j) {
-				sum += mesh->vtxs[0 + n(0) * j].pos;
-			}
-			mesh->vtxs[capindex].pos = sum / (real)n(1);
-		}
-
-		int2 imax;
-		for (int j = 0; j < 2; ++j) {
-			imax(j) = Super::repeat(j) ? n(j) : n(j)-1;
-		}
-		int2 in;
-		for (i(1) = 0; i(1) < imax(1); ++i(1)) {
-			in(1) = (i(1) + 1) % n(1);
-			for (i(0) = 0; i(0) < imax(0); ++i(0)) {
-				in(0) = (i(0) + 1) % n(0);
-				mesh->addCell(std::vector<int>{
-					i(0) + n(0) * i(1),
-					in(0) + n(0) * i(1),
-					in(0) + n(0) * in(1),
-					i(0) + n(0) * in(1)
-				});
-			}
-		}
-
-		if (Super::capmin(0)) {
-			for (int j = 0; j < imax(1); ++j) {
-				int jn = (j + 1) % n(1);
-				mesh->addCell(std::vector<int>{ 0 + n(0) * j, 0 + n(0) * jn, capindex });
-			}
-		}
-
-		mesh->calcAux();
-		return mesh;
-	}
-};
-
-struct Quad2DCbrtMeshFactory : public Quad2DMeshFactory {
-	Quad2DCbrtMeshFactory() : Quad2DMeshFactory("unit square of quads, cbrt mapping") {}
-	virtual real2 coordChart(real2 v) const {
-		return real2(cbrt(v(0)), cbrt(v(1)));
-	}
-};
-
-template<typename T> 
-static T cubed(const T& t) { return t * t * t; }
-
-struct Quad2DCubeMeshFactory : public Quad2DMeshFactory {
-	Quad2DCubeMeshFactory() : Quad2DMeshFactory("unit square of quads, cubed mapping") {}
-	virtual real2 coordChart(real2 v) const {
-		return real2(cubed(v(0)), cubed(v(1)));
-	}
-};
-
-struct Quad2DRotateMeshFactory : public Quad2DMeshFactory {
-	using This = Quad2DRotateMeshFactory;
-	using Super = Quad2DMeshFactory;
-	
-	real thetaOver2Pi = {};
-	
-	static constexpr auto fields = std::tuple_cat(
-		Super::fields,
-		std::make_tuple(
-			std::make_pair("theta / 2pi", &This::thetaOver2Pi)
-		)
-	);
-
-	Quad2DRotateMeshFactory() : Super("quad grid with fixed rotation") {}
-	
-	virtual real2 coordChart(real2 v) const {
-		real theta = 2 * M_PI * thetaOver2Pi;
-		real costh = cos(theta), sinth = sin(theta);
-		return real2(
-			costh * v(0) - sinth * v(1),
-			sinth * v(0) + costh * v(1));
-	}
-
-	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
-	}
-};
-
-struct Quad2DTwistMeshFactory : public Quad2DMeshFactory {
-	Quad2DTwistMeshFactory() : Quad2DMeshFactory("unit square of quads, twist in the middle") {}
-	virtual real2 coordChart(real2 v) const {
-		real r = v.length();
-		//real theta = std::max(0., 1. - r);
-		real sigma = 3.;	//almost 0 at r=1
-		const real rotationAmplitude = 3.;
-		real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
-		real costh = cos(theta), sinth = sin(theta);
-		return real2(
-			costh * v(0) - sinth * v(1),
-			sinth * v(0) + costh * v(1));	
-	}
-};
-
-struct PolarMeshFactory : public Quad2DMeshFactory {
-	using Super = Quad2DMeshFactory;
-	PolarMeshFactory() : Super("polar") {
-		Super::size = int2(20, 50);
-		Super::mins = real2(.1, 0);
-		Super::maxs = real2(1, 1);
-		Super::repeat = bool2(false, true);
-		Super::capmin = bool2(false, false);
-	}
-	virtual real2 coordChart(real2 v) const {
-		real theta = 2. * M_PI * v(1);
-		return real2(cos(theta), sin(theta)) * v(0);
-	}
-};
-
-//not inheriting from Quad2DMeshFactory because it has variable size and we want fixed size (based on image size)
-struct Quad2DImageMeshFactory : public Chart2DMeshFactory {
-	using This = Quad2DImageMeshFactory;
-	using Super = Chart2DMeshFactory;
-	Quad2DImageMeshFactory() : Super("unit based on image") {}
-
-	std::string imageFilename = "layout.png";
-	//std::string imageFilename = "layout.bmp";
-	//std::string imageFilename = "layout.tiff";
-
-	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
-		
-		//auto iimg = ::Image::system->read(imageFilename);	//TODO fixme, it's not working
-		auto iimg = ::Image::pngIO->read(imageFilename);
-		
-		auto img = std::dynamic_pointer_cast<Image::Image>(iimg);
-
-		Super::size = img->getSize();
-		int2 n = Super::size + 1;
-		int2 step(1, n(0));	
-		mesh->vtxs.resize(n.volume());
-		int2 i;
-		for (i(1) = 0; i(1) < n(1); ++i(1)) {
-			for (i(0) = 0; i(0) < n(0); ++i(0)) {
-				real2 x = (real2)i / (real2)Super::size * (Super::maxs - Super::mins) + Super::mins;
-				
-				real2 u = Super::coordChart(x);
-				mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { return i < real2::size ? u(i) : 0.; });
-			}
-		}
-
-		int2 imax = n - 1;
-		int2 in;
-		for (i(1) = 0; i(1) < imax(1); ++i(1)) {
-			in(1) = (i(1) + 1) % n(1);
-			for (i(0) = 0; i(0) < imax(0); ++i(0)) {
-				in(0) = (i(0) + 1) % n(0);
-				if ((*img)(i(0), imax(1)-1-i(1))) {
-					mesh->addCell(std::vector<int>{
-						i(0) + n(0) * i(1),
-						in(0) + n(0) * i(1),
-						in(0) + n(0) * in(1),
-						i(0) + n(0) * in(1)
-					});
+			real total = {};
+			for (const auto& face : faces) {
+				for (const auto& vtx : face) {
+					sum += vtx;
+					++total;
 				}
 			}
+			return sum * (1. / (real)total);
 		}
-
-		mesh->calcAux();
-		return mesh;
-	}
-
-	//override Chart2DMeshFactory and get rid of size
-	//TODO add in imageFilename
-	//TODO TODO if you use fields for anything else, consider a readonly modifier
-	static constexpr auto fields = std::make_tuple(
-		std::make_pair("mins", &Super::mins),
-		std::make_pair("maxs", &Super::maxs),
-		std::make_pair("repeat", &Super::repeat),
-		std::make_pair("capmin", &Super::capmin),
-		std::make_pair("imageFilename", &This::imageFilename)
-	);
-
-	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
-	}
-};
-
-struct Chart3DMeshFactory : public MeshFactory<real, dim, Cons> {
-	using This = Chart3DMeshFactory;
-	
-	int3 size = int3(10,10,10);
-	float3 mins = float3(-1, -1, -1);
-	float3 maxs = float3(1, 1, 1);
-	bool3 repeat;
-	bool3 capmin;
-
-	//TODO support for inheritence and reflection
-	static constexpr auto fields = std::make_tuple(
-		std::make_pair("size", &This::size),
-		std::make_pair("mins", &This::mins),
-		std::make_pair("maxs", &This::maxs),
-		std::make_pair("repeat", &This::repeat),
-		std::make_pair("capmin", &This::capmin)
-	);
-
-	Chart3DMeshFactory(const char* name_ = "3D chart mesh") : MeshFactory<real, dim, Cons>(name_) {}
-
-	virtual real3 coordChart(real3 x) const { return x; }
-
-	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
-	}
-};
-
-struct Cube3DMeshFactory : public Chart3DMeshFactory {
-	using Super = Chart3DMeshFactory;
-	
-	Cube3DMeshFactory(const char* name_ = "cube mesh") : Super(name_) {}
-	
-	virtual std::shared_ptr<Mesh> createMesh() {
-		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
-
-		int3 n = Super::size + 1;
-		int3 step(1, n(0), n(0) * n(1));
-		
-		int vtxsize = n.volume();
-		mesh->vtxs.resize(vtxsize);
-		
-		int3 imax;
-		for (int j = 0; j < 3; ++j) {
-			imax(j) = Super::repeat(j) ? n(j) : n(j)-1;
-		}
-		
-		int3 i;
-		for (i(2) = 0; i(2) < n(2); ++i(2)) {
-			for (i(1) = 0; i(1) < n(1); ++i(1)) {
-				for (i(0) = 0; i(0) < n(0); ++i(0)) {
-					real3 x = (real3)i / (real3)imax * (Super::maxs - Super::mins) + Super::mins;
-					mesh->vtxs[int3::dot(i, step)].pos = this->coordChart(x);
-				}
+		real3 com;
+		for (const auto& face : faces) {
+			for (int i = 2; i < (int)face.size(); ++i) {
+				//tri from 0, i-1, 1
+				const real3& a = face[0];
+				const real3& b = face[i-1];
+				const real3& c = face[i];
+				com += ((a + b) * (a + b) + (b + c) * (b + c) + (c + a) * (c + a)) * cross(b - a, c - a) / 48.;
 			}
 		}
-		
-		int3 in;
-		for (i(2) = 0; i(2) < imax(2); ++i(2)) {
-			in(2) = (i(2) + 1) % n(2);
-			for (i(1) = 0; i(1) < imax(1); ++i(1)) {
-				in(1) = (i(1) + 1) % n(1);
-				for (i(0) = 0; i(0) < imax(0); ++i(0)) {
-					in(0) = (i(0) + 1) % n(0);
-					mesh->addCell(std::vector<int>{
-						//using z-order
-						i(0) + n(0) * (i(1) + n(1) * i(2)),
-						in(0) + n(0) * (i(1) + n(1) * i(2)),
-						i(0) + n(0) * (in(1) + n(1) * i(2)),
-						in(0) + n(0) * (in(1) + n(1) * i(2)),
-						
-						i(0) + n(0) * (i(1) + n(1) * in(2)),
-						in(0) + n(0) * (i(1) + n(1) * in(2)),
-						i(0) + n(0) * (in(1) + n(1) * in(2)),
-						in(0) + n(0) * (in(1) + n(1) * in(2)),
-					});
-				}
-			}
+		return com / volume;
+	}
+
+
+	static std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>> getGens() {
+		if constexpr (dim == 2) {
+			return std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>>{
+				std::make_shared<PolarMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Quad2DMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Tri2DMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Quad2DCbrtMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Quad2DCubeMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Quad2DRotateMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Quad2DTwistMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Quad2DImageMeshFactory<real, dim, Cons>>(),
+				std::make_shared<P2DFMTMeshFactory<real, dim, Cons>>(),
+			};
+		} else if constexpr (dim == 3) {
+			return std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>>{
+				std::make_shared<Cube3DMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Cylinder3DMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Sphere3DMeshFactory<real, dim, Cons>>(),
+				std::make_shared<Torus3DMeshFactory<real, dim, Cons>>(),
+			};
 		}
-
-		mesh->calcAux();
-		return mesh;
+		throw Common::Exception() << "here";
 	}
 };
 
-struct Sphere3DMeshFactory : public Cube3DMeshFactory {
-	using Super = Cube3DMeshFactory;
-	
-	Sphere3DMeshFactory() : Super("sphere") {
-		Super::size = int3(10, 10, 10);
-		Super::mins = real3(.5, .5, 0);
-		Super::maxs = real3(1, 1., 1);
-		Super::repeat = bool3(false, false, true);
-		//Super::capmin = bool3(true, false, false);	//TODO
-	}
-	
-	virtual real3 coordChart(real3 x) const {
-		real r = x(0);
-		real theta = x(1) * M_PI;
-		real phi = x(2) * 2 * M_PI;
-		real sinth = sin(theta);
-		return real3(
-			r * cos(phi) * sinth,
-			r * sin(phi) * sinth,
-			r * cos(theta));
-	}
-};
-
-struct Cylinder3DMeshFactory : public Cube3DMeshFactory {
-	using Super = Cube3DMeshFactory;
-	
-	Cylinder3DMeshFactory() : Super("cylinder") {
-		Super::size = int3(10, 10, 10);
-		Super::mins = real3(.5, .5, 0);
-		Super::maxs = real3(1, 1., 1);
-		Super::repeat = bool3(false, true, false);
-		Super::capmin = bool3(true, false, false);
-	}
-	
-	virtual real3 coordChart(real3 x) const {
-		real theta = x(1) * 2 * M_PI;
-		return real3(
-			x(0) * cos(theta),
-			x(0) * sin(theta),
-			x(2));
-	}
-};
-
-
-
-struct Torus3DMeshFactory : public Cube3DMeshFactory {
-	using This = Torus3DMeshFactory;
-	using Super = Cube3DMeshFactory;
-
-	real R = 2.;
-
-	static constexpr auto fields = std::tuple_cat(
-		Super::fields,
-		std::make_tuple(
-			std::make_pair("R", &This::R)
-		)
-	);
-
-	Torus3DMeshFactory() : Super("torus") {
-		Super::size = int3(1, 4, 4);
-		Super::mins = real3(0, 0, 0);
-		Super::maxs = real3(1, 1, 1);
-		Super::repeat = bool3(false, true, true);
-	}
-
-	virtual real3 coordChart(real3 x) const {
-		real r = x(0);
-		real theta = x(1) * 2 * M_PI;
-		real phi = x(2) * 2 * M_PI;
-		return real3(
-			(r * cos(theta) + R) * cos(phi), 
-			(r * cos(theta) + R) * sin(phi), 
-			-r * sin(theta)
-		);
-	}
-
-	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
-	}
-};
-
-static std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>> getGens() {
-	if constexpr (dim == 2) {
-		return std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>>{
-			std::make_shared<PolarMeshFactory>(),
-			std::make_shared<Quad2DMeshFactory>(),
-			std::make_shared<Tri2DMeshFactory>(),
-			std::make_shared<Quad2DRotateMeshFactory>(),
-			std::make_shared<Quad2DCbrtMeshFactory>(),
-			std::make_shared<Quad2DCubeMeshFactory>(),
-			std::make_shared<Quad2DTwistMeshFactory>(),
-			std::make_shared<Quad2DImageMeshFactory>(),
-			std::make_shared<P2DFMTMeshFactory>(),
-		};
-	} else if constexpr (dim == 3) {
-		return std::vector<std::shared_ptr<MeshFactory<real, dim, Cons>>>{
-			std::make_shared<Cube3DMeshFactory>(),
-			std::make_shared<Cylinder3DMeshFactory>(),
-			std::make_shared<Sphere3DMeshFactory>(),
-			std::make_shared<Torus3DMeshFactory>(),
-		};
-	}
-	throw Common::Exception() << "here";
 }
-
-};	//MeshNamespace
-
 }

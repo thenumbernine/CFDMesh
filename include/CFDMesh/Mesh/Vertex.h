@@ -3,6 +3,7 @@
 #include "CFDMesh/Vector.h"
 
 namespace CFDMesh {
+namespace Mesh {
 
 //zero-forms
 template<typename real>
@@ -23,4 +24,5 @@ struct Vertex_ {	//not required by finite volume algorithm
 	Vertex_(real3 pos_) : pos(pos_) {}
 };
 
+}
 }
