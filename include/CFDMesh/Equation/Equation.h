@@ -39,6 +39,7 @@ template<
 struct Equation {
 	using real2 = Tensor::Vector<real, 2>;
 	using real3 = Tensor::Vector<real, 3>;
+	using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
 	
 	using Cons = Cons_;
 	using Prim = Prim_;
@@ -129,23 +130,53 @@ struct Equation {
 		}
 	}
 
-	Cons rotateFrom(Cons U, const real3& normal) const {
-		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
+	Cons rotateFrom(Cons U, const real3x3& nb) const {
+		Common::TupleForEach(Cons::fields, [&U, &nb](auto x, size_t i) constexpr {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
-			if constexpr (std::is_same_v<FieldType, real3>) {
-				U.*field = CFDMesh::rotateFrom<real3>(U.*field, normal);
+			if constexpr (std::is_same_v<FieldType, real>) {
+				//real = unchanged
+			} else if constexpr (std::is_same_v<FieldType, real3>) {
+				//real3 = multiply
+				//nb is stored transposed, and rotateFrom is an inverse rotation
+				//U.*field = CFDMesh::rotateFrom<real3>(U.*field, normal);
+				real3 src = U.*field;
+				for (int i = 0; i < 3; ++i) {
+					real sum = 0;
+					for (int j = 0; j < 3; ++j) {
+						sum += nb(i,j) * src(j);
+					}
+					(U.*field)(i) = sum;
+				}
+			} else {
+				throw Common::Exception() << "TODO implement this rotateFrom for this type";
+				//static_assert(false, "TODO implement this rotateFrom for this type");
 			}
 		});
 		return U;
 	}
 
-	Cons rotateTo(Cons U, const real3& normal) const {
-		Common::TupleForEach(Cons::fields, [&U, &normal](auto x, size_t i) constexpr {
+	Cons rotateTo(Cons U, const real3x3& nb) const {
+		Common::TupleForEach(Cons::fields, [&U, &nb](auto x, size_t i) constexpr {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
-			if constexpr (std::is_same_v<FieldType, real3>) {
-				U.*field = CFDMesh::rotateTo<real3>(U.*field, normal);
+			if constexpr (std::is_same_v<FieldType, real>) {
+				//real = unchanged
+			} else if constexpr (std::is_same_v<FieldType, real3>) {
+				//real3 = multiply
+				//nb is stored transposed, and rotateFrom is a forward rotation
+				//U.*field = CFDMesh::rotateTo<real3>(U.*field, normal);
+				real3 src = U.*field;
+				for (int i = 0; i < 3; ++i) {
+					real sum = 0;
+					for (int j = 0; j < 3; ++j) {
+						sum += nb(j,i) * src(j);
+					}
+					(U.*field)(i) = sum;
+				}
+			} else {
+				throw Common::Exception() << "TODO implement this rotateFrom for this type";
+				//static_assert(false, "TODO implement this rotateFrom for this type");
 			}
 		});
 		return U;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CFDMesh/Vector.h"
+#include "Tensor/Tensor.h"
 
 namespace CFDMesh {
 namespace Mesh {
@@ -10,9 +11,10 @@ template<typename real, typename Cons>
 struct Face {
 	using This = Face;
 	using real3 = Tensor::Vector<real, 3>;
+	using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
 	
 	real3 pos;
-	real3 normal;
+	real3x3 normal;	//row-based for memory slicing 
 	real area = 0;	//space taken up by the face
 	real cellDist = 0;	//dist between adjacent cell centers
 	

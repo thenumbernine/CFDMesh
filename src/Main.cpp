@@ -36,6 +36,7 @@ using real = double;
 
 using real2 = Tensor::Vector<real, 2>;
 using real3 = Tensor::Vector<real, 3>;
+using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
 
 static Parallel::Parallel parallel;//(1);
 
@@ -193,11 +194,15 @@ exit(0);
 				const Face& face = m->faces[m->cellFaceIndexes[c->faceOffset]];
 				auto [UL, UR] = getEdgeStates(&face);
 				
-				real3 fluxNormal;
+				real3x3 fluxNormal;
 				if (rotateToAlign) {	//rotate normal to x-axis
 					UL = eqn->rotateFrom(UL, face.normal);
 					UR = eqn->rotateFrom(UR, face.normal);
-					fluxNormal = real3(1, 0, 0);
+					for (int i = 0; i < 3; ++i) {
+						for (int j = 0; j < 3; ++j) {
+							fluxNormal(i,j) = (real)(i == j);
+						}
+					}
 				} else {
 					fluxNormal = face.normal;
 				}
@@ -283,9 +288,9 @@ exit(0);
 		if (cL && cR) {
 			return std::pair<Cons, Cons>{cL->U, cR->U};
 		} else if (cL) {
-			return std::pair<Cons, Cons>{cL->U, eqn.reflect(cL->U, e->normal, restitution)};
+			return std::pair<Cons, Cons>{cL->U, eqn.reflect(cL->U, real3(e->normal(0,0), e->normal(0,1), e->normal(0,2)), restitution)};
 		} else if (cR) {
-			return std::pair<Cons, Cons>{eqn.reflect(cR->U, e->normal, restitution), cR->U};
+			return std::pair<Cons, Cons>{eqn.reflect(cR->U, real3(e->normal(0,0), e->normal(0,1), e->normal(0,2)), restitution), cR->U};
 		}
 		throw Common::Exception() << "here";
 	}
@@ -322,7 +327,7 @@ exit(0);
 	//NOTICE: dt used for dt/dx with the flux limiter
 	//which needs slope information
 	//which I don't yet have
-	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt, real3 n) {
+	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt, const real3x3& n) {
 		Eigen vars = eqn.calcRoeAvg(UL, UR);
 
 		WaveVec lambdas = eqn.getEigenvalues(vars, n);
@@ -387,7 +392,7 @@ exit(0);
 		return flux;
 	}
 
-	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt, real3 n) {
+	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt, const real3x3& n) {
 		real lambdaMinL = eqn.calcLambdaMin(CalcLambdaVars(eqn, UL, n));
 		real lambdaMaxR = eqn.calcLambdaMax(CalcLambdaVars(eqn, UR, n));
 		
@@ -425,7 +430,7 @@ exit(0);
 		return flux;
 	}
 
-	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real, real3);
+	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real, const real3x3&);
 
 	int calcFluxIndex = 0;
 	
@@ -471,11 +476,15 @@ for (int i = 0; i < Cons::size; ++i) {
 }
 #endif
 
-				real3 fluxNormal;
+				real3x3 fluxNormal;
 				if (rotateToAlign) {	//rotate normal to x-axis
 					UL = eqn.rotateFrom(UL, face.normal);
 					UR = eqn.rotateFrom(UR, face.normal);
-					fluxNormal = real3(1, 0, 0);
+					for (int i = 0; i < 3; ++i) {
+						for (int j = 0; j < 3; ++j) {
+							fluxNormal(i,j) = (real)(i == j);
+						}
+					}
 				} else {
 					fluxNormal = face.normal;
 				}

@@ -91,6 +91,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	using DisplayMethod = typename Super::DisplayMethod;
 	
 	using real3 = Tensor::Vector<real, 3>;
+	using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
 
 	float heatCapacityRatio = 1.4;
 
@@ -325,31 +326,35 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return vars;
 	}
 
-	WaveVec getEigenvalues(const Eigen& vars, real3 n) const {
-		real v = real3::dot(vars.v, n);
+	WaveVec getEigenvalues(const Eigen& vars, const real3x3& n) const {
+		real v_n = vars.v(0) * n(0,0) + vars.v(1) * n(0,1) + vars.v(2) * n(0,2);
 		const real& Cs = vars.Cs;
 		WaveVec lambdas;
-		lambdas(0) = v - Cs;
-		lambdas(1) = v;
-		lambdas(2) = v;
-		lambdas(3) = v;
-		lambdas(4) = v + Cs;
+		lambdas(0) = v_n - Cs;
+		lambdas(1) = v_n;
+		lambdas(2) = v_n;
+		lambdas(3) = v_n;
+		lambdas(4) = v_n + Cs;
 		return lambdas;
 	}
 
 	struct CalcLambdaVars {
-		real3 n;
+		real3x3 n;
 		real v;
 		real Cs;
 		
-		CalcLambdaVars(const This& eqn, const Cons& U, const real3& n_) {
+		CalcLambdaVars(const This& eqn, const Cons& U, const real3x3& n_) {
 			Prim W = eqn.primFromCons(U);
 			n = n_;
-			v = real3::dot(W.v, n);
+			v = W.v(0) * n(0,0) + W.v(1) * n(0,1) + W.v(2) * n(0,2);
 			Cs = eqn.calc_Cs_from_P_rho(W.P, W.rho);
 		}
 	
-		CalcLambdaVars(const Eigen& vars, const real3& n_) : n(n_), v(real3::dot(vars.v, n)), Cs(vars.Cs) {}
+		CalcLambdaVars(const Eigen& vars, const real3x3& n_) 
+		: 	n(n_), 
+			v(vars.v(0) * n(0,0) + vars.v(1) * n(0,1) + vars.v(2) * n(0,2)), 
+			Cs(vars.Cs) 
+		{}
 	};
 
 	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) const {
@@ -364,42 +369,19 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return vars.v + vars.Cs;
 	}
 
-	static std::pair<real3, real3> getPerpendicularBasis(real3 n) {
-		real3 n_x_x = cross(n, real3(1,0,0));
-		real3 n_x_y = cross(n, real3(0,1,0));
-		real3 n_x_z = cross(n, real3(0,0,1));
-		real n_x_xSq = n_x_x.lenSq();
-		real n_x_ySq = n_x_y.lenSq();
-		real n_x_zSq = n_x_z.lenSq();
-		real3 n2;
-		if (n_x_xSq > n_x_ySq) {
-			if (n_x_xSq > n_x_zSq) {
-				n2 = n_x_x;	//use x
-			} else {
-				n2 = n_x_z;	//use z
-			}
-		} else {
-			if (n_x_ySq > n_x_zSq) {
-				n2 = n_x_y;	//use y
-			} else {
-				n2 = n_x_z;	//use z
-			}
-		}
-		n2 = n2.unit();
-		real3 n3 = cross(n, n2);
-		return std::make_pair(n2, n3);
-	}
-
 	//nU = n^i
-	WaveVec applyEigL(Cons X, const Eigen& vars, real3 nU) const {
+	WaveVec applyEigL(Cons X, const Eigen& vars, const real3x3& nbU) const {
 		const real& Cs = vars.Cs;
 		const real3& vU = vars.v;	//v^i ... upper
 		const auto& vL = vU;		//v_i ... lower (not left)
 		const real& vSq = real3::dot(vU, vL);
-		
-		auto [n2U, n3U] = getPerpendicularBasis(nU);
-		const auto& n2L = n2U;
-		const auto& n3L = n3U;
+	
+		real3 nU(nbU(0,0), nbU(0,1), nbU(0,2));
+		real3 n2U(nbU(1,0), nbU(1,1), nbU(1,2));
+		real3 n3U(nbU(2,0), nbU(2,1), nbU(2,2));
+		real3 nL = nU;
+		real3 n2L = n2U;
+		real3 n3L = n3U;
 
 		real CsSq = Cs * Cs;
 		real heatRatioMinusOne = heatCapacityRatio - 1;
@@ -407,7 +389,6 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real denom = 2. * CsSq;
 		real invDenom = 1. / denom;
 
-		const auto& nL = nU;
 		const real nlen = 1;	//sqrt(real3::dot(n, nL));
 
 		real v_n = real3::dot(vU, nL);
@@ -458,13 +439,15 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return Y;
 	}
 
-	Cons applyEigR(Cons X, const Eigen& vars, real3 nU) const {
+	Cons applyEigR(Cons X, const Eigen& vars, const real3x3& nbU) const {
 		const real& Cs = vars.Cs;
 		const real3& vU = vars.v;	//v^i ... upper
 		const auto& vL = vU;		//v_i ... lower (not left)
 		const real& hTotal = vars.hTotal;
-
-		auto [n2U, n3U] = getPerpendicularBasis(nU);
+	
+		real3 nU(nbU(0,0), nbU(0,1), nbU(0,2));
+		real3 n2U(nbU(1,0), nbU(1,1), nbU(1,2));
+		real3 n3U(nbU(2,0), nbU(2,1), nbU(2,2));
 
 		const real& vSq = real3::dot(vU, vL);
 
@@ -618,16 +601,16 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	}
 #endif
 
-	Cons calcFluxFromCons(Cons U, real3 n) const {
+	Cons calcFluxFromCons(Cons U, const real3x3& n) const {
 		Prim W = primFromCons(U);
 		real hTotal = calc_hTotal(W.rho, W.P, U.ETotal);
 		Cons flux;
-		real m = real3::dot(U.m, n);
-		flux(0) = m;
-		flux(1) = m * W.v(0) + W.P * n(0);
-		flux(2) = m * W.v(1) + W.P * n(1);
-		flux(3) = m * W.v(2) + W.P * n(2);
-		flux(4) = m * hTotal;
+		real m_n = U.m(0) * n(0,0) + U.m(1) * n(0,1) + U.m(2) * n(0,2);
+		flux(0) = m_n;
+		flux(1) = m_n * W.v(0) + W.P * n(0,0);
+		flux(2) = m_n * W.v(1) + W.P * n(0,1);
+		flux(3) = m_n * W.v(2) + W.P * n(0,2);
+		flux(4) = m_n * hTotal;
 		return flux;
 	}
 

@@ -36,6 +36,10 @@ template<typename T> void glVertex3v(const T* v);
 template<> void glVertex3v<float>(const float* v) { glVertex3fv(v); }
 template<> void glVertex3v<double>(const double* v) { glVertex3dv(v); }
 
+template<typename T> void glVertex3(T x, T y, T z);
+template<> void glVertex3<float>(float x, float y, float z) { glVertex3f(x,y,z); }
+template<> void glVertex3<double>(double x, double y, double z) { glVertex3d(x,y,z); }
+
 
 namespace CFDMesh {
 namespace Mesh {
@@ -160,27 +164,34 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 			f.pos = (a.pos + b.pos) * .5;
 			real3 delta = a.pos - b.pos;
 			f.area = delta.length();
-			f.normal = real3(delta(1), -delta(0)).unit();
+			real3 normal = real3(delta(1), -delta(0)).unit();
+			f.normal(0,0) = normal(0);
+			f.normal(0,1) = normal(1);
+			f.normal(0,2) = normal(2);
 		} else if constexpr (dim == 3) {
 			std::vector<real3> polyVtxs(n);
 			for (int i = 0; i < n; ++i) {
 				polyVtxs[i] = vtxs[vs[i]].pos;
 			}
+			real3 normal;
 			for (int i = 0; i < n; ++i) {
 				int i2 = (i+1)%n;
 				int i3 = (i2+1)%n;
-				f.normal += cross(polyVtxs[i2] - polyVtxs[i], polyVtxs[i3] - polyVtxs[i2]);
+				normal += cross(polyVtxs[i2] - polyVtxs[i], polyVtxs[i3] - polyVtxs[i2]);
 			}
-			f.normal = f.normal.unit();
+			normal = normal.unit();
+			f.normal(0,0) = normal(0);
+			f.normal(0,1) = normal(1);
+			f.normal(0,2) = normal(2);
 #if 0
 std::cout << "building face with vertexes " << polyVtxs << std::endl;
 std::cout << "assigning normal to " 
 	<< (polyVtxs[1] - polyVtxs[0]) << " x " 
 	<< (polyVtxs[2] - polyVtxs[1]) << " = "
-	<< f.normal << std::endl;
+	<< normal << std::endl;
 #endif
-			f.area = polygon3DVolume(polyVtxs, f.normal);
-			f.pos = polygon3DCOM(polyVtxs, f.area, f.normal);
+			f.area = polygon3DVolume(polyVtxs, normal);
+			f.pos = polygon3DCOM(polyVtxs, f.area, normal);
 #if 0
 std::cout << "getting area " << f.area << " pos " << f.pos << std::endl;
 #endif
@@ -351,6 +362,32 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 
 	}
 
+	static std::pair<real3, real3> getPerpendicularBasis(real3 n) {
+		real3 n_x_x = cross(n, real3(1,0,0));
+		real3 n_x_y = cross(n, real3(0,1,0));
+		real3 n_x_z = cross(n, real3(0,0,1));
+		real n_x_xSq = n_x_x.lenSq();
+		real n_x_ySq = n_x_y.lenSq();
+		real n_x_zSq = n_x_z.lenSq();
+		real3 n2;
+		if (n_x_xSq > n_x_ySq) {
+			if (n_x_xSq > n_x_zSq) {
+				n2 = n_x_x;	//use x
+			} else {
+				n2 = n_x_z;	//use z
+			}
+		} else {
+			if (n_x_ySq > n_x_zSq) {
+				n2 = n_x_y;	//use y
+			} else {
+				n2 = n_x_z;	//use z
+			}
+		}
+		n2 = n2.unit();
+		real3 n3 = cross(n, n2);
+		return std::make_pair(n2, n3);
+	}
+
 	//calculate edge info
 	//calculate cell volume info
 	void calcAux() {
@@ -417,19 +454,21 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 			int a = f.cells(0);
 			int b = f.cells(1);
 			if (a != -1 && b != -1) {
-				if (real3::dot(cells[a].pos - cells[b].pos, f.normal) < 0) {
+				if (real3::dot(cells[a].pos - cells[b].pos, real3(f.normal(0,0), f.normal(0,1), f.normal(0,2))) < 0) {
 #if 0
 std::cout << "swapping cells so normal points to b" << std::endl;					
 #endif					
 					std::swap(a, b);
 					f.cells(0) = a;
 					f.cells(1) = b;
-					f.normal *= -1;
+					f.normal(0,0) *= -1;
+					f.normal(0,1) *= -1;
+					f.normal(0,2) *= -1;
 				}
 				//distance between cell centers
 				//f.cellDist = (cells[b].pos - cells[a].pos).length();
 				//distance projected to edge normal
-				f.cellDist = fabs(real3::dot(f.normal, cells[b].pos - cells[a].pos));
+				f.cellDist = fabs(real3::dot(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2)), cells[b].pos - cells[a].pos));
 			} else if (a != -1) {
 				f.cellDist = (cells[a].pos - f.pos).length() * 2.;
 			} else {
@@ -472,7 +511,16 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 				}
 			}
 		}
-#endif	
+#endif
+	
+		//build basis from normal
+		for (auto& f : faces) {
+			auto [n2, n3] = getPerpendicularBasis(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2)));
+			for (int i = 0; i < 3; ++i) {
+				f.normal(1,i) = n2(i);
+				f.normal(2,i) = n3(i);
+			}
+		}
 	}
 
 	struct DrawArgs {
@@ -585,8 +633,13 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			glColor3f(1,0,1);
 			glBegin(GL_LINES);
 			for (const auto& f : faces) {
-				glVertex3v(f.pos.v);
-				glVertex3v((f.pos + f.normal * f.area * .25).v);
+				for (int i = 0; i < 3; ++i) {
+					glVertex3v(f.pos.v);
+					glVertex3(
+						(f.pos(0) + f.normal(i,0) * f.area * .25),
+						(f.pos(1) + f.normal(i,1) * f.area * .25),
+						(f.pos(2) + f.normal(i,2) * f.area * .25));
+				}
 			}	
 			glEnd();
 		}
