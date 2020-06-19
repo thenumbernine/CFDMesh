@@ -228,7 +228,14 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		virtual const char* name() const { return "Spiral"; }
 		virtual Cons initCell(const This* eqn, real3 x) const {
 			real r = sqrt(x.lenSq());
-			return eqn->consFromPrim(Prim(1, real3(-x(1), x(0)) * (v0 / r), 1));
+			return eqn->consFromPrim(Prim(
+				1, 
+				real3(
+					-x(1), 
+					x(0)
+				) * (v0 / r), 
+				1)
+			);
 		}
 		
 		virtual void updateGUI() {

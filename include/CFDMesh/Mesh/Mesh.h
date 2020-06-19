@@ -123,26 +123,28 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 					}
 				}
 			} else if constexpr (dim == 3) {
-				for (int j = 0; j < n; ++j) {
-					//check in one direction
-					bool matches = true;
-					for (int i = 0; i < n; ++i) {
-						if (faceVtxIndexes[f->vtxOffset+i] != vs[(j+i)%n]) {
-							matches = false;
-							break;
+				if (f->vtxCount == n) {
+					for (int j = 0; j < n; ++j) {
+						//check in one direction
+						bool matches = true;
+						for (int i = 0; i < n; ++i) {
+							if (faceVtxIndexes[f->vtxOffset+i] != vs[(j+i)%n]) {
+								matches = false;
+								break;
+							}
 						}
-					}
-					if (matches) return fi;
-				
-					//check in the other direction
-					matches = true;
-					for (int i = 0; i < n; ++i) {
-						if (faceVtxIndexes[f->vtxOffset+i] != vs[(j+n-i)%n]) {
-							matches = false;
-							break;
+						if (matches) return fi;
+					
+						//check in the other direction
+						matches = true;
+						for (int i = 0; i < n; ++i) {
+							if (faceVtxIndexes[f->vtxOffset+i] != vs[(j+n-i)%n]) {
+								matches = false;
+								break;
+							}
 						}
+						if (matches) return fi;
 					}
-					if (matches) return fi;
 				}
 			}
 		}
