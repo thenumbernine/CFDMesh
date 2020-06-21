@@ -90,6 +90,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	using InitCond = typename Super::InitCond;
 	using DisplayMethod = typename Super::DisplayMethod;
 	
+	using real2 = Tensor::Vector<real, 2>;
 	using real3 = Tensor::Vector<real, 3>;
 	using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
 
@@ -231,8 +232,8 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 
 		virtual const char* name() const { return "Spiral"; }
 		virtual Cons initCell(const This* eqn, real3 x) const {
-			real r = sqrt(x.lenSq());
-			return eqn->consFromPrim(Prim(rho0, real3(-x(1), x(0), 0.) * (v0 / r), P0));
+			real r2 = sqrt(((real2)x).lenSq());
+			return eqn->consFromPrim(Prim(rho0, real3(-x(1), x(0), 0.) * (v0 / r2), P0));
 		}
 		
 		virtual void updateGUI() {
