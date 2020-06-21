@@ -15,7 +15,7 @@ struct PolarMeshFactory : public Quad2DMeshFactory<real, dim, Cons> {
 		Super::size = int2(20, 50);
 		Super::mins = real2(.1, 0);
 		Super::maxs = real2(1, 1);
-		Super::repeat = bool2(false, true);
+		Super::wrap = bool2(false, true);
 		Super::capmin = bool2(false, false);
 	}
 	virtual real2 coordChart(real2 v) const {

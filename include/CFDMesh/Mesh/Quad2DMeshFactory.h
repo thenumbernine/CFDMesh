@@ -21,7 +21,7 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 	int2 size = int2(20, 20);
 	float2 mins = real2(-1, -1);
 	float2 maxs = real2(1, 1);
-	bool2 repeat = bool2(false, false);
+	bool2 wrap = bool2(false, false);
 	bool2 capmin = bool2(false, false);
 	bool triangulate = false;
 	
@@ -29,7 +29,7 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 		std::make_pair("size", &This::size),
 		std::make_pair("mins", &This::mins),
 		std::make_pair("maxs", &This::maxs),
-		std::make_pair("repeat", &This::repeat),
+		std::make_pair("wrap", &This::wrap),
 		std::make_pair("capmin", &This::capmin),
 		std::make_pair("triangulate", &This::triangulate)
 	);
@@ -76,18 +76,20 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 		
 		mesh->vtxs.resize(vtxsize);
 		
-		int2 coordRangeMax = size;
-		if (repeat(0) || capmin(0)) ++coordRangeMax(0);
-		if (repeat(1) || capmin(1)) ++coordRangeMax(1);
+		int2 vtxmax = size;
+		for (int j = 0; j < 2; ++j) {
+			if (wrap(j) || capmin(j)) ++vtxmax(j);
+		}
 
 		int2 iofs;
-		if (capmin(0)) iofs(0) = 1;
-		if (capmin(1)) iofs(1) = 1;
+		for (int j = 0; j < 2; ++j) {
+			if (capmin(j)) iofs(j) = 1;
+		}
 
 		int2 i;
 		for (i(1) = 0; i(1) < n(1); ++i(1)) {
 			for (i(0) = 0; i(0) < n(0); ++i(0)) {
-				real2 x = (real2)(i + iofs) / (real2)coordRangeMax * (maxs - mins) + mins;
+				real2 x = (real2)(i + iofs) / (real2)vtxmax * (maxs - mins) + mins;
 				real2 u = this->coordChart(x);
 				mesh->vtxs[int2::dot(i, step)].pos = real3([&u](int i) -> real { 
 					return i < real2::size ? u(i) : 0.;
@@ -106,8 +108,9 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 
 		int2 imax;
 		for (int j = 0; j < 2; ++j) {
-			imax(j) = repeat(j) ? n(j) : n(j)-1;
+			imax(j) = wrap(j) ? n(j) : n(j)-1;
 		}
+		
 		int2 in;
 		for (i(1) = 0; i(1) < imax(1); ++i(1)) {
 			in(1) = (i(1) + 1) % n(1);

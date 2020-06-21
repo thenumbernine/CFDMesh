@@ -25,7 +25,7 @@ struct Torus3DMeshFactory : public Cube3DMeshFactory<real, dim, Cons> {
 		Super::size = int3(1, 4, 4);
 		Super::mins = real3(0, 0, 0);
 		Super::maxs = real3(1, 1, 1);
-		Super::repeat = bool3(false, true, true);
+		Super::wrap = bool3(false, true, true);
 	}
 
 	virtual real3 coordChart(real3 x) const {

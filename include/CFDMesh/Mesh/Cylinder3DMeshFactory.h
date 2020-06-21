@@ -15,7 +15,7 @@ struct Cylinder3DMeshFactory : public Cube3DMeshFactory<real, dim, Cons> {
 		Super::size = int3(10, 10, 10);
 		Super::mins = real3(.5, .5, 0);
 		Super::maxs = real3(1, 1., 1);
-		Super::repeat = bool3(false, true, false);
+		Super::wrap = bool3(false, true, false);
 		Super::capmin = bool3(true, false, false);
 	}
 	

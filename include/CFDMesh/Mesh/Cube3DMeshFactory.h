@@ -14,17 +14,17 @@ struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
 	using Mesh = typename Super::Mesh;
 	using real3 = typename Super::real3;
 
-	int3 size = int3(10,10,10);
+	int3 size = int3(8,8,8);
 	float3 mins = float3(-1, -1, -1);
 	float3 maxs = float3(1, 1, 1);
-	bool3 repeat;
+	bool3 wrap;
 	bool3 capmin;
 
 	static constexpr auto fields = std::make_tuple(
 		std::make_pair("size", &This::size),
 		std::make_pair("mins", &This::mins),
 		std::make_pair("maxs", &This::maxs),
-		std::make_pair("repeat", &This::repeat),
+		std::make_pair("wrap", &This::wrap),
 		std::make_pair("capmin", &This::capmin)
 	);
 
@@ -45,21 +45,26 @@ struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
 		int vtxsize = n.volume();
 		mesh->vtxs.resize(vtxsize);
 		
-		int3 imax;
+		int3 vtxmax = size;
 		for (int j = 0; j < 3; ++j) {
-			imax(j) = repeat(j) ? n(j) : n(j)-1;
+			if (wrap(j)) ++vtxmax(j);
 		}
 		
 		int3 i;
 		for (i(2) = 0; i(2) < n(2); ++i(2)) {
 			for (i(1) = 0; i(1) < n(1); ++i(1)) {
 				for (i(0) = 0; i(0) < n(0); ++i(0)) {
-					real3 x = (real3)i / (real3)imax * (maxs - mins) + mins;
+					real3 x = (real3)i / (real3)vtxmax * (maxs - mins) + mins;
 					mesh->vtxs[int3::dot(i, step)].pos = this->coordChart(x);
 				}
 			}
 		}
 		
+		int3 imax;
+		for (int j = 0; j < 3; ++j) {
+			imax(j) = wrap(j) ? n(j) : n(j)-1;
+		}
+			
 		int3 in;
 		for (i(2) = 0; i(2) < imax(2); ++i(2)) {
 			in(2) = (i(2) + 1) % n(2);
