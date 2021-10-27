@@ -111,10 +111,20 @@ struct Simulation : public ISimulation {
 	std::vector<const char*> displayMethodNames;
 
 
+	int calcFluxIndex = 0;
+
+	void resetMesh() {
+		timeFunc("building mesh", [this]() {
+			m = meshGenerators[meshGenerationIndex]->createMesh();
+		});
+		resetState();
+	}
 
 	//TODO
 	//this is not just reflection, but also has a lot of gui-specific data tied into it
 	//maybe I should call it a separate variable, like 'gui =' instead of 'fields =' ... ?
+	//
+	//in gcc c++20, I have to declare any member fields and functions that are referenced first, I get error: incomplete type
 	static constexpr auto fields = std::make_tuple(
 		std::make_tuple("time", &This::time, GUIReadOnly()),
 		
@@ -137,7 +147,7 @@ struct Simulation : public ISimulation {
 		std::make_pair("restitution", &This::restitution),
 		std::make_pair("rotateToAlign", &This::rotateToAlign),
 		GUISeparator(),
-		
+
 		std::make_pair("flux", &This::calcFluxIndex),	//TODO combo from calcFluxNames
 		GUISeparator(),
 
@@ -257,13 +267,6 @@ exit(0);
 	}
 
 	virtual void draw();
-
-	void resetMesh() {
-		timeFunc("building mesh", [this]() {
-			m = meshGenerators[meshGenerationIndex]->createMesh();
-		});
-		resetState();
-	}
 
 	virtual void resetState() {
 		running = false;
@@ -431,8 +434,6 @@ exit(0);
 	}
 
 	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real, const real3x3&);
-
-	int calcFluxIndex = 0;
 	
 	std::vector<CalcFluxFunc> calcFluxes = {
 		&Simulation::calcFluxRoe,
@@ -724,11 +725,11 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		
 		gui->onUpdate([this](){
 
-			if (igCombo("view method", &viewIndex, viewNames.data(), viewNames.size(), -1)) {
+			if (igComboStr_arr("view method", &viewIndex, viewNames.data(), viewNames.size(), -1)) {
 				view = views[viewIndex];
 			}
 
-			if (igCombo("simulation", &simGenIndex, simGenNames.data(), simGenNames.size(), -1)) {
+			if (igComboStr_arr("simulation", &simGenIndex, simGenNames.data(), simGenNames.size(), -1)) {
 				resetSimulation();
 				return;
 			}
@@ -773,13 +774,13 @@ void Simulation<real, dim, Equation>::updateGUI() {
 
 #if 1
 	igPushIDStr("mesh generation");
-	if (igCombo("", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
+	if (igComboStr_arr("", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
 		resetMesh();
 	}
 	igPopID();
 	igSameLine(0, 0);
 	igPushIDStr("mesh generation fields");
-	if (igCollapsingHeader("", 0)) {
+	if (igCollapsingHeaderTreeNodeFlags("", ImGuiTreeNodeFlags_None)) {
 		meshGenerators[meshGenerationIndex]->updateGUI();
 	}
 	igPopID();
@@ -816,7 +817,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 
 	igSeparator();
 
-	if (igCombo("display method", &displayMethodIndex, displayMethodNames.data(), displayMethodNames.size(), -1)) {
+	if (igComboStr_arr("display method", &displayMethodIndex, displayMethodNames.data(), displayMethodNames.size(), -1)) {
 		refreshDisplayValues();
 	}
 
@@ -830,7 +831,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	
 	igSeparator();
 
-	igCombo("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
+	igComboStr_arr("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
 	
 	igSeparator();
 	
@@ -839,11 +840,11 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	igSeparator();
 	
 	igPushIDStr("init cond");
-	igCombo("", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
+	igComboStr_arr("", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
 	igPopID();
 	igPushIDStr("init cond fields");
 	igSameLine(0, 0);
-	if (igCollapsingHeader("", 0)) {
+	if (igCollapsingHeaderTreeNodeFlags("", ImGuiTreeNodeFlags_None)) {
 		eqn.initConds[initCondIndex]->updateGUI();
 	}
 	igPopID();

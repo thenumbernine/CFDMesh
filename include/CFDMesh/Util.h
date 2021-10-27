@@ -6,6 +6,7 @@
 #include <regex>
 #include <string>
 #include <sstream>
+#include <chrono>
 #include <experimental/type_traits>	//is_detected_v
 
 template<typename T>
