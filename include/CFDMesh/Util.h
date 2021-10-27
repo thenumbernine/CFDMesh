@@ -7,15 +7,13 @@
 #include <string>
 #include <sstream>
 #include <chrono>
-#include <experimental/type_traits>	//is_detected_v
 
 template<typename T>
-using has_fields_t = decltype(T::fields);
+constexpr bool has_fields_v = requires(const T& t) { t.fields; };
 
 //if a typename has 'fields'...
-template<typename T>
-inline std::enable_if_t<std::experimental::is_detected_v<has_fields_t, T>, std::ostream&>
-operator<<(std::ostream& o, const T& b) {
+template<typename T> requires has_fields_v<T>
+inline std::ostream& operator<<(std::ostream& o, const T& b) {
 	o << "[";
 	Common::TupleForEach(T::fields, [&o, &b](const auto& x, size_t i) constexpr {
 		const auto& name = std::get<0>(x);
@@ -48,9 +46,8 @@ std::ostream& operator<<(std::ostream& o, const std::vector<T>& v) {
 namespace std {
 
 //if a typename has 'fields' then to_string uses objectStringFromOStream
-template<typename T>
-inline std::enable_if_t<std::experimental::is_detected_v<has_fields_t, T>, std::string>
-to_string(const T& x) {
+template<typename T> requires has_fields_v<T>
+inline std::string to_string(const T& x) {
 	return objectStringFromOStream(x);
 }
 
