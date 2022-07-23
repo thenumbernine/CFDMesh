@@ -17,6 +17,7 @@
 
 #include "Common/Exception.h"
 #include "Common/File.h"
+#include "Common/Meta.h"
 
 #include <algorithm>
 #include <memory>
@@ -241,7 +242,7 @@ exit(0);
 		));
 
 		//last update the names
-		displayMethodNames = map<
+		displayMethodNames = Common::mapElems<
 			decltype(displayMethods),
 			std::vector<char const *>
 		>(
@@ -255,7 +256,7 @@ exit(0);
 
 		meshGenerators = Mesh::getGens();
 		
-		meshGenerationNames = map<
+		meshGenerationNames = Common::mapElems<
 			decltype(meshGenerators),
 			std::vector<char const *>
 		>(
@@ -644,7 +645,7 @@ std::vector<std::pair<char const *, std::function<std::shared_ptr<ISimulation>(C
 	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real, 2>>>(app); }},
 };
 
-std::vector<char const *> simGenNames = map<
+std::vector<char const *> simGenNames = Common::mapElems<
 	decltype(simGens),
 	std::vector<char const *>
 >(

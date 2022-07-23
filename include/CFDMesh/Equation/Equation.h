@@ -104,7 +104,7 @@ struct Equation {
 			});	
 		}
 
-		initCondNames = map<
+		initCondNames = Common::mapElems<
 			decltype(initConds),
 			std::vector<const char*>
 		>(

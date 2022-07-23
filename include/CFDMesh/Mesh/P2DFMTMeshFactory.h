@@ -2,6 +2,7 @@
 
 #include "CFDMesh/Vector.h"
 #include "Common/File.h"
+#include "Common/Meta.h"
 #include <list>
 #include <vector>
 
@@ -32,7 +33,7 @@ struct P2DFMTMeshFactory : public MeshFactory<real, dim, Cons> {
 		std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
 		if (_x.front() == "") _x.pop_front();
 		if (_x.back() == "") _x.pop_back();
-		std::vector<real> x = map<
+		std::vector<real> x = Common::mapElems<
 			decltype(_x),
 			std::vector<real>
 		>(_x, [](const std::string& s) -> real { return std::stod(s); });

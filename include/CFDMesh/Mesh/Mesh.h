@@ -22,6 +22,7 @@
 #include "GLApp/gl.h"
 #include "Common/Macros.h"
 #include "Common/Exception.h"
+#include "Common/Meta.h"
 #include <vector>
 #include <list>
 #include <string>
@@ -250,7 +251,7 @@ std::cout << "adding cell " << vis << std::endl;
 					cellFaceIndexes.push_back(fi);
 				}
 			}
-			std::vector<real2> polyVtxs = map<
+			std::vector<real2> polyVtxs = Common::mapElems<
 				decltype(vis),
 				std::vector<real2>
 			>(vis, [this](int vi) -> real2 {
@@ -289,7 +290,7 @@ std::cout << "adding cell " << vis << std::endl;
 
 			for (auto const & side : identityCubeSides) {
 				
-				std::vector<int> thisFaceVtxIndexes = map<
+				std::vector<int> thisFaceVtxIndexes = Common::mapElems<
 					std::vector<int>,
 					std::vector<int>
 				>(side, [&vis](int side_i) -> int {
@@ -310,7 +311,7 @@ std::cout << "disregarding face with area " << f.area << std::endl;
 					} else {
 						cellFaceIndexes.push_back(fi);
 
-						cubeVtxs.push_back(map<
+						cubeVtxs.push_back(Common::mapElems<
 							decltype(thisFaceVtxIndexes),
 							std::vector<real3>
 						>(

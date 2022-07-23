@@ -99,16 +99,6 @@ std::string concat(T const & v, std::string const & sep) {
 	return result;
 }
 
-#warning TODO use Common/Meta.h vectorMap
-template<typename From, typename To>
-To map(From const & from, std::function<typename To::value_type(typename From::value_type)> f) {
-	To to;
-	for (auto const & v : from) {
-		to.push_back(f(v));
-	}
-	return to;
-}
-
 template<typename T>
 typename T::value_type sum(T const & t) {
 	return std::accumulate(t.begin(), t.end(), typename T::value_type());
