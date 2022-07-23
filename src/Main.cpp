@@ -588,6 +588,11 @@ std::cout << "time=" << time
 	<< "\tvlenMax=" << drawArgs.displayValueRange.second
 	<< std::endl;
 #endif
+	
+
+
+// hmm here todo .. what if i want to try out AMR / subdivision?
+
 	}
 	
 	void refreshDisplayValues() {

@@ -28,13 +28,13 @@
 #include <cassert>
 
 
-template<typename T> void glVertex2v(const T* v);
-template<> void glVertex2v<float>(const float* v) { glVertex2fv(v); }
-template<> void glVertex2v<double>(const double* v) { glVertex2dv(v); }
+template<typename T> void glVertex2v(T const * v);
+template<> void glVertex2v<float>(float const * v) { glVertex2fv(v); }
+template<> void glVertex2v<double>(double const * v) { glVertex2dv(v); }
 
-template<typename T> void glVertex3v(const T* v);
-template<> void glVertex3v<float>(const float* v) { glVertex3fv(v); }
-template<> void glVertex3v<double>(const double* v) { glVertex3dv(v); }
+template<typename T> void glVertex3v(T const * v);
+template<> void glVertex3v<float>(float const * v) { glVertex3fv(v); }
+template<> void glVertex3v<double>(double const * v) { glVertex3dv(v); }
 
 template<typename T> void glVertex3(T x, T y, T z);
 template<> void glVertex3<float>(float x, float y, float z) { glVertex3f(x,y,z); }
@@ -60,8 +60,8 @@ protected:
 		explicit ctorkey(int) {}
 	};
 
-	Mesh(const Mesh&) = delete;
-	const Mesh& operator=(const Mesh&) = delete;
+	Mesh(Mesh const &) = delete;
+	Mesh const & operator=(Mesh const &) = delete;
 
 	template <typename... T>
 	static ::std::shared_ptr<Mesh> create(T &&...args) {
@@ -80,11 +80,11 @@ public:
 	template<typename, int, typename> 
 	friend struct MeshFactory;
 	
-	explicit Mesh(const ctorkey&) {}
+	explicit Mesh(ctorkey const &) {}
 	virtual ~Mesh() {}
 
 
-	int addFaceForVtxs(const int* vs, int n) {
+	int addFaceForVtxs(int const * vs, int n) {
 #if 0
 		std::vector<int> uniquevs(vs, vs + n);
 std::cout << "requesting to build a face from " << uniquevs << std::endl;
@@ -204,7 +204,7 @@ std::cout << "getting area " << f.area << " pos " << f.pos << std::endl;
 	}
 
 	
-	int addFace(const int* vs, int n, int ci) {
+	int addFace(int const * vs, int n, int ci) {
 		int fi = addFaceForVtxs(vs, n);
 //		if (fi != -1) return fi;
 		Face& f = faces[fi];	
@@ -287,7 +287,7 @@ std::cout << "adding cell " << vis << std::endl;
 			//to pass to the polyhedron functions
 			std::vector<std::vector<real3>> cubeVtxs;
 
-			for (const auto& side : identityCubeSides) {
+			for (auto const & side : identityCubeSides) {
 				
 				std::vector<int> thisFaceVtxIndexes = map<
 					std::vector<int>,
@@ -299,7 +299,7 @@ std::cout << "adding cell " << vis << std::endl;
 				int fi = addFace(thisFaceVtxIndexes.data(), thisFaceVtxIndexes.size(), ci);
 //				if (fi != -1) 
 				{
-					const Face& f = faces[fi];
+					Face const & f = faces[fi];
 					
 					//if face area is zero then don't add it to cell's faces
 					// and don't use it later for determining cell's volume
@@ -433,11 +433,11 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 
 #if 0
 		std::cout << "vtxs" << std::endl;
-		for (const auto& v : vtxs) {
+		for (auto const & v : vtxs) {
 			std::cout << v << std::endl;
 		}
 		std::cout << "faces" << std::endl;
-		for (const auto& f : faces) {
+		for (auto const & f : faces) {
 			std::cout << f << std::endl;
 			for (int i = 0; i < f.vtxCount; ++i) {
 				std::cout << " local vtx[" << i << "] = global vtx[" << faceVtxIndexes[i + f.vtxOffset] << "] = " << vtxs[faceVtxIndexes[i + f.vtxOffset]] << std::endl;;
@@ -445,7 +445,7 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 		}
 		std::cout << "faceVtxIndexes " << faceVtxIndexes << std::endl;
 		std::cout << "cells" << std::endl;
-		for (const auto& c : cells) {
+		for (auto const & c : cells) {
 			std::cout << c << std::endl;
 		}
 		std::cout << "cellVtxIndexes " << cellVtxIndexes << std::endl;
@@ -565,7 +565,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			glColor3f(1,1,0);
 			glBegin(GL_POLYGON);
 			for (int vi = 0; vi < c.vtxCount; ++vi) {
-				const auto& v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
+				auto const & v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
 				glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
 			}
 			glEnd();
@@ -605,13 +605,13 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		glBegin(GL_POINTS);
 		if (args.showFaceCenters) {
 			glColor3f(1,0,1);
-			for (const auto& f : faces) {
+			for (auto const & f : faces) {
 				glVertex3v(f.pos.v);
 			}
 		}
 		if (args.showCellCenters) {
 			glColor3f(0,1,1);
-			for (const auto& c : cells) {
+			for (auto const & c : cells) {
 				glVertex3v(c.pos.v);
 			}
 		}
@@ -621,10 +621,10 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		glPointSize(1);
 		
 		if (args.showFaces) {
-			for (const auto& f : faces) {
+			for (auto const & f : faces) {
 				glBegin(GL_LINE_LOOP);
 				for (int vi = 0; vi < f.vtxCount; ++vi) {
-					const auto& v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
+					auto const & v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
 					glVertex3v(((v - f.pos) * args.cellScale + f.pos).v);
 				}
 				glEnd();
@@ -634,7 +634,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		if (args.showFaceNormals) {
 			glColor3f(1,0,1);
 			glBegin(GL_LINES);
-			for (const auto& f : faces) {
+			for (auto const & f : faces) {
 				for (int i = 0; i < 3; ++i) {
 					glVertex3v(f.pos.v);
 					glVertex3(
@@ -651,7 +651,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		glBindTexture(GL_TEXTURE_1D, args.gradientTex);
 
 		if (args.showCells) {
-			for (const auto& c : cells) {
+			for (auto const & c : cells) {
 				real f = (c.displayValue - args.displayValueRange.first) / (args.displayValueRange.second - args.displayValueRange.first);
 				glColor3f(1,1,1);
 				glTexCoord1f(f);
@@ -659,7 +659,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 				if constexpr (dim == 2) {
 					glBegin(GL_POLYGON);
 					for (int vi = 0; vi < c.vtxCount; ++vi) {
-						const auto& v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
+						auto const & v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
 						glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
 					}
 					glEnd();
@@ -668,7 +668,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 						Face& f = faces[cellFaceIndexes[i + c.faceOffset]];
 						glBegin(GL_POLYGON);
 						for (int vi = 0; vi < f.vtxCount; ++vi) {
-							const auto& v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
+							auto const & v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
 							glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
 						}
 						glEnd();
@@ -686,23 +686,23 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 	//	3D - polygon
 
 
-	static real polygon3DVolume(const std::vector<real3>& vs, real3 normal) {
+	static real polygon3DVolume(std::vector<real3> const & vs, real3 normal) {
 		size_t n = vs.size();
 		real volume = 0;
 		for (size_t i = 0; i < n; ++i) {
-			const real3 &a = vs[i];
-			const real3 &b = vs[(i+1)%n];
+			real3 const & a = vs[i];
+			real3 const & b = vs[(i+1)%n];
 			volume += parallelepipedVolume(a, b, normal);
 		}
 		return .5 * volume;
 	}
 
-	static real3 polygon3DCOM(const std::vector<real3>& vs, real area, real3 normal) {
+	static real3 polygon3DCOM(std::vector<real3> const & vs, real area, real3 normal) {
 		int n = (int)vs.size();
 #if 0
 		for (int i = 0; i < n; ++i) {
-			const real3& a = vs[i];
-			const real3& b = vs[(i+1)%n];
+			real3 const & a = vs[i];
+			real3 const & b = vs[(i+1)%n];
 			com += (a + b) * parallelepipedVolume(a, b, normal);
 		}
 		return com * (1. / (6. * area));
@@ -714,10 +714,10 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			return std::accumulate(vs.begin()+1, vs.end(), vs.front()) / (real)n;
 		}
 		real3 com;
-		const real3& a = vs[0];
+		real3 const & a = vs[0];
 		for (int i = 2; i < n; ++i) {
-			const real3& b = vs[i-1];
-			const real3& c = vs[i];
+			real3 const & b = vs[i-1];
+			real3 const & c = vs[i];
 			com += (a + b + c) * real3::dot(cross(c - a, c - b), normal);
 		}
 		return com * (1. / (6. * area));
@@ -739,18 +739,18 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 	//	2D - polygon
 
 
-	static real polygonVolume(const std::vector<real2>& vs) {
+	static real polygonVolume(std::vector<real2> const & vs) {
 		size_t n = vs.size();
 		real volume = 0;
 		for (size_t i = 0; i < n; ++i) {
-			const real2 &a = vs[i];
-			const real2 &b = vs[(i+1)%n];
+			real2 const & a = vs[i];
+			real2 const & b = vs[(i+1)%n];
 			volume += parallelogramVolume(a, b);
 		}
 		return .5 * volume;
 	}
 
-	static real2 polygonCOM(const std::vector<real2>& vs, real volume) {
+	static real2 polygonCOM(std::vector<real2> const & vs, real volume) {
 		size_t n = vs.size();
 		if (volume == 0) {
 			if (n == 0) {
@@ -760,8 +760,8 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		}
 		real2 com;
 		for (int i = 0; i < (int)n; ++i) {
-			const real2& a = vs[i];
-			const real2& b = vs[(i+1)%n];
+			real2 const & a = vs[i];
+			real2 const & b = vs[(i+1)%n];
 			com += (a + b) * parallelogramVolume(a, b);
 		}
 		return com * (1. / (6. * volume));
@@ -805,14 +805,14 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 	//	3D - polyhedron
 
 
-	static real polyhedronVolume(const std::vector<std::vector<real3>>& faces) {
+	static real polyhedronVolume(std::vector<std::vector<real3>> const & faces) {
 		real volume = 0;
-		for (const auto& face : faces) {
+		for (auto const & face : faces) {
 			for (int i = 2; i < (int)face.size(); ++i) {
 				//tri from 0, i-1, 1
-				const real3& a = face[0];
-				const real3& b = face[i-1];
-				const real3& c = face[i];
+				real3 const & a = face[0];
+				real3 const & b = face[i-1];
+				real3 const & c = face[i];
 				volume += parallelepipedVolume(a, b, c);
 			}
 		}
@@ -820,15 +820,15 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		return volume / 6.;
 	}
 
-	static real3 polyhedronCOM(const std::vector<std::vector<real3>>& faces, real volume) {
+	static real3 polyhedronCOM(std::vector<std::vector<real3>> const & faces, real volume) {
 		if (volume == 0) {
 			if (faces.size() == 0) {
 				throw Common::Exception() << "you can't get a COM without any vertexes";
 			}
 			real3 sum;
 			real total = {};
-			for (const auto& face : faces) {
-				for (const auto& vtx : face) {
+			for (auto const & face : faces) {
+				for (auto const & vtx : face) {
 					sum += vtx;
 					++total;
 				}
@@ -836,12 +836,12 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			return sum * (1. / (real)total);
 		}
 		real3 com;
-		for (const auto& face : faces) {
+		for (auto const & face : faces) {
 			for (int i = 2; i < (int)face.size(); ++i) {
 				//tri from 0, i-1, 1
-				const real3& a = face[0];
-				const real3& b = face[i-1];
-				const real3& c = face[i];
+				real3 const & a = face[0];
+				real3 const & b = face[i-1];
+				real3 const & c = face[i];
 				com += ((a + b) * (a + b) + (b + c) * (b + c) + (c + a) * (c + a)) * cross(b - a, c - a) / 48.;
 			}
 		}
