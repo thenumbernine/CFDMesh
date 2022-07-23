@@ -51,6 +51,7 @@ struct ISimulation {
 	CFDMeshApp* app = {};
 
 	ISimulation(CFDMeshApp* app_) : app(app_) {}
+	virtual ~ISimulation() {}
 
 	virtual void draw() = 0;
 	virtual void updateGUI() = 0;
@@ -75,7 +76,7 @@ struct Simulation : public ISimulation {
 
 
 	std::vector<std::shared_ptr<MeshFactory>> meshGenerators;
-	std::vector<const char*> meshGenerationNames;
+	std::vector<char const *> meshGenerationNames;
 
 	std::shared_ptr<Mesh> m;
 	std::function<Cons(real3)> initcond;
@@ -108,7 +109,7 @@ struct Simulation : public ISimulation {
 
 	
 	std::vector<std::shared_ptr<DisplayMethod>> displayMethods;
-	std::vector<const char*> displayMethodNames;
+	std::vector<char const *> displayMethodNames;
 
 
 	int calcFluxIndex = 0;
@@ -200,7 +201,7 @@ exit(0);
 		//TODO gui fields for DisplayMethod ?
 		displayMethods.push_back(std::make_shared<DisplayMethod>(
 			"eigenbasis orthogonality error",
-			[this](const ThisEquation* eqn, const Cell* c) -> float {
+			[this](ThisEquation const * const eqn, Cell const * const c) -> float {
 				const Face& face = m->faces[m->cellFaceIndexes[c->faceOffset]];
 				auto [UL, UR] = getEdgeStates(&face);
 				
@@ -242,10 +243,10 @@ exit(0);
 		//last update the names
 		displayMethodNames = map<
 			decltype(displayMethods),
-			std::vector<const char*>
+			std::vector<char const *>
 		>(
 			displayMethods,
-			[](const std::shared_ptr<DisplayMethod>& m) -> const char* {
+			[](std::shared_ptr<DisplayMethod> const & m) -> char const * {
 				return m->name.c_str();
 			}
 		);
@@ -256,10 +257,10 @@ exit(0);
 		
 		meshGenerationNames = map<
 			decltype(meshGenerators),
-			std::vector<const char*>
+			std::vector<char const *>
 		>(
 			meshGenerators,
-			[](const std::shared_ptr<MeshFactory>& m) -> const char* { return m->name; }
+			[](std::shared_ptr<MeshFactory> const & m) -> char const * { return m->name; }
 		);
 	
 
@@ -285,7 +286,7 @@ exit(0);
 		refreshDisplayValues();
 	}
 
-	std::pair<Cons, Cons> getEdgeStates(const Face* e) {
+	std::pair<Cons, Cons> getEdgeStates(Face const * const e) {
 		Cell* cL = e->cells(0) == -1 ? nullptr : &m->cells[e->cells(0)];
 		Cell* cR = e->cells(1) == -1 ? nullptr : &m->cells[e->cells(1)];
 		if (cL && cR) {
@@ -307,7 +308,7 @@ exit(0);
 			m->cells.begin(),
 			m->cells.end(),
 			[this](Cell& c) -> real {
-				const Cons& U = c.U;
+				Cons const & U = c.U;
 				real result = std::numeric_limits<real>::infinity();
 				for (int i = 0; i < c.faceCount; ++i) {
 					Face* f = &m->faces[m->cellFaceIndexes[i+c.faceOffset]];
@@ -330,7 +331,7 @@ exit(0);
 	//NOTICE: dt used for dt/dx with the flux limiter
 	//which needs slope information
 	//which I don't yet have
-	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt, const real3x3& n) {
+	Cons calcFluxRoe(Cons UL, Cons UR, real dx, real dt, real3x3 const & n) {
 		Eigen vars = eqn.calcRoeAvg(UL, UR);
 
 		WaveVec lambdas = eqn.getEigenvalues(vars, n);
@@ -395,7 +396,7 @@ exit(0);
 		return flux;
 	}
 
-	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt, const real3x3& n) {
+	Cons calcFluxHLL(Cons UL, Cons UR, real dx, real dt, real3x3 const & n) {
 		real lambdaMinL = eqn.calcLambdaMin(CalcLambdaVars(eqn, UL, n));
 		real lambdaMaxR = eqn.calcLambdaMax(CalcLambdaVars(eqn, UR, n));
 		
@@ -433,14 +434,14 @@ exit(0);
 		return flux;
 	}
 
-	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real, const real3x3&);
+	using CalcFluxFunc = Cons (Simulation::*)(Cons, Cons, real, real, real3x3 const &);
 	
 	std::vector<CalcFluxFunc> calcFluxes = {
 		&Simulation::calcFluxRoe,
 		&Simulation::calcFluxHLL,
 	};
 
-	std::vector<const char*> calcFluxNames = {
+	std::vector<char const *> calcFluxNames = {
 		"Roe",
 		"HLL",
 	};
@@ -603,7 +604,7 @@ std::cout << "time=" << time
 			drawArgs.displayValueRange = parallel.reduce(
 				m->cells.begin(),
 				m->cells.end(),
-				[](const Cell& c) -> ValueRange {
+				[](Cell const & c) -> ValueRange {
 					return ValueRange(c.displayValue, c.displayValue);
 				},
 				ValueRange(INFINITY, -INFINITY),
@@ -630,7 +631,7 @@ std::cout << "time=" << time
 	}
 };
 
-std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
+std::vector<std::pair<char const *, std::function<std::shared_ptr<ISimulation>(CFDMeshApp*)>>> simGens = {
 	{"3D Euler", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::Euler::Euler<real, 3>>>(app); }},
 	{"3D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 3, Equation::GLMMaxwell::GLMMaxwell<real, 3>>>(app); }},
 	
@@ -638,12 +639,12 @@ std::vector<std::pair<const char*, std::function<std::shared_ptr<ISimulation>(CF
 	{"2D GLM-Maxwell", [](CFDMeshApp* app) -> std::shared_ptr<ISimulation> { return std::make_shared<Simulation<real, 2, Equation::GLMMaxwell::GLMMaxwell<real, 2>>>(app); }},
 };
 
-std::vector<const char*> simGenNames = map<
+std::vector<char const *> simGenNames = map<
 	decltype(simGens),
-	std::vector<const char*>
+	std::vector<char const *>
 >(
 	simGens,
-	[](decltype(simGens)::value_type p) -> const char* { return p.first; }
+	[](decltype(simGens)::value_type p) -> char const * { return p.first; }
 );
 
 struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
@@ -659,12 +660,12 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 	int viewIndex = 1;
 	std::vector<std::shared_ptr<::GLApp::View>> views;
-	std::vector<const char*> viewNames = {"ortho", "frustum"};
+	std::vector<char const *> viewNames = {"ortho", "frustum"};
 
 
-	virtual const char* getTitle() { return "CFD Mesh"; }
+	virtual char const * getTitle() { return "CFD Mesh"; }
 
-	virtual void init(const Init& args) {
+	virtual void init(Init const & args) {
 		Super::init(args);
 
 		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
@@ -693,8 +694,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			float fp = 1 - fn;
 			int n1 = ip;
 			int n2 = (n1 + 1) % gradientColors.size();
-			const float4& c1 = gradientColors[n1];
-			const float4& c2 = gradientColors[n2];
+			float4 const & c1 = gradientColors[n1];
+			float4 const & c2 = gradientColors[n2];
 			float4 c = (c1 * fp + c2 * fn) * 255;
 			for (int j = 0; j < 4; ++j) {
 				c(j) = std::clamp<float>(c(j), 0, 255);
@@ -725,11 +726,11 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		
 		gui->onUpdate([this](){
 
-			if (igComboStr_arr("view method", &viewIndex, viewNames.data(), viewNames.size(), -1)) {
+			if (igCombo_Str_arr("view method", &viewIndex, viewNames.data(), viewNames.size(), -1)) {
 				view = views[viewIndex];
 			}
 
-			if (igComboStr_arr("simulation", &simGenIndex, simGenNames.data(), simGenNames.size(), -1)) {
+			if (igCombo_Str_arr("simulation", &simGenIndex, simGenNames.data(), simGenNames.size(), -1)) {
 				resetSimulation();
 				return;
 			}
@@ -773,14 +774,14 @@ template<typename real, int dim, typename Equation>
 void Simulation<real, dim, Equation>::updateGUI() {
 
 #if 1
-	igPushIDStr("mesh generation");
-	if (igComboStr_arr("", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
+	igPushID_Str("mesh generation");
+	if (igCombo_Str_arr("", &meshGenerationIndex, meshGenerationNames.data(), meshGenerationNames.size(), -1)) {
 		resetMesh();
 	}
 	igPopID();
 	igSameLine(0, 0);
-	igPushIDStr("mesh generation fields");
-	if (igCollapsingHeaderTreeNodeFlags("", ImGuiTreeNodeFlags_None)) {
+	igPushID_Str("mesh generation fields");
+	if (igCollapsingHeader_TreeNodeFlags("", ImGuiTreeNodeFlags_None)) {
 		meshGenerators[meshGenerationIndex]->updateGUI();
 	}
 	igPopID();
@@ -817,7 +818,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 
 	igSeparator();
 
-	if (igComboStr_arr("display method", &displayMethodIndex, displayMethodNames.data(), displayMethodNames.size(), -1)) {
+	if (igCombo_Str_arr("display method", &displayMethodIndex, displayMethodNames.data(), displayMethodNames.size(), -1)) {
 		refreshDisplayValues();
 	}
 
@@ -831,7 +832,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	
 	igSeparator();
 
-	igComboStr_arr("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
+	igCombo_Str_arr("flux", &calcFluxIndex, calcFluxNames.data(), calcFluxNames.size(), -1);
 	
 	igSeparator();
 	
@@ -839,12 +840,12 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	
 	igSeparator();
 	
-	igPushIDStr("init cond");
-	igComboStr_arr("", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
+	igPushID_Str("init cond");
+	igCombo_Str_arr("", &initCondIndex, eqn.initCondNames.data(), eqn.initCondNames.size(), -1);
 	igPopID();
-	igPushIDStr("init cond fields");
+	igPushID_Str("init cond fields");
 	igSameLine(0, 0);
-	if (igCollapsingHeaderTreeNodeFlags("", ImGuiTreeNodeFlags_None)) {
+	if (igCollapsingHeader_TreeNodeFlags("", ImGuiTreeNodeFlags_None)) {
 		eqn.initConds[initCondIndex]->updateGUI();
 	}
 	igPopID();

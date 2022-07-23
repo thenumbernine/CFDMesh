@@ -77,9 +77,10 @@ struct UpdateGUIField<T, std::tuple<const char*, B, GUIReadOnly>> {
 template<typename T>
 void UpdateGUI<T>::exec(T* ptr, std::string prefix) {
 	if constexpr (has_fields_v<T>) {
-		igPushIDPtr(ptr);
-		Common::TupleForEach(T::fields, [ptr, &prefix](auto x, size_t i) constexpr {
+		igPushID_Ptr(ptr);
+		Common::TupleForEach(T::fields, [ptr, &prefix](auto x, size_t i) constexpr -> bool {
 			UpdateGUIField<T, decltype(x)>::exec(ptr, prefix, x);
+			return false;
 		});
 		igPopID();
 	} else if constexpr (std::is_same_v<T, bool>) {

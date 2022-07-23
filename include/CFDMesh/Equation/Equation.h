@@ -74,7 +74,8 @@ struct Equation {
 		crtp_cast<Base>(*this).buildInitCondsAndDisplayVars();
 
 		//cycle through the Cons::fields tuple and add each of these
-		Common::TupleForEach(Cons::fields, [this](auto x, size_t i) constexpr {
+		//clang++ has a bug?  seems removed 'this' and you get an error, cuz 'this' needs to be captured, but keep 'this' and clang++ gives a warning that 'this' isn't needed ...
+		Common::TupleForEach(Cons::fields, [this](auto x, size_t i) constexpr -> bool {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			addDisplayForType<FieldType>(
@@ -84,10 +85,11 @@ struct Equation {
 					return U.*field; 
 				}
 			);
+			return false;
 		});
 
 		if constexpr (!std::is_same_v<Cons, Prim>) {
-			Common::TupleForEach(Prim::fields, [this](auto x, size_t i) constexpr {
+			Common::TupleForEach(Prim::fields, [this](auto x, size_t i) constexpr -> bool {
 				auto field = std::get<1>(x);
 				using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 				addDisplayForType<FieldType>(
@@ -98,6 +100,7 @@ struct Equation {
 						return W.*field; 
 					}
 				);
+				return false;
 			});	
 		}
 
@@ -131,7 +134,7 @@ struct Equation {
 	}
 
 	Cons rotateFrom(Cons U, const real3x3& nb) const {
-		Common::TupleForEach(Cons::fields, [&U, &nb](auto x, size_t i) constexpr {
+		Common::TupleForEach(Cons::fields, [&U, &nb](auto x, size_t i) constexpr -> bool {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real>) {
@@ -152,12 +155,13 @@ struct Equation {
 				throw Common::Exception() << "TODO implement this rotateFrom for this type";
 				//static_assert(false, "TODO implement this rotateFrom for this type");
 			}
+			return false;
 		});
 		return U;
 	}
 
 	Cons rotateTo(Cons U, const real3x3& nb) const {
-		Common::TupleForEach(Cons::fields, [&U, &nb](auto x, size_t i) constexpr {
+		Common::TupleForEach(Cons::fields, [&U, &nb](auto x, size_t i) constexpr -> bool {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real>) {
@@ -178,6 +182,7 @@ struct Equation {
 				throw Common::Exception() << "TODO implement this rotateFrom for this type";
 				//static_assert(false, "TODO implement this rotateFrom for this type");
 			}
+			return false;
 		});
 		return U;
 	}
@@ -186,12 +191,13 @@ struct Equation {
 	// at the moment if an edge is only connected to one face then it will not update
 	// and that means if there are constant values on both faces of the other edges ... 
 	Cons reflect(Cons U, const real3& normal, real restitution) {
-		Common::TupleForEach(Cons::fields, [&U, &normal, restitution](auto x, size_t i) constexpr {
+		Common::TupleForEach(Cons::fields, [&U, &normal, restitution](auto x, size_t i) constexpr -> bool {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
 				U.*field = U.*field - normal * ((1 + restitution) * real3::dot(normal, U.*field));
 			}
+			return false;
 		});
 		return U;
 	}

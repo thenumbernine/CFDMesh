@@ -136,15 +136,20 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 		vars.sqrt_1_eps = .5 * (UL.sqrt_1_eps + UR.sqrt_1_eps);
 		vars.sqrt_1_mu = .5 * (UL.sqrt_1_mu + UR.sqrt_1_mu);
 #if 0	//TODO map from eigen field to Cons field
-		Common::TupleForEach(Eigen::fields, [&UL, &UR](auto x, size_t i) constexpr {
+		Common::TupleForEach(Eigen::fields, [&UL, &UR](auto x, size_t i) constexpr -> bool {
 			auto field = std::get<1>(x);
 			vars.*field = (UL.*field + UR.*field) * .5;
+			return false;
 		});
 #endif
 		return vars;
 	}
 
-	static constexpr real sqrt_2 = sqrt(2);
+	//static constexpr real sqrt_2 = sqrt(2);
+	//clang++: error: constexpr variable 'sqrt_1_2' must be initialized by a constant expression
+	//https://stackoverflow.com/a/8622277 : std::sqrt is not defined as constexpr, according to section 26.8 of N3291: the C++11 FDIS
+	//doh.
+	static constexpr real sqrt_2 = (real)1.41421356237309514547462185873882845044136047363281;
 	static constexpr real sqrt_1_2 = 1. / sqrt_2;
 	static constexpr real speedOfLight = 1;
 	real divPhiWavespeed = speedOfLight;

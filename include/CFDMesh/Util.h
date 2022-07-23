@@ -9,34 +9,35 @@
 #include <chrono>
 
 template<typename T>
-constexpr bool has_fields_v = requires(const T& t) { t.fields; };
+constexpr bool has_fields_v = requires(T const & t) { t.fields; };
 
 //if a typename has 'fields'...
 template<typename T> requires has_fields_v<T>
-inline std::ostream& operator<<(std::ostream& o, const T& b) {
+inline std::ostream& operator<<(std::ostream& o, T const & b) {
 	o << "[";
-	Common::TupleForEach(T::fields, [&o, &b](const auto& x, size_t i) constexpr {
-		const auto& name = std::get<0>(x);
-		const auto& field = std::get<1>(x);
+	Common::TupleForEach(T::fields, [&o, &b](auto const & x, size_t i) constexpr -> bool {
+		auto const & name = std::get<0>(x);
+		auto const & field = std::get<1>(x);
 		if (i > 0) o << ", ";
 		o << name << "=" << b.*field;
+		return false;
 	});
 	o << "]";
 	return o;
 }
 
 template<typename T>
-std::string objectStringFromOStream(const T& x) {
+std::string objectStringFromOStream(T const & x) {
 	std::ostringstream ss;
 	ss << x;
 	return ss.str();
 }
 
 template<typename T>
-std::ostream& operator<<(std::ostream& o, const std::vector<T>& v) {
+std::ostream& operator<<(std::ostream& o, std::vector<T> const & v) {
 	o << "[";
-	const char* sep = "";
-	for (const auto& x : v) {
+	char const * sep = "";
+	for (auto const & x : v) {
 		o << sep << x;
 		sep = ", ";
 	}
@@ -47,22 +48,22 @@ namespace std {
 
 //if a typename has 'fields' then to_string uses objectStringFromOStream
 template<typename T> requires has_fields_v<T>
-inline std::string to_string(const T& x) {
+inline std::string to_string(T const & x) {
 	return objectStringFromOStream(x);
 }
 
-const std::string& to_string(const std::string& s) {
+std::string const & to_string(std::string const & s) {
 	return s;
 }
 	
 //TODO put this somewhere ...
 template<typename T, int n>
-std::string to_string(const Tensor::Vector<T, n>& x) {
+std::string to_string(Tensor::Vector<T, n> const & x) {
 	return objectStringFromOStream(x);
 }
 
 template<typename T>
-std::string to_string(const std::vector<T>& x) {
+std::string to_string(std::vector<T> const & x) {
 	return objectStringFromOStream(x);
 }
 
@@ -72,7 +73,7 @@ namespace CFDMesh {
 
 //https://stackoverflow.com/questions/16749069/c-split-string-by-regex
 template<typename T>
-T split(const std::string &string_to_split, const std::string& regexPattern) {
+T split(std::string const & string_to_split, std::string const & regexPattern) {
 	std::regex rgx(regexPattern);
 	std::sregex_token_iterator iter(string_to_split.begin(),
 		string_to_split.end(),
@@ -87,10 +88,10 @@ T split(const std::string &string_to_split, const std::string& regexPattern) {
 }
 
 template<typename T>
-std::string concat(const T& v, const std::string& sep) {
+std::string concat(T const & v, std::string const & sep) {
 	bool first = true;
 	std::string result = "";
-	for (const auto& s : v) {
+	for (auto const & s : v) {
 		if (!first) result += sep;
 		result += std::to_string(s);
 		first = false;
@@ -98,17 +99,18 @@ std::string concat(const T& v, const std::string& sep) {
 	return result;
 }
 
+#warning TODO use Common/Meta.h vectorMap
 template<typename From, typename To>
-To map(const From& from, std::function<typename To::value_type(typename From::value_type)> f) {
+To map(From const & from, std::function<typename To::value_type(typename From::value_type)> f) {
 	To to;
-	for (const auto& v : from) {
+	for (auto const & v : from) {
 		to.push_back(f(v));
 	}
 	return to;
 }
 
 template<typename T>
-typename T::value_type sum(const T& t) {
+typename T::value_type sum(T const & t) {
 	return std::accumulate(t.begin(), t.end(), typename T::value_type());
 }
 
