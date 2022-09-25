@@ -3,6 +3,7 @@
 #include "CFDMesh/Vector.h"
 #include "Common/File.h"
 #include "Common/Meta.h"
+#include "Common/String.h"	//Common::split
 #include <list>
 #include <vector>
 
@@ -22,15 +23,15 @@ struct P2DFMTMeshFactory : public MeshFactory<real, dim, Cons> {
 	virtual std::shared_ptr<Mesh> createMesh() {
 		std::shared_ptr<Mesh> mesh = MeshFactory<real, dim, Cons>::createMeshSuper();
 		
-		std::list<std::string> ls = split<std::list<std::string>>(Common::File::read(filename), "\n");
+		std::list<std::string> ls = Common::split<std::list<std::string>>(Common::File::read(filename), "\n");
 	
 		std::string first = ls.front();
 		ls.pop_front();
-		std::vector<std::string> m_n = split<std::vector<std::string>>(ls.front(), "\\s+");
+		std::vector<std::string> m_n = Common::split<std::vector<std::string>>(ls.front(), "\\s+");
 		ls.pop_front();
 		int m = std::stoi(m_n[0]);
 		int n = std::stoi(m_n[1]);
-		std::list<std::string> _x = split<std::list<std::string>>(concat<std::list<std::string>>(ls, " "), "\\s+");
+		std::list<std::string> _x = Common::split<std::list<std::string>>(Common::concat<std::list<std::string>>(ls, " "), "\\s+");
 		if (_x.front() == "") _x.pop_front();
 		if (_x.back() == "") _x.pop_back();
 		std::vector<real> x = Common::mapElems<

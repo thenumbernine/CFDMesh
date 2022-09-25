@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CFDMesh/Mesh/Cube3DMeshFactory.h"
-#include "CFDMesh/GUI.h"
+#include "ImGuiCommon/Reflect.h"
 
 namespace CFDMesh {
 namespace Mesh {
@@ -40,7 +40,7 @@ struct Torus3DMeshFactory : public Cube3DMeshFactory<real, dim, Cons> {
 	}
 
 	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
+		ImGuiCommon::updateGUI(this);
 	}
 };
 

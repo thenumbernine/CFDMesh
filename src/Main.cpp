@@ -1,7 +1,6 @@
 #include "CFDMesh/Equation/Euler.h"
 #include "CFDMesh/Equation/GLMMaxwell.h"
 #include "CFDMesh/Mesh/Mesh.h"
-#include "CFDMesh/Util.h"
 #include "CFDMesh/Vector.h"
 #include "GLApp/GLApp.h"
 #include "GLApp/ViewBehavior.h"
@@ -12,6 +11,7 @@
 #include "Common/Exception.h"
 #include "Common/File.h"
 #include "Common/Meta.h"
+#include "Common/Profile.h"	//timeFunc
 
 #include <algorithm>
 #include <memory>
@@ -110,7 +110,7 @@ struct Simulation : public ISimulation {
 	int calcFluxIndex = 0;
 
 	void resetMesh() {
-		timeFunc("building mesh", [this]() {
+		Common::timeFunc("building mesh", [this]() {
 			m = meshGenerators[meshGenerationIndex]->createMesh();
 		});
 		resetState();
@@ -122,7 +122,7 @@ struct Simulation : public ISimulation {
 	//
 	//in gcc c++20, I have to declare any member fields and functions that are referenced first, I get error: incomplete type
 	static constexpr auto fields = std::make_tuple(
-		std::make_tuple("time", &This::time, GUIReadOnly()),
+		std::make_tuple("time", &This::time, ImGuiCommon::GUIReadOnly()),
 		
 		//these are in Super ... inherit them automatically plz
 		std::make_pair("running", &Super::running),
@@ -133,7 +133,7 @@ struct Simulation : public ISimulation {
 		std::make_pair("dt", &This::dt),
 		std::make_pair("useFixedDT", &This::useFixedDT),
 		
-		GUISeparator(),
+		ImGuiCommon::GUISeparator(),
 		
 		std::make_pair("display method", &This::displayMethodIndex),	//TODO combo from displayMethodNames
 		std::make_pair("auto display range", &This::displayAutomaticRange),
@@ -142,26 +142,26 @@ struct Simulation : public ISimulation {
 
 		std::make_pair("restitution", &This::restitution),
 		std::make_pair("rotateToAlign", &This::rotateToAlign),
-		GUISeparator(),
+		ImGuiCommon::GUISeparator(),
 
 		std::make_pair("flux", &This::calcFluxIndex),	//TODO combo from calcFluxNames
-		GUISeparator(),
+		ImGuiCommon::GUISeparator(),
 
 //		GUICall<This>([](This* sim) { sim->eqn.updateGUI(); }),
 
-		GUISeparator(),
+		ImGuiCommon::GUISeparator(),
 		
 		std::make_pair("init cond", &This::initCondIndex),	//TODO combo from initCondNames
 		//TODO eqn.initConds[initCondIndex]->updateGUI() here
 		
 		std::make_pair("reset state", &This::resetState),	//button, not a field ... hmm
-		GUISeparator(),
+		ImGuiCommon::GUISeparator(),
 		
 		std::make_pair("mesh generation", &This::meshGenerationIndex),	//TODO combo from meshGenerationNames
 		//TODO meshGenerators[meshGenerationIndex]->updateGUI() here
 		
 		std::make_pair("reset mesh", &This::resetMesh),	//button
-		GUISeparator()
+		ImGuiCommon::GUISeparator()
 	);
 
 
@@ -810,11 +810,11 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	
 	if (igSmallButton("step")) singleStep = true;
 
-	CFDMesh::updateGUI(&cfl, "cfl");
-	CFDMesh::updateGUI(&dt, "dt");
-	CFDMesh::updateGUI(&useFixedDT, "use fixed dt");
+	ImGuiCommon::updateGUI(&cfl, "cfl");
+	ImGuiCommon::updateGUI(&dt, "dt");
+	ImGuiCommon::updateGUI(&useFixedDT, "use fixed dt");
 
-	CFDMesh::updateGUI(&drawArgs);
+	ImGuiCommon::updateGUI(&drawArgs);
 
 	igSeparator();
 
@@ -857,7 +857,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 	igSeparator();
 	
 #else
-	CFDMesh::updateGUI(this);
+	ImGuiCommon::updateGUI(this);
 #endif
 
 	if (app->view == app->viewOrtho) {

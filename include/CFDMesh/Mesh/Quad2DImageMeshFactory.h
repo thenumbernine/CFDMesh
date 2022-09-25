@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CFDMesh/Mesh/Quad2DMeshFactory.h"
-#include "CFDMesh/GUI.h"
+#include "ImGuiCommon/Reflect.h"
 #include "Image/Image.h"
 
 namespace CFDMesh {
@@ -51,7 +51,7 @@ struct Quad2DImageMeshFactory : public Quad2DMeshFactory<real, dim, Cons> {
 	);
 
 	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
+		ImGuiCommon::updateGUI(this);
 	}
 };
 

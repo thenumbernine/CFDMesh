@@ -2,7 +2,7 @@
 
 #include "CFDMesh/Mesh/MeshFactory.h"
 #include "CFDMesh/Vector.h"
-#include "CFDMesh/GUI.h"
+#include "ImGuiCommon/Reflect.h"
 
 namespace CFDMesh {
 namespace Mesh {
@@ -31,7 +31,7 @@ struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
 	Cube3DMeshFactory(const char* name_ = "cube mesh") : Super(name_) {}
 
 	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
+		ImGuiCommon::updateGUI(this);
 	}
 
 	virtual real3 coordChart(real3 x) const { return x; }

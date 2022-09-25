@@ -70,7 +70,6 @@ inline real3 cross(real3 a, real3 b) {
 		return res;\
 	}
 
-
 #define ADD_OPS(classname)\
 	real& operator()(int i) { return ptr[i]; }\
 	const real& operator()(int i) const { return ptr[i]; }\
@@ -91,4 +90,3 @@ inline real3 cross(real3 a, real3 b) {
 		return *this;\
 	}
 #endif
-

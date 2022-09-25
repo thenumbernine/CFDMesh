@@ -1,10 +1,9 @@
 #pragma once
 
 #include "CFDMesh/Vector.h"
-#include "CFDMesh/Util.h"	//map
 #include "CFDMesh/Mesh/Cell.h"
 #include "CFDMesh/Mesh/Face.h"
-#include "Common/Meta.h"
+#include "Common/String.h"
 #include "Common/crtp_cast.h"
 #include <vector>
 #include <memory>

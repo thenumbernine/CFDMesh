@@ -1,9 +1,9 @@
 #pragma once
 
 #include "CFDMesh/Equation/Equation.h"
-#include "CFDMesh/GUI.h"
-#include "CFDMesh/Util.h"
+#include "ImGuiCommon/Reflect.h"
 #include "Tensor/Vector.h"
+#include "Common/String.h"
 #include "Common/Macros.h"
 #include <utility>
 #include <tuple>
@@ -97,7 +97,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 			return lhs ? UL : UR;
 		}
 		virtual void updateGUI() {
-			CFDMesh::updateGUI(this);
+			ImGuiCommon::updateGUI(this);
 		}
 	};
 	
@@ -244,7 +244,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 	);
 
 	void updateGUI() {
-		CFDMesh::updateGUI(this);
+		ImGuiCommon::updateGUI(this);
 	}
 };
 

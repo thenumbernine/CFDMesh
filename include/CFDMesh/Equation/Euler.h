@@ -1,9 +1,9 @@
 #pragma once
 
 #include "CFDMesh/Equation/Equation.h"
-#include "CFDMesh/GUI.h"
-#include "CFDMesh/Util.h"
+#include "ImGuiCommon/Reflect.h"
 #include "Tensor/Vector.h"
+#include "Common/String.h"
 #include "Common/Macros.h"
 #include <utility>
 #include <tuple>
@@ -111,7 +111,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		}
 		
 		virtual void updateGUI() {
-			CFDMesh::updateGUI(this);
+			ImGuiCommon::updateGUI(this);
 		}
 	};
 
@@ -139,7 +139,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		}
 		
 		virtual void updateGUI() {
-			CFDMesh::updateGUI(this);
+			ImGuiCommon::updateGUI(this);
 		}
 	};
 	
@@ -163,7 +163,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		}
 
 		virtual void updateGUI() {
-			CFDMesh::updateGUI(this);
+			ImGuiCommon::updateGUI(this);
 		}
 	};
 
@@ -213,7 +213,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		}
 		
 		virtual void updateGUI() {
-			CFDMesh::updateGUI(this);
+			ImGuiCommon::updateGUI(this);
 		}
 	};
 
@@ -237,7 +237,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		}
 		
 		virtual void updateGUI() {
-			CFDMesh::updateGUI(this);
+			ImGuiCommon::updateGUI(this);
 		}
 	};
 
@@ -624,7 +624,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	);
 
 	void updateGUI() {
-		CFDMesh::updateGUI(this);
+		ImGuiCommon::updateGUI(this);
 	}
 };
 

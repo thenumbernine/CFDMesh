@@ -2,7 +2,7 @@
 
 #include "CFDMesh/Mesh/MeshFactory.h"
 #include "CFDMesh/Vector.h"
-#include "CFDMesh/GUI.h"
+#include "ImGuiCommon/Reflect.h"
 #include <vector>
 #include <memory>
 
@@ -37,7 +37,7 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 	Quad2DMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
 
 	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
+		ImGuiCommon::updateGUI(this);
 	}
 
 	virtual real2 coordChart(real2 x) const { 

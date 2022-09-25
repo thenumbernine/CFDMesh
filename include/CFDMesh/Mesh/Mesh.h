@@ -17,13 +17,12 @@
 #include "CFDMesh/Mesh/Face.h"
 #include "CFDMesh/Mesh/Cell.h"
 #include "CFDMesh/Vector.h"
-#include "CFDMesh/Util.h"
-#include "CFDMesh/GUI.h"
+#include "ImGuiCommon/Reflect.h"
 #include "GLCxx/Texture.h"
 #include "GLCxx/gl.h"
 #include "Common/Macros.h"
 #include "Common/Exception.h"
-#include "Common/Meta.h"
+#include "Common/String.h"
 #include <vector>
 #include <list>
 #include <string>
@@ -545,7 +544,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("display value range", &This::displayValueRange),
-			GUISeparator(),
+			ImGuiCommon::GUISeparator(),
 			
 			std::make_pair("show cells", &This::showCells),
 			std::make_pair("show vertexes", &This::showVtxs),

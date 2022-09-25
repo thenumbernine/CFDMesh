@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CFDMesh/Mesh/Quad2DMeshFactory.h"
-#include "CFDMesh/GUI.h"
+#include "ImGuiCommon/Reflect.h"
 
 namespace CFDMesh {
 namespace Mesh {
@@ -32,7 +32,7 @@ struct Quad2DRotateMeshFactory : public Quad2DMeshFactory<real, dim, Cons> {
 	}
 
 	virtual void updateGUI() {
-		CFDMesh::updateGUI(this);
+		ImGuiCommon::updateGUI(this);
 	}
 };
 
