@@ -19,7 +19,7 @@
 #include "CFDMesh/Vector.h"
 #include "CFDMesh/Util.h"
 #include "CFDMesh/GUI.h"
-#include "GLApp/gl.h"
+#include "GLCxx/gl.h"
 #include "Common/Macros.h"
 #include "Common/Exception.h"
 #include "Common/Meta.h"

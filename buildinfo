@@ -5,9 +5,7 @@ depends:append{
 	'../Tensor',
 	'../Parallel',
 	'../GLApp',
+	'../GLCxx',
 	'../ImGuiCommon',
 	'../Image',
 }
-cppver = 'c++20'
-compiler = 'clang++'	-- ok i'm stuck on 20.04 on one machine, and its gcc only has 9.4 up to c++17 ...
-linker = 'clang++'

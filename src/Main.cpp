@@ -1,20 +1,14 @@
 #include "CFDMesh/Equation/Euler.h"
 #include "CFDMesh/Equation/GLMMaxwell.h"
-
 #include "CFDMesh/Mesh/Mesh.h"
 #include "CFDMesh/Util.h"
 #include "CFDMesh/Vector.h"
-
-#include "GLApp/gl.h"
 #include "GLApp/GLApp.h"
 #include "GLApp/ViewBehavior.h"
-
 #include "ImGuiCommon/ImGuiCommon.h"
-
 #include "Parallel/Parallel.h"
-
+#include "GLCxx/gl.h"
 #include "Tensor/Tensor.h"
-
 #include "Common/Exception.h"
 #include "Common/File.h"
 #include "Common/Meta.h"
@@ -677,7 +671,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 		
 		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
-		viewFrustum->dist = 3;
+		viewFrustum->pos(2) = 3;
 		views = decltype(views){viewOrtho, viewFrustum};
 		view = views[viewIndex];
 
