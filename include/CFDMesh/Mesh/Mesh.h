@@ -19,6 +19,7 @@
 #include "CFDMesh/Vector.h"
 #include "CFDMesh/Util.h"
 #include "CFDMesh/GUI.h"
+#include "GLCxx/Texture.h"
 #include "GLCxx/gl.h"
 #include "Common/Macros.h"
 #include "Common/Exception.h"
@@ -531,7 +532,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 	
 		using ValueRange = std::pair<float, float>; //min, max
 
-		int gradientTex = 0;
+		GLCxx::Texture gradientTex;
 		ValueRange displayValueRange = {};
 		int selectedCellIndex = -1;
 		bool showCells = true;
@@ -579,8 +580,9 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		if (args.showVtxs) {
 			glPointSize(1);
 			glColor3f(1,1,1);
-			glEnable(GL_TEXTURE_1D);
-			glBindTexture(GL_TEXTURE_1D, args.gradientTex);
+			args.gradientTex
+				.enable()
+				.bind();
 			glBegin(GL_POINTS);
 			for (size_t i = 0; i < vtxs.size(); ++i) {
 				float f = ((float)i + .5) / (float)vtxs.size();
@@ -588,8 +590,9 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 				glVertex3v(vtxs[i].pos.v);
 			}
 			glEnd();
-			glBindTexture(GL_TEXTURE_1D, 0);
-			glDisable(GL_TEXTURE_1D);
+			args.gradientTex
+				.unbind()
+				.disable();
 		
 			glPointSize(3);
 			glColor3f(0,0,0);
@@ -648,8 +651,9 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		}
 
 
-		glEnable(GL_TEXTURE_1D);
-		glBindTexture(GL_TEXTURE_1D, args.gradientTex);
+		args.gradientTex
+			.enable()
+			.bind();
 
 		if (args.showCells) {
 			for (auto const & c : cells) {
@@ -678,8 +682,9 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			}
 		}
 
-		glBindTexture(GL_TEXTURE_1D, 0);
-		glDisable(GL_TEXTURE_1D);
+		args.gradientTex
+			.unbind()
+			.disable();
 		
 	}
 

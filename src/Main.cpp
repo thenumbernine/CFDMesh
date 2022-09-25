@@ -654,7 +654,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 	std::shared_ptr<ImGuiCommon::ImGuiCommon> gui;
 
-	GLuint gradientTex = {};
+	GLCxx::Texture gradientTex;
 
 	int simGenIndex = 0;
 
@@ -702,13 +702,13 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			}
 			gradientTexData[i] = (uchar4)c;
 		}
-		glGenTextures(1, &gradientTex);
-		glBindTexture(GL_TEXTURE_1D, gradientTex);
-		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA, gradientTexData.size(), 0, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->v);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-		glBindTexture(GL_TEXTURE_1D, 0);
+		gradientTex = GLCxx::Texture1D()
+			.bind()
+			.create1D(gradientTexData.size(), GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->v)
+			.setParam<GL_TEXTURE_MIN_FILTER>(GL_NEAREST)
+			.setParam<GL_TEXTURE_MAG_FILTER>(GL_LINEAR)
+			.setParam<GL_TEXTURE_WRAP_S>(GL_CLAMP)
+			.unbind();
 
 		glEnable(GL_DEPTH_TEST);
 
