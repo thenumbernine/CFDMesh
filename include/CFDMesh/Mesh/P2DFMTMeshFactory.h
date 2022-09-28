@@ -46,7 +46,7 @@ struct P2DFMTMeshFactory : public MeshFactory<real, dim, Cons> {
 
 		mesh->vtxs.resize(m*n);
 		for (int i = 0; i < (int)us.size(); ++i) {
-			mesh->vtxs[i].pos = real3(us[i], vs[i]);
+			mesh->vtxs[i].pos = real3(us[i], vs[i], 0);
 		}
 	
 		for (int j = 0; j < n-1; ++j) {

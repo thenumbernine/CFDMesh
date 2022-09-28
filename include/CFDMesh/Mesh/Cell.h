@@ -9,7 +9,7 @@ namespace Mesh {
 template<typename real, typename Cons>
 struct Cell {
 	using This = Cell;
-	using real3 = Tensor::Vector<real, 3>;
+	using real3 = Tensor::_vec<real, 3>;
 
 	real3 pos;
 	real volume = 0;

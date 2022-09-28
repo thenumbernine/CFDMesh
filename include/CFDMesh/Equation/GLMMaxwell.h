@@ -19,7 +19,7 @@ enum { numCons = 12 };
 template<typename real>
 union Cons_ {
 	using This = Cons_;
-	using real3 = Tensor::Vector<real, 3>;
+	using real3 = Tensor::_vec<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
 	struct {
@@ -71,13 +71,13 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 	using Prim = typename Super::Prim;
 
 	enum { numWaves = 8 };
-	using WaveVec = Tensor::Vector<real, numWaves>;
+	using WaveVec = Tensor::_vec<real, numWaves>;
 	
 	using InitCond = typename Super::InitCond;
 	using DisplayMethod = typename Super::DisplayMethod;
 	
-	using real3 = Tensor::Vector<real, 3>;
-	using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
+	using real3 = Tensor::_vec<real, 3>;
+	using real3x3 = Tensor::_mat<real, 3, 3>;
 
 	struct InitCondDefault : public InitCond {
 		using InitCond::InitCond;

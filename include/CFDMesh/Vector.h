@@ -21,15 +21,6 @@ using double3 = Tensor::double3;
 using double4 = Tensor::double4;
 
 
-template<typename real3>
-inline real3 cross(real3 a, real3 b) {
-	return real3(
-		a(1) * b(2) - a(2) * b(1),
-		a(2) * b(0) - a(0) * b(2),
-		a(0) * b(1) - a(1) * b(0));
-}
-
-
 //for giving operators to the Cons and Prim vector classes
 //how can you add correctly-typed ops via crtp to a union?
 //unions can't inherit.

@@ -48,8 +48,8 @@ namespace Mesh {
 //dim is the dimension of the manifold, not of the vectors (which are all 3D atm)
 template<typename real, int dim, typename Cons>
 struct Mesh {
-	using real2 = Tensor::Vector<real, 2>;
-	using real3 = Tensor::Vector<real, 3>;
+	using real2 = Tensor::_vec<real, 2>;
+	using real3 = Tensor::_vec<real, 3>;
 		
 	using Vertex = CFDMesh::Mesh::Vertex<real>;
 	using Face = CFDMesh::Mesh::Face<real, Cons>;
@@ -167,7 +167,7 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 			f.pos = (a.pos + b.pos) * .5;
 			real3 delta = a.pos - b.pos;
 			f.area = delta.length();
-			real3 normal = real3(delta(1), -delta(0)).unit();
+			real3 normal = Tensor::normalize(real3(delta(1), -delta(0), 0));
 			f.normal(0,0) = normal(0);
 			f.normal(0,1) = normal(1);
 			f.normal(0,2) = normal(2);
@@ -180,9 +180,9 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 			for (int i = 0; i < n; ++i) {
 				int i2 = (i+1)%n;
 				int i3 = (i2+1)%n;
-				normal += cross(polyVtxs[i2] - polyVtxs[i], polyVtxs[i3] - polyVtxs[i2]);
+				normal += Tensor::cross(polyVtxs[i2] - polyVtxs[i], polyVtxs[i3] - polyVtxs[i2]);
 			}
-			normal = normal.unit();
+			normal = Tensor::normalize(normal);
 			f.normal(0,0) = normal(0);
 			f.normal(0,1) = normal(1);
 			f.normal(0,2) = normal(2);
@@ -366,9 +366,9 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 	}
 
 	static std::pair<real3, real3> getPerpendicularBasis(real3 n) {
-		real3 n_x_x = cross(n, real3(1,0,0));
-		real3 n_x_y = cross(n, real3(0,1,0));
-		real3 n_x_z = cross(n, real3(0,0,1));
+		real3 n_x_x = Tensor::cross(n, real3(1,0,0));
+		real3 n_x_y = Tensor::cross(n, real3(0,1,0));
+		real3 n_x_z = Tensor::cross(n, real3(0,0,1));
 		real n_x_xSq = n_x_x.lenSq();
 		real n_x_ySq = n_x_y.lenSq();
 		real n_x_zSq = n_x_z.lenSq();
@@ -386,8 +386,8 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 				n2 = n_x_z;	//use z
 			}
 		}
-		n2 = n2.unit();
-		real3 n3 = cross(n, n2);
+		n2 = Tensor::normalize(n2);
+		real3 n3 = Tensor::cross(n, n2);
 		return std::make_pair(n2, n3);
 	}
 
@@ -457,7 +457,7 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 			int a = f.cells(0);
 			int b = f.cells(1);
 			if (a != -1 && b != -1) {
-				if (real3::dot(cells[a].pos - cells[b].pos, real3(f.normal(0,0), f.normal(0,1), f.normal(0,2))) < 0) {
+				if (Tensor::dot(cells[a].pos - cells[b].pos, real3(f.normal(0,0), f.normal(0,1), f.normal(0,2))) < 0) {
 #if 0
 std::cout << "swapping cells so normal points to b" << std::endl;					
 #endif					
@@ -471,7 +471,7 @@ std::cout << "swapping cells so normal points to b" << std::endl;
 				//distance between cell centers
 				//f.cellDist = (cells[b].pos - cells[a].pos).length();
 				//distance projected to edge normal
-				f.cellDist = fabs(real3::dot(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2)), cells[b].pos - cells[a].pos));
+				f.cellDist = fabs(Tensor::dot(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2)), cells[b].pos - cells[a].pos));
 			} else if (a != -1) {
 				f.cellDist = (cells[a].pos - f.pos).length() * 2.;
 			} else {
@@ -540,7 +540,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		bool showFaceNormals = false;
 		bool showFaceCenters = false;
 		bool showCellCenters = false;
-		float cellScale = 1;
+		real cellScale = 1;
 
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("display value range", &This::displayValueRange),
@@ -567,7 +567,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			glBegin(GL_POLYGON);
 			for (int vi = 0; vi < c.vtxCount; ++vi) {
 				auto const & v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
-				glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
+				glVertex3v(((v - c.pos) * args.cellScale + c.pos).s);
 			}
 			glEnd();
 			glColor3f(1,1,1);
@@ -586,7 +586,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			for (size_t i = 0; i < vtxs.size(); ++i) {
 				float f = ((float)i + .5) / (float)vtxs.size();
 				glTexCoord1f(f);
-				glVertex3v(vtxs[i].pos.v);
+				glVertex3v(vtxs[i].pos.s);
 			}
 			glEnd();
 			args.gradientTex
@@ -599,7 +599,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			for (size_t i = 0; i < vtxs.size(); ++i) {
 				float f = ((float)i + .5) / (float)vtxs.size();
 				glTexCoord1f(f);
-				glVertex3v(vtxs[i].pos.v);
+				glVertex3v(vtxs[i].pos.s);
 			}
 			glEnd();
 		}
@@ -609,13 +609,13 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		if (args.showFaceCenters) {
 			glColor3f(1,0,1);
 			for (auto const & f : faces) {
-				glVertex3v(f.pos.v);
+				glVertex3v(f.pos.s);
 			}
 		}
 		if (args.showCellCenters) {
 			glColor3f(0,1,1);
 			for (auto const & c : cells) {
-				glVertex3v(c.pos.v);
+				glVertex3v(c.pos.s);
 			}
 		}
 		glEnd();
@@ -628,7 +628,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 				glBegin(GL_LINE_LOOP);
 				for (int vi = 0; vi < f.vtxCount; ++vi) {
 					auto const & v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
-					glVertex3v(((v - f.pos) * args.cellScale + f.pos).v);
+					glVertex3v(((v - f.pos) * args.cellScale + f.pos).s);
 				}
 				glEnd();
 			}
@@ -639,7 +639,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			glBegin(GL_LINES);
 			for (auto const & f : faces) {
 				for (int i = 0; i < 3; ++i) {
-					glVertex3v(f.pos.v);
+					glVertex3v(f.pos.s);
 					glVertex3(
 						(f.pos(0) + f.normal(i,0) * f.area * .25),
 						(f.pos(1) + f.normal(i,1) * f.area * .25),
@@ -664,7 +664,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 					glBegin(GL_POLYGON);
 					for (int vi = 0; vi < c.vtxCount; ++vi) {
 						auto const & v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
-						glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
+						glVertex3v(((v - c.pos) * args.cellScale + c.pos).s);
 					}
 					glEnd();
 				} else if constexpr (dim == 3) {
@@ -673,7 +673,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 						glBegin(GL_POLYGON);
 						for (int vi = 0; vi < f.vtxCount; ++vi) {
 							auto const & v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
-							glVertex3v(((v - c.pos) * args.cellScale + c.pos).v);
+							glVertex3v(((v - c.pos) * args.cellScale + c.pos).s);
 						}
 						glEnd();
 					}
@@ -723,7 +723,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		for (int i = 2; i < n; ++i) {
 			real3 const & b = vs[i-1];
 			real3 const & c = vs[i];
-			com += (a + b + c) * real3::dot(cross(c - a, c - b), normal);
+			com += (a + b + c) * Tensor::dot(Tensor::cross(c - a, c - b), normal);
 		}
 		return com * (1. / (6. * area));
 #endif
@@ -847,7 +847,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 				real3 const & a = face[0];
 				real3 const & b = face[i-1];
 				real3 const & c = face[i];
-				com += ((a + b) * (a + b) + (b + c) * (b + c) + (c + a) * (c + a)) * cross(b - a, c - a) / 48.;
+				com += ((a + b) * (a + b) + (b + c) * (b + c) + (c + a) * (c + a)) * Tensor::cross(b - a, c - a) / 48.;
 			}
 		}
 		return com / volume;

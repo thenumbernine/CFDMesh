@@ -29,9 +29,9 @@ namespace CFDMesh {
 using real = double;
 //using real = float;
 
-using real2 = Tensor::Vector<real, 2>;
-using real3 = Tensor::Vector<real, 3>;
-using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
+using real2 = Tensor::_vec<real, 2>;
+using real3 = Tensor::_vec<real, 3>;
+using real3x3 = Tensor::_mat<real, 3, 3>;
 
 static Parallel::Parallel parallel;//(1);
 
@@ -696,7 +696,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 			int n2 = (n1 + 1) % gradientColors.size();
 			float4 const & c1 = gradientColors[n1];
 			float4 const & c2 = gradientColors[n2];
-			float4 c = (c1 * fp + c2 * fn) * 255;
+			float4 c = (c1 * fp + c2 * fn) * 255.f;
 			for (int j = 0; j < 4; ++j) {
 				c(j) = std::clamp<float>(c(j), 0, 255);
 			}
@@ -704,7 +704,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		}
 		gradientTex = GLCxx::Texture1D()
 			.bind()
-			.create1D(gradientTexData.size(), GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->v)
+			.create1D(gradientTexData.size(), GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->s)
 			.setParam<GL_TEXTURE_MIN_FILTER>(GL_NEAREST)
 			.setParam<GL_TEXTURE_MAG_FILTER>(GL_LINEAR)
 			.setParam<GL_TEXTURE_WRAP_S>(GL_CLAMP)

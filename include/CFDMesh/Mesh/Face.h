@@ -10,8 +10,8 @@ namespace Mesh {
 template<typename real, typename Cons>
 struct Face {
 	using This = Face;
-	using real3 = Tensor::Vector<real, 3>;
-	using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
+	using real3 = Tensor::_vec<real, 3>;
+	using real3x3 = Tensor::_mat<real, 3, 3>;
 	
 	real3 pos;
 	real3x3 normal;	//row-based for memory slicing 

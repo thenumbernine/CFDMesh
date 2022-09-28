@@ -4,6 +4,7 @@
 #include "CFDMesh/Mesh/Cell.h"
 #include "CFDMesh/Mesh/Face.h"
 #include "Common/String.h"
+#include "Common/Exception.h"
 #include "Common/crtp_cast.h"
 #include <vector>
 #include <memory>
@@ -24,7 +25,7 @@ struct FloatTypeForType<T, typename std::enable_if_t<std::is_floating_point_v<T>
 };
 
 template<typename T>
-struct FloatTypeForType<Tensor::Vector<T, 3>, typename std::enable_if_t<std::is_floating_point_v<T>>> {
+struct FloatTypeForType<Tensor::_vec<T, 3>, typename std::enable_if_t<std::is_floating_point_v<T>>> {
 	using Type = float3;
 };
 
@@ -36,9 +37,9 @@ template<
 	typename Prim_
 >
 struct Equation {
-	using real2 = Tensor::Vector<real, 2>;
-	using real3 = Tensor::Vector<real, 3>;
-	using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
+	using real2 = Tensor::_vec<real, 2>;
+	using real3 = Tensor::_vec<real, 3>;
+	using real3x3 = Tensor::_mat<real, 3, 3>;
 	
 	using Cons = Cons_;
 	using Prim = Prim_;
@@ -194,7 +195,7 @@ struct Equation {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
-				U.*field = U.*field - normal * ((1 + restitution) * real3::dot(normal, U.*field));
+				U.*field = U.*field - normal * ((1 + restitution) * Tensor::dot(normal, U.*field));
 			}
 			return false;
 		});

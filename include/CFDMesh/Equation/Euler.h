@@ -18,7 +18,7 @@ enum { numCons = 5 };
 template<typename real>
 union Cons_ {
 	using This = Cons_;
-	using real3 = Tensor::Vector<real, 3>;
+	using real3 = Tensor::_vec<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
 	struct {
@@ -48,7 +48,7 @@ union Cons_ {
 template<typename real>
 union Prim_ {
 	using This = Prim_;
-	using real3 = Tensor::Vector<real, 3>;
+	using real3 = Tensor::_vec<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
 	struct {
@@ -90,9 +90,9 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	using InitCond = typename Super::InitCond;
 	using DisplayMethod = typename Super::DisplayMethod;
 	
-	using real2 = Tensor::Vector<real, 2>;
-	using real3 = Tensor::Vector<real, 3>;
-	using real3x3 = Tensor::Tensor<real, Tensor::Upper<3>, Tensor::Lower<3>>;
+	using real2 = Tensor::_vec<real, 2>;
+	using real3 = Tensor::_vec<real, 3>;
+	using real3x3 = Tensor::_mat<real, 3, 3>;
 
 	float heatCapacityRatio = 1.4;
 
@@ -178,8 +178,8 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		float backgroundPressure = 2.5;
 		float velocity = .5;
 		
-		Prim Win = Prim(2, float3(-.5, 0), 2.5);
-		Prim Wout = Prim(1, float3(.5, 0), 2.5);
+		Prim Win = Prim(2, float3(-.5, 0, 0), 2.5);
+		Prim Wout = Prim(1, float3(.5, 0, 0), 2.5);
 	
 		static constexpr auto fields = std::make_tuple(
 			std::make_pair("rhoIn", &InitCondKelvinHelmholtz::rhoIn),
@@ -379,7 +379,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		const real& Cs = vars.Cs;
 		const real3& vU = vars.v;	//v^i ... upper
 		const auto& vL = vU;		//v_i ... lower (not left)
-		const real& vSq = real3::dot(vU, vL);
+		const real& vSq = Tensor::dot(vU, vL);
 	
 		real3 nU(nbU(0,0), nbU(0,1), nbU(0,2));
 		real3 n2U(nbU(1,0), nbU(1,1), nbU(1,2));
@@ -394,11 +394,11 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real denom = 2. * CsSq;
 		real invDenom = 1. / denom;
 
-		const real nlen = 1;	//sqrt(real3::dot(n, nL));
+		const real nlen = 1;	//sqrt(Tensor::dot(n, nL));
 
-		real v_n = real3::dot(vU, nL);
-		real v_n2 = real3::dot(vU, n2L);
-		real v_n3 = real3::dot(vU, n3L);
+		real v_n = Tensor::dot(vU, nL);
+		real v_n2 = Tensor::dot(vU, n2L);
+		real v_n3 = Tensor::dot(vU, n3L);
 
 		WaveVec Y;
 		Y.ptr[0] = (
@@ -454,14 +454,14 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real3 n2U(nbU(1,0), nbU(1,1), nbU(1,2));
 		real3 n3U(nbU(2,0), nbU(2,1), nbU(2,2));
 
-		const real& vSq = real3::dot(vU, vL);
+		const real& vSq = Tensor::dot(vU, vL);
 
-		real v_n = real3::dot(vL, nU);
-		real v_n2 = real3::dot(vL, n2U);
-		real v_n3 = real3::dot(vL, n3U);
+		real v_n = Tensor::dot(vL, nU);
+		real v_n2 = Tensor::dot(vL, n2U);
+		real v_n3 = Tensor::dot(vL, n3U);
 		
 		//const auto& nL = nU;
-		const real nlen = 1;	//sqrt(real3::dot(n, nL));
+		const real nlen = 1;	//sqrt(Tensor::dot(n, nL));
 
 		Cons Y;
 		Y.ptr[0] = (

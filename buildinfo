@@ -9,3 +9,8 @@ depends:append{
 	'../ImGuiCommon',
 	'../Image',
 }
+
+--[[ better template error messages, but misses static-sized index errors
+compiler = 'clang++'
+linker = 'clang++'
+--]]
