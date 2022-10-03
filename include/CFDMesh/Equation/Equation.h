@@ -16,16 +16,18 @@ namespace Equation {
 
 // reduce any floating point scalar/vector to 32-bit:
 
-template<typename T, typename Enable = void>
+template<typename T>
 struct FloatTypeForType;
 
 template<typename T>
-struct FloatTypeForType<T, typename std::enable_if_t<std::is_floating_point_v<T>>> { 
+requires (std::is_floating_point_v<T>)
+struct FloatTypeForType<T> { 
 	using Type = float;
 };
 
 template<typename T>
-struct FloatTypeForType<Tensor::_vec<T, 3>, typename std::enable_if_t<std::is_floating_point_v<T>>> {
+requires (std::is_floating_point_v<T>)
+struct FloatTypeForType<Tensor::_vec<T, 3>> {
 	using Type = float3;
 };
 
