@@ -670,8 +670,8 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 
 		gui = std::make_shared<ImGuiCommon::ImGuiCommon>(window, context);
 		
-		viewOrtho->zoom(0) = viewOrtho->zoom(1) = .5;
-		viewFrustum->pos(2) = 3;
+		viewOrtho->zoom = {.5, .5};
+		viewFrustum->pos.z = 3;
 		views = decltype(views){viewOrtho, viewFrustum};
 		view = views[viewIndex];
 
@@ -704,7 +704,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 		}
 		gradientTex = GLCxx::Texture1D()
 			.bind()
-			.create1D(gradientTexData.size(), GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->s)
+			.create1D(gradientTexData.size(), GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, gradientTexData.data()->s.data())
 			.setParam<GL_TEXTURE_MIN_FILTER>(GL_NEAREST)
 			.setParam<GL_TEXTURE_MAG_FILTER>(GL_LINEAR)
 			.setParam<GL_TEXTURE_WRAP_S>(GL_CLAMP)

@@ -217,7 +217,7 @@ std::cout << "getting area " << f.area << " pos " << f.pos << std::endl;
 			throw Common::Exception() << "tried to add too many cells to an edge";
 		}
 #if 0
-std::cout << "adding face " << fi << " as " << std::to_string(f) << " with vtx indexes " << std::vector<int>(vs, vs+n) << std::endl;
+std::cout << "adding face " << fi << " as " << f << " with vtx indexes " << std::vector<int>(vs, vs+n) << std::endl;
 if (f.cells(0) == -1 && f.cells(1) == -1) throw Common::Exception() << "here " << __FILE__ << ":" << __LINE__;
 #endif
 		return fi;
@@ -479,7 +479,7 @@ std::cout << "swapping cells so normal points to b" << std::endl;
 			}
 	
 #if 0	//DEBUG	//if we allow degenerate cells then we can have non-positive cell distances
-if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell distance " << std::to_string(f);
+if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell distance " << f;
 #endif
 		}
 
@@ -567,7 +567,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			glBegin(GL_POLYGON);
 			for (int vi = 0; vi < c.vtxCount; ++vi) {
 				auto const & v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
-				glVertex3v(((v - c.pos) * args.cellScale + c.pos).s);
+				glVertex3v(((v - c.pos) * args.cellScale + c.pos).s.data());
 			}
 			glEnd();
 			glColor3f(1,1,1);
@@ -586,7 +586,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			for (size_t i = 0; i < vtxs.size(); ++i) {
 				float f = ((float)i + .5) / (float)vtxs.size();
 				glTexCoord1f(f);
-				glVertex3v(vtxs[i].pos.s);
+				glVertex3v(vtxs[i].pos.s.data());
 			}
 			glEnd();
 			args.gradientTex
@@ -599,7 +599,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			for (size_t i = 0; i < vtxs.size(); ++i) {
 				float f = ((float)i + .5) / (float)vtxs.size();
 				glTexCoord1f(f);
-				glVertex3v(vtxs[i].pos.s);
+				glVertex3v(vtxs[i].pos.s.data());
 			}
 			glEnd();
 		}
@@ -609,13 +609,13 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		if (args.showFaceCenters) {
 			glColor3f(1,0,1);
 			for (auto const & f : faces) {
-				glVertex3v(f.pos.s);
+				glVertex3v(f.pos.s.data());
 			}
 		}
 		if (args.showCellCenters) {
 			glColor3f(0,1,1);
 			for (auto const & c : cells) {
-				glVertex3v(c.pos.s);
+				glVertex3v(c.pos.s.data());
 			}
 		}
 		glEnd();
@@ -628,7 +628,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 				glBegin(GL_LINE_LOOP);
 				for (int vi = 0; vi < f.vtxCount; ++vi) {
 					auto const & v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
-					glVertex3v(((v - f.pos) * args.cellScale + f.pos).s);
+					glVertex3v(((v - f.pos) * args.cellScale + f.pos).s.data());
 				}
 				glEnd();
 			}
@@ -639,7 +639,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			glBegin(GL_LINES);
 			for (auto const & f : faces) {
 				for (int i = 0; i < 3; ++i) {
-					glVertex3v(f.pos.s);
+					glVertex3v(f.pos.s.data());
 					glVertex3(
 						(f.pos(0) + f.normal(i,0) * f.area * .25),
 						(f.pos(1) + f.normal(i,1) * f.area * .25),
@@ -664,7 +664,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 					glBegin(GL_POLYGON);
 					for (int vi = 0; vi < c.vtxCount; ++vi) {
 						auto const & v = vtxs[cellVtxIndexes[vi + c.vtxOffset]].pos;
-						glVertex3v(((v - c.pos) * args.cellScale + c.pos).s);
+						glVertex3v(((v - c.pos) * args.cellScale + c.pos).s.data());
 					}
 					glEnd();
 				} else if constexpr (dim == 3) {
@@ -673,7 +673,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 						glBegin(GL_POLYGON);
 						for (int vi = 0; vi < f.vtxCount; ++vi) {
 							auto const & v = vtxs[faceVtxIndexes[vi + f.vtxOffset]].pos;
-							glVertex3v(((v - c.pos) * args.cellScale + c.pos).s);
+							glVertex3v(((v - c.pos) * args.cellScale + c.pos).s.data());
 						}
 						glEnd();
 					}

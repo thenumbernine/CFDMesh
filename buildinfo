@@ -10,7 +10,9 @@ depends:append{
 	'../Image',
 }
 
---[[ better template error messages, but misses static-sized index errors
+-- [[ better template error messages, but misses static-sized index errors
 compiler = 'clang++'
 linker = 'clang++'
 --]]
+-- g++ release only:	../Tensor/include/Tensor/Vector.h:543:28: warning: iteration 2 invokes undefined behavior [-Waggressive-loop-optimizations]
+-- clang++ both builds: include/CFDMesh/Equation/Equation.h:78:39: warning: lambda capture 'this' is not used [-Wunused-lambda-capture]
