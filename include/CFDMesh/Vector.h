@@ -1,7 +1,6 @@
 #pragma once
 
-#include "Tensor/Vector.h"
-#include "Tensor/Quat.h"
+#include "Tensor/Tensor.h"
 #include <cassert>
 
 using bool2 = Tensor::bool2;

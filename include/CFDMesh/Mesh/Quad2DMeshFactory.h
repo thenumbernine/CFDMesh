@@ -89,7 +89,7 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 		int2 i;
 		for (i(1) = 0; i(1) < n(1); ++i(1)) {
 			for (i(0) = 0; i(0) < n(0); ++i(0)) {
-				real2 x = (real2)(i + iofs) / (real2)vtxmax * (real2)(maxs - mins) + (real2)mins;
+				real2 x = ((real2)(i + iofs) / (real2)vtxmax).elemMul((real2)(maxs - mins)) + (real2)mins;
 				real2 u = this->coordChart(x);
 				mesh->vtxs[Tensor::dot(i, step)].pos = (real3)u;
 			}

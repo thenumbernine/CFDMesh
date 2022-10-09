@@ -167,7 +167,7 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 			f.pos = (a.pos + b.pos) * .5;
 			real3 delta = a.pos - b.pos;
 			f.area = delta.length();
-			real3 normal = Tensor::normalize(real3(delta(1), -delta(0), 0));
+			real3 normal = real3(delta(1), -delta(0), 0).normalize();
 			f.normal(0,0) = normal(0);
 			f.normal(0,1) = normal(1);
 			f.normal(0,2) = normal(2);
@@ -180,12 +180,10 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 			for (int i = 0; i < n; ++i) {
 				int i2 = (i+1)%n;
 				int i3 = (i2+1)%n;
-				normal += Tensor::cross(polyVtxs[i2] - polyVtxs[i], polyVtxs[i3] - polyVtxs[i2]);
+				normal += (polyVtxs[i2] - polyVtxs[i]).cross(polyVtxs[i3] - polyVtxs[i2]);
 			}
 			normal = Tensor::normalize(normal);
-			f.normal(0,0) = normal(0);
-			f.normal(0,1) = normal(1);
-			f.normal(0,2) = normal(2);
+			f.normal(0) = normal;
 #if 0
 std::cout << "building face with vertexes " << polyVtxs << std::endl;
 std::cout << "assigning normal to " 
@@ -464,14 +462,12 @@ std::cout << "swapping cells so normal points to b" << std::endl;
 					std::swap(a, b);
 					f.cells(0) = a;
 					f.cells(1) = b;
-					f.normal(0,0) *= -1;
-					f.normal(0,1) *= -1;
-					f.normal(0,2) *= -1;
+					f.normal(0) *= -1;
 				}
 				//distance between cell centers
 				//f.cellDist = (cells[b].pos - cells[a].pos).length();
 				//distance projected to edge normal
-				f.cellDist = fabs(Tensor::dot(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2)), cells[b].pos - cells[a].pos));
+				f.cellDist = fabs(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2)).dot(cells[b].pos - cells[a].pos));
 			} else if (a != -1) {
 				f.cellDist = (cells[a].pos - f.pos).length() * 2.;
 			} else {
@@ -640,10 +636,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 			for (auto const & f : faces) {
 				for (int i = 0; i < 3; ++i) {
 					glVertex3v(f.pos.s.data());
-					glVertex3(
-						(f.pos(0) + f.normal(i,0) * f.area * .25),
-						(f.pos(1) + f.normal(i,1) * f.area * .25),
-						(f.pos(2) + f.normal(i,2) * f.area * .25));
+					glVertex3v((f.pos + f.normal(i) * f.area * .25).s.data());
 				}
 			}	
 			glEnd();
@@ -723,7 +716,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		for (int i = 2; i < n; ++i) {
 			real3 const & b = vs[i-1];
 			real3 const & c = vs[i];
-			com += (a + b + c) * Tensor::dot(Tensor::cross(c - a, c - b), normal);
+			com += (a + b + c) * (c - a).cross(c - b).dot(normal);
 		}
 		return com * (1. / (6. * area));
 #endif
@@ -736,8 +729,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 
 	static real parallelogramVolume(real2 a, real2 b) {
 		//epsilon_ij a^i b^j
-		return a(0) * b(1)
-			- a(1) * b(0);
+		return Tensor::determinant(Tensor::_tensorr<real, 2, 2>(a, b));
 	}
 
 
@@ -798,12 +790,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 
 	static real parallelepipedVolume(real3 a, real3 b, real3 c) {
 		//epsilon_ijk a^i b^j c^k
-		return a(0) * b(1) * c(2)
-			+ a(1) * b(2) * c(0)
-			+ a(2) * b(0) * c(1)
-			- c(0) * b(1) * a(2)
-			- c(1) * b(2) * a(0)
-			- c(2) * b(0) * a(1);
+		return Tensor::determinant(Tensor::_tensorr<real, 3, 2>(a, b, c));
 	}
 
 
@@ -847,7 +834,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 				real3 const & a = face[0];
 				real3 const & b = face[i-1];
 				real3 const & c = face[i];
-				com += ((a + b) * (a + b) + (b + c) * (b + c) + (c + a) * (c + a)) * Tensor::cross(b - a, c - a) / 48.;
+				com += ((a + b).elemMul(a + b) + (b + c).elemMul(b + c) + (c + a).elemMul(c + a)).elemMul((b - a).cross(c - a)) / 48.;
 			}
 		}
 		return com / volume;

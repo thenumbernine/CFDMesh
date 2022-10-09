@@ -2,7 +2,7 @@
 
 #include "CFDMesh/Equation/Equation.h"
 #include "ImGuiCommon/Reflect.h"
-#include "Tensor/Vector.h"
+#include "Tensor/Tensor.h"
 #include "Common/String.h"
 #include "Common/Macros.h"
 #include <utility>
