@@ -364,9 +364,9 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 	}
 
 	static std::pair<real3, real3> getPerpendicularBasis(real3 n) {
-		real3 n_x_x = Tensor::cross(n, real3(1,0,0));
-		real3 n_x_y = Tensor::cross(n, real3(0,1,0));
-		real3 n_x_z = Tensor::cross(n, real3(0,0,1));
+		real3 n_x_x = n.cross(real3(1,0,0));
+		real3 n_x_y = n.cross(real3(0,1,0));
+		real3 n_x_z = n.cross(real3(0,0,1));
 		real n_x_xSq = n_x_x.lenSq();
 		real n_x_ySq = n_x_y.lenSq();
 		real n_x_zSq = n_x_z.lenSq();
