@@ -864,7 +864,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 		//find the view bounds
 		//find the mouse position
 		//find any cells at that position
-		real2 pos = (real2)((mousepos - .5f) * float2(1, -1) * float2(app->getAspectRatio(), 1) / float2(app->viewOrtho->zoom(0), app->viewOrtho->zoom(1)) + app->viewOrtho->pos);
+		real2 pos = (real2)((mousepos - .5f).elemMul(float2(app->getAspectRatio(), -1)) / float2(app->viewOrtho->zoom(0), app->viewOrtho->zoom(1)) + app->viewOrtho->pos);
 			
 		bool canHandleMouse = !igGetIO()->WantCaptureMouse;
 		
@@ -881,10 +881,7 @@ void Simulation<real, dim, Equation>::updateGUI() {
 				pos,
 				m->cellVtxIndexes.begin() + c->vtxOffset,
 				m->cellVtxIndexes.begin() + c->vtxOffset + c->vtxCount,
-				[this](int i) -> real2 {
-					typename Mesh::Vertex& vi = m->vtxs[i];
-					return real2([&vi](int j) -> real { return vi.pos(j); });
-				}
+				[this](int i) -> real2 { return (real2)m->vtxs[i].pos; }
 			)) {
 				drawArgs.selectedCellIndex = i;
 				break;

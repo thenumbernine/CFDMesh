@@ -44,7 +44,7 @@ struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
 		
 		int vtxsize = n.volume();
 		mesh->vtxs.resize(vtxsize);
-		
+
 		int3 vtxmax = size;
 		for (int j = 0; j < 3; ++j) {
 			if (wrap(j)) ++vtxmax(j);
@@ -54,7 +54,7 @@ struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
 		for (i(2) = 0; i(2) < n(2); ++i(2)) {
 			for (i(1) = 0; i(1) < n(1); ++i(1)) {
 				for (i(0) = 0; i(0) < n(0); ++i(0)) {
-					real3 x = (real3)i / (real3)vtxmax * (real3)(maxs - mins) + (real3)mins;
+					real3 x = ((real3)i / (real3)vtxmax).elemMul((real3)(maxs - mins)) + (real3)mins;
 					mesh->vtxs[Tensor::dot(i, step)].pos = this->coordChart(x);
 				}
 			}
