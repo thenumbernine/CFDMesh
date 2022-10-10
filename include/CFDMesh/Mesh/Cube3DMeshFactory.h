@@ -55,7 +55,7 @@ struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
 			for (i(1) = 0; i(1) < n(1); ++i(1)) {
 				for (i(0) = 0; i(0) < n(0); ++i(0)) {
 					real3 x = ((real3)i / (real3)vtxmax).elemMul((real3)(maxs - mins)) + (real3)mins;
-					mesh->vtxs[Tensor::dot(i, step)].pos = this->coordChart(x);
+					mesh->vtxs[i.dot(step)].pos = this->coordChart(x);
 				}
 			}
 		}

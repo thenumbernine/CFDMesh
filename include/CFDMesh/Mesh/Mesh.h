@@ -182,7 +182,7 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 				int i3 = (i2+1)%n;
 				normal += (polyVtxs[i2] - polyVtxs[i]).cross(polyVtxs[i3] - polyVtxs[i2]);
 			}
-			normal = Tensor::normalize(normal);
+			normal = normal.normalize();
 			f.normal(0) = normal;
 #if 0
 std::cout << "building face with vertexes " << polyVtxs << std::endl;
@@ -364,9 +364,12 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 	}
 
 	static std::pair<real3, real3> getPerpendicularBasis(real3 n) {
-		real3 n_x_x = n.cross(real3(1,0,0));
-		real3 n_x_y = n.cross(real3(0,1,0));
-		real3 n_x_z = n.cross(real3(0,0,1));
+		constexpr auto L = Tensor::_asymR<real, 3, 3>(1);	//1 real.  hopefully I can constexpr enough to compile away.
+		auto dualn = n * L;	//real3a3 ... 3 reals, representing a 3x3 antisymmetric matrix
+		auto dualnm = (Tensor::_mat<real,3,3>)dualn;
+		real3 n_x_x = dualnm(0);
+		real3 n_x_y = dualnm(1);
+		real3 n_x_z = dualnm(2);
 		real n_x_xSq = n_x_x.lenSq();
 		real n_x_ySq = n_x_y.lenSq();
 		real n_x_zSq = n_x_z.lenSq();
@@ -384,8 +387,8 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 				n2 = n_x_z;	//use z
 			}
 		}
-		n2 = Tensor::normalize(n2);
-		real3 n3 = Tensor::cross(n, n2);
+		n2 = n2.normalize();
+		real3 n3 = n.cross(n2);
 		return std::make_pair(n2, n3);
 	}
 
@@ -455,7 +458,7 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 			int a = f.cells(0);
 			int b = f.cells(1);
 			if (a != -1 && b != -1) {
-				if (Tensor::dot(cells[a].pos - cells[b].pos, real3(f.normal(0,0), f.normal(0,1), f.normal(0,2))) < 0) {
+				if ((cells[a].pos - cells[b].pos).dot(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2))) < 0) {
 #if 0
 std::cout << "swapping cells so normal points to b" << std::endl;					
 #endif					
@@ -729,6 +732,10 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 
 	static real parallelogramVolume(real2 a, real2 b) {
 		//epsilon_ij a^i b^j
+		// this is giving me link errors ... 
+		// even tho it's forward-declared and the body is provided
+		//return Tensor::_tensorr<real, 2, 2>(a, b).determinant();
+		// so you can't use it, gotta clll the original:
 		return Tensor::determinant(Tensor::_tensorr<real, 2, 2>(a, b));
 	}
 
@@ -790,6 +797,9 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 
 	static real parallelepipedVolume(real3 a, real3 b, real3 c) {
 		//epsilon_ijk a^i b^j c^k
+		// link errors
+		//return Tensor::_tensorr<real, 3, 2>(a, b, c).determinant();
+		// so until then
 		return Tensor::determinant(Tensor::_tensorr<real, 3, 2>(a, b, c));
 	}
 

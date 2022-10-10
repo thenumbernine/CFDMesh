@@ -376,14 +376,14 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 
 	//nU = n^i
 	WaveVec applyEigL(Cons X, const Eigen& vars, const real3x3& nbU) const {
-		const real& Cs = vars.Cs;
-		const real3& vU = vars.v;	//v^i ... upper
-		const auto& vL = vU;		//v_i ... lower (not left)
-		const real& vSq = Tensor::dot(vU, vL);
+		real const & Cs = vars.Cs;
+		real3 const & vU = vars.v;	//v^i ... upper
+		auto const & vL = vU;		//v_i ... lower (not left)
+		real const vSq = vU.dot(vL);
 	
-		real3 nU(nbU(0,0), nbU(0,1), nbU(0,2));
-		real3 n2U(nbU(1,0), nbU(1,1), nbU(1,2));
-		real3 n3U(nbU(2,0), nbU(2,1), nbU(2,2));
+		real3 nU = nbU(0);
+		real3 n2U = nbU(1);
+		real3 n3U = nbU(2);
 		real3 nL = nU;
 		real3 n2L = n2U;
 		real3 n3L = n3U;
@@ -394,11 +394,11 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real denom = 2. * CsSq;
 		real invDenom = 1. / denom;
 
-		const real nlen = 1;	//sqrt(Tensor::dot(n, nL));
+		const real nlen = 1;	//sqrt(n.dot(nL));
 
-		real v_n = Tensor::dot(vU, nL);
-		real v_n2 = Tensor::dot(vU, n2L);
-		real v_n3 = Tensor::dot(vU, n3L);
+		real v_n = vU.dot(nL);
+		real v_n2 = vU.dot(n2L);
+		real v_n3 = vU.dot(n3L);
 
 		WaveVec Y;
 		Y.ptr[0] = (
@@ -445,23 +445,23 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	}
 
 	Cons applyEigR(Cons X, const Eigen& vars, const real3x3& nbU) const {
-		const real& Cs = vars.Cs;
-		const real3& vU = vars.v;	//v^i ... upper
-		const auto& vL = vU;		//v_i ... lower (not left)
-		const real& hTotal = vars.hTotal;
+		real const & Cs = vars.Cs;
+		real3 const & vU = vars.v;	//v^i ... upper
+		auto const & vL = vU;		//v_i ... lower (not left)
+		real const & hTotal = vars.hTotal;
 	
-		real3 nU(nbU(0,0), nbU(0,1), nbU(0,2));
-		real3 n2U(nbU(1,0), nbU(1,1), nbU(1,2));
-		real3 n3U(nbU(2,0), nbU(2,1), nbU(2,2));
+		real3 nU = nbU(0);
+		real3 n2U = nbU(1);
+		real3 n3U = nbU(2);
 
-		const real& vSq = Tensor::dot(vU, vL);
+		const real& vSq = vU.dot(vL);
 
-		real v_n = Tensor::dot(vL, nU);
-		real v_n2 = Tensor::dot(vL, n2U);
-		real v_n3 = Tensor::dot(vL, n3U);
+		real v_n = vL.dot(nU);
+		real v_n2 = vL.dot(n2U);
+		real v_n3 = vL.dot(n3U);
 		
 		//const auto& nL = nU;
-		const real nlen = 1;	//sqrt(Tensor::dot(n, nL));
+		const real nlen = 1;	//sqrt(n.dot(nL));
 
 		Cons Y;
 		Y.ptr[0] = (

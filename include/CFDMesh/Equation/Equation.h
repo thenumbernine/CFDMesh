@@ -197,7 +197,7 @@ struct Equation {
 			auto field = std::get<1>(x);
 			using FieldType = typename Common::MemberPointer<decltype(field)>::FieldType;
 			if constexpr (std::is_same_v<FieldType, real3>) {
-				U.*field = U.*field - normal * ((1 + restitution) * Tensor::dot(normal, U.*field));
+				U.*field = U.*field - normal * ((1 + restitution) * normal.dot(U.*field));
 			}
 			return false;
 		});
