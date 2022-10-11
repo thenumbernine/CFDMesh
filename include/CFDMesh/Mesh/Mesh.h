@@ -364,8 +364,7 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 	}
 
 	static std::pair<real3, real3> getPerpendicularBasis(real3 n) {
-		constexpr auto L = Tensor::_asymR<real, 3, 3>(1);	//1 real.  hopefully I can constexpr enough to compile away.
-		auto dualn = n * L;	//real3a3 ... 3 reals, representing a 3x3 antisymmetric matrix
+		auto dualn = Tensor::hodgeDual(n);	//real3a3 ... 3 reals, representing a 3x3 antisymmetric matrix
 		auto n_x_x = dualn(0);	//accessors, so just a wrapper to a reference to dualn
 		auto n_x_y = dualn(1);
 		auto n_x_z = dualn(2);
