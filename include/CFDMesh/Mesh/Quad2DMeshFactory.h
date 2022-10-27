@@ -34,7 +34,7 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 		std::make_pair("triangulate", &This::triangulate)
 	);
 
-	Quad2DMeshFactory(const char* name_ = "unit square of quads") : Super(name_) {}
+	Quad2DMeshFactory(char const * name_ = "unit square of quads") : Super(name_) {}
 
 	virtual void updateGUI() {
 		ImGuiCommon::updateGUI(this);

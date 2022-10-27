@@ -197,7 +197,7 @@ exit(0);
 		displayMethods.push_back(std::make_shared<DisplayMethod>(
 			"eigenbasis orthogonality error",
 			[this](ThisEquation const * const eqn, Cell const * const c) -> float {
-				const Face& face = m->faces[m->cellFaceIndexes[c->faceOffset]];
+				Face const & face = m->faces[m->cellFaceIndexes[c->faceOffset]];
 				auto [UL, UR] = getEdgeStates(&face);
 				
 				real3x3 fluxNormal;

@@ -105,8 +105,8 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 			std::make_pair("W", &InitCondConst::W)
 		);
 
-		virtual const char* name() const { return "constant"; }
-		virtual Cons initCell(const This* eqn, real3 x) const {	
+		virtual char const * name() const { return "constant"; }
+		virtual Cons initCell(This const * eqn, real3 x) const {	
 			return eqn->consFromPrim((Prim)W);
 		}
 		
@@ -130,8 +130,8 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 			std::make_pair("rho", &InitCondWave::rho)
 		);
 
-		virtual const char* name() const { return "Wave"; }
-		virtual Cons initCell(const This* eqn, real3 x) const {
+		virtual char const * name() const { return "Wave"; }
+		virtual Cons initCell(This const * eqn, real3 x) const {
 			real xSq = x.lenSq();
 			real P = P0 + (P1 - P0) * exp(-xSq / (sigma * sigma));
 			Prim W(rho, real3(), P);
@@ -154,8 +154,8 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 			std::make_pair("WR", &InitCondSod::WR)
 		);
 
-		virtual const char* name() const { return "Sod"; }
-		virtual Cons initCell(const This* eqn, real3 x) const {
+		virtual char const * name() const { return "Sod"; }
+		virtual Cons initCell(This const * eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0 && (
 				This::dim == 3 ? x(2) < 0 : true
 			);
@@ -191,9 +191,9 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 			std::make_pair("velocity", &InitCondKelvinHelmholtz::velocity)
 		);
 
-		virtual const char* name() const { return "Kelvin-Helmholtz"; }
+		virtual char const * name() const { return "Kelvin-Helmholtz"; }
 
-		virtual Cons initCell(const This* eqn, real3 x) const {
+		virtual Cons initCell(This const * eqn, real3 x) const {
 			//TODO get mins & maxs from mesh?
 			real3 mins = real3(-1);
 			real3 maxs = real3(1);
@@ -230,8 +230,8 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 			std::make_pair("P0", &InitCondSpiral::P0)
 		);
 
-		virtual const char* name() const { return "Spiral"; }
-		virtual Cons initCell(const This* eqn, real3 x) const {
+		virtual char const * name() const { return "Spiral"; }
+		virtual Cons initCell(This const * eqn, real3 x) const {
 			real r2 = sqrt(((real2)x).lenSq());
 			return eqn->consFromPrim(Prim(rho0, real3(-x(1), x(0), 0.) * (v0 / r2), P0));
 		}
@@ -251,7 +251,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		};
 	}
 
-	Cons consFromPrim(const Prim& W) const {
+	Cons consFromPrim(Prim const & W) const {
 		Cons U;
 		U.rho = W.rho;
 		U.m = W.v * U.rho;
@@ -259,7 +259,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return U;
 	}
 
-	Prim primFromCons(const Cons& U) const {
+	Prim primFromCons(Cons const & U) const {
 		Prim W;
 		W.rho = U.rho;
 		W.v = U.m / W.rho;
@@ -331,9 +331,9 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return vars;
 	}
 
-	WaveVec getEigenvalues(const Eigen& vars, const real3x3& n) const {
-		real v_n = vars.v(0) * n(0,0) + vars.v(1) * n(0,1) + vars.v(2) * n(0,2);
-		const real& Cs = vars.Cs;
+	WaveVec getEigenvalues(Eigen const & vars, real3x3 const & n) const {
+		real v_n = n(0) * vars.v;
+		real const & Cs = vars.Cs;
 		WaveVec lambdas;
 		lambdas(0) = v_n - Cs;
 		lambdas(1) = v_n;
@@ -348,34 +348,34 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real v;
 		real Cs;
 		
-		CalcLambdaVars(const This& eqn, const Cons& U, const real3x3& n_) {
+		CalcLambdaVars(This const & eqn, Cons const & U, real3x3 const & n_) {
 			Prim W = eqn.primFromCons(U);
 			n = n_;
-			v = W.v(0) * n(0,0) + W.v(1) * n(0,1) + W.v(2) * n(0,2);
+			v = n(0) * W.v;
 			Cs = eqn.calc_Cs_from_P_rho(W.P, W.rho);
 		}
 	
-		CalcLambdaVars(const Eigen& vars, const real3x3& n_) 
+		CalcLambdaVars(Eigen const & vars, real3x3 const & n_) 
 		: 	n(n_), 
-			v(vars.v(0) * n(0,0) + vars.v(1) * n(0,1) + vars.v(2) * n(0,2)), 
+			v(n(0) * vars.v), 
 			Cs(vars.Cs) 
 		{}
 	};
 
-	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) const {
+	std::pair<real, real> calcLambdaMinMax(CalcLambdaVars const & vars) const {
 		return std::pair<real, real>(vars.v - vars.Cs, vars.v + vars.Cs);
 	}
 
-	real calcLambdaMin(const CalcLambdaVars& vars) const {
+	real calcLambdaMin(CalcLambdaVars const & vars) const {
 		return vars.v - vars.Cs;
 	}
 
-	real calcLambdaMax(const CalcLambdaVars& vars) const {
+	real calcLambdaMax(CalcLambdaVars const & vars) const {
 		return vars.v + vars.Cs;
 	}
 
 	//nU = n^i
-	WaveVec applyEigL(Cons X, const Eigen& vars, const real3x3& nbU) const {
+	WaveVec applyEigL(Cons X, Eigen const & vars, real3x3 const & nbU) const {
 		real const & Cs = vars.Cs;
 		real3 const & vU = vars.v;	//v^i ... upper
 		auto const & vL = vU;		//v_i ... lower (not left)
@@ -394,7 +394,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real denom = 2. * CsSq;
 		real invDenom = 1. / denom;
 
-		const real nlen = 1;	//sqrt(n.dot(nL));
+		real const nlen = 1;	//sqrt(n.dot(nL));
 
 		real v_n = vU.dot(nL);
 		real v_n2 = vU.dot(n2L);
@@ -444,7 +444,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		return Y;
 	}
 
-	Cons applyEigR(Cons X, const Eigen& vars, const real3x3& nbU) const {
+	Cons applyEigR(Cons X, Eigen const & vars, real3x3 const & nbU) const {
 		real const & Cs = vars.Cs;
 		real3 const & vU = vars.v;	//v^i ... upper
 		auto const & vL = vU;		//v_i ... lower (not left)
@@ -454,7 +454,7 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 		real3 n2U = nbU(1);
 		real3 n3U = nbU(2);
 
-		const real& vSq = vU.dot(vL);
+		real const & vSq = vU.dot(vL);
 
 		real v_n = vL.dot(nU);
 		real v_n2 = vL.dot(n2U);
@@ -501,9 +501,9 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 
 #if 0
 	//notice applyFlux(vars, U) == applyEigL(vars, lambdas * applyEigR(vars, U)) when vars are derived from U alone (instead of from a pair across an interface)
-	Cons applyFlux(WaveVec x, const Eigen& vars, real3 n) {
-		const real3& v = vars.v;	//v^i ... upper
-		const auto& vL = v;			//v_i ... lower (not left)
+	Cons applyFlux(WaveVec x, Eigen const & vars, real3 n) {
+		real3 const & v = vars.v;	//v^i ... upper
+		auto const & vL = v;			//v_i ... lower (not left)
 		
 		real heatRatioMinusOne = heatCapacityRatio - 1;
 
@@ -606,11 +606,11 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	}
 #endif
 
-	Cons calcFluxFromCons(Cons U, const real3x3& n) const {
+	Cons calcFluxFromCons(Cons U, real3x3 const & n) const {
 		Prim W = primFromCons(U);
 		real hTotal = calc_hTotal(W.rho, W.P, U.ETotal);
 		Cons flux;
-		real m_n = U.m(0) * n(0,0) + U.m(1) * n(0,1) + U.m(2) * n(0,2);
+		real m_n = n(0) * U.m;
 		flux(0) = m_n;
 		flux(1) = m_n * W.v(0) + W.P * n(0,0);
 		flux(2) = m_n * W.v(1) + W.P * n(0,1);

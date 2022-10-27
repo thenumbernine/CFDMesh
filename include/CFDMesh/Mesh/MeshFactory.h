@@ -21,9 +21,9 @@ struct MeshFactory {
 	using Face = typename Mesh::Face;
 	using Cell = typename Mesh::Cell;
 
-	const char* name = nullptr;
+	char const * name = nullptr;
 	
-	MeshFactory(const char* name_) : name(name_) {}
+	MeshFactory(char const * name_) : name(name_) {}
 	virtual ~MeshFactory() {}
 	virtual void updateGUI() {}
 	virtual std::shared_ptr<Mesh> createMesh() = 0;

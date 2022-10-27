@@ -28,7 +28,7 @@ struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
 		std::make_pair("capmin", &This::capmin)
 	);
 
-	Cube3DMeshFactory(const char* name_ = "cube mesh") : Super(name_) {}
+	Cube3DMeshFactory(char const * name_ = "cube mesh") : Super(name_) {}
 
 	virtual void updateGUI() {
 		ImGuiCommon::updateGUI(this);

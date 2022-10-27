@@ -37,7 +37,7 @@ struct P2DFMTMeshFactory : public MeshFactory<real, dim, Cons> {
 		std::vector<real> x = Common::mapElems<
 			decltype(_x),
 			std::vector<real>
-		>(_x, [](const std::string& s) -> real { return std::stod(s); });
+		>(_x, [](std::string const & s) -> real { return std::stod(s); });
 		assert(x.size() == (size_t)(2 * m * n));
 	
 		auto us = std::vector(x.begin(), x.begin() + m*n);

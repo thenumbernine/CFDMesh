@@ -15,7 +15,7 @@ struct Quad2DTwistMeshFactory : public Quad2DMeshFactory<real, dim, Cons> {
 		real r = v.length();
 		//real theta = std::max(0., 1. - r);
 		real sigma = 3.;	//almost 0 at r=1
-		const real rotationAmplitude = 3.;
+		real const rotationAmplitude = 3.;
 		real theta = rotationAmplitude*sigma*r*exp(-sigma*sigma*r*r);
 		real costh = cos(theta), sinth = sin(theta);
 		return real2(

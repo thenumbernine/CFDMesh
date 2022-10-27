@@ -11,7 +11,7 @@ struct Quad2DCubeMeshFactory : public Quad2DMeshFactory<real, dim, Cons> {
 	using real2 = typename Super::real2;
 
 	template<typename T> 
-	static T cubed(const T& t) { return t * t * t; }
+	static T cubed(T const & t) { return t * t * t; }
 	
 	Quad2DCubeMeshFactory() : Super("unit square of quads, cubed mapping") {}
 	virtual real2 coordChart(real2 v) const {

@@ -90,9 +90,9 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 			std::make_pair("UR", &InitCondDefault::UR)
 		);
 
-		virtual const char* name() const { return "default"; }
+		virtual char const * name() const { return "default"; }
 		
-		virtual Cons initCell(const GLMMaxwell* eqn, real3 x) const {
+		virtual Cons initCell(GLMMaxwell const * eqn, real3 x) const {
 			bool lhs = x(0) < 0 && x(1) < 0;
 			return lhs ? UL : UR;
 		}
@@ -109,16 +109,16 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 		};
 	}
 
-	real3 calc_E(const Cons& U) const {
+	real3 calc_E(Cons const & U) const {
 		return U.D * (U.sqrt_1_eps * U.sqrt_1_eps);
 	}
 
-	real3 calc_H(const Cons& U) const {
+	real3 calc_H(Cons const & U) const {
 		return U.B * (U.sqrt_1_mu * U.sqrt_1_mu);
 	}
 
-	const Cons& consFromPrim(const Prim& W) { return W; }
-	const Prim& primFromCons(const Cons& U) { return U; }
+	Cons const & consFromPrim(Prim const & W) { return W; }
+	Prim const & primFromCons(Cons const & U) { return U; }
 
 	//variables used by the roe avg, eigen basis, etc
 	struct Eigen {
@@ -155,7 +155,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 	real divPhiWavespeed = speedOfLight;
 	real divPsiWavespeed = speedOfLight;
 
-	WaveVec getEigenvalues(const Eigen& vars, const real3x3& n) {
+	WaveVec getEigenvalues(Eigen const & vars, real3x3 const & n) {
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
 		WaveVec lambdas;
 		lambdas(0) = divPhiWavespeed;
@@ -170,30 +170,30 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 	}
 
 	struct CalcLambdaVars : public Eigen {
-		CalcLambdaVars(const GLMMaxwell& eqn, const Cons& U, const real3x3& n_) {
+		CalcLambdaVars(GLMMaxwell const & eqn, Cons const & U, real3x3 const & n_) {
 			Eigen::sqrt_1_eps = U.sqrt_1_eps;
 			Eigen::sqrt_1_mu = U.sqrt_1_mu;
 		}
 
-		CalcLambdaVars(const Eigen& vars, const real3x3& n_) : Eigen(vars) {}
+		CalcLambdaVars(Eigen const & vars, real3x3 const & n_) : Eigen(vars) {}
 	};
 
-	std::pair<real, real> calcLambdaMinMax(const CalcLambdaVars& vars) {
+	std::pair<real, real> calcLambdaMinMax(CalcLambdaVars const & vars) {
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
 		real lambda = std::max(std::max(divPsiWavespeed, divPhiWavespeed), v_p);
 		return std::make_pair(-lambda, lambda);
 	}
 
-	real calcLambdaMin(const CalcLambdaVars& vars) const {
+	real calcLambdaMin(CalcLambdaVars const & vars) const {
 		return -calcLambdaMax(vars);
 	}
 
-	real calcLambdaMax(const CalcLambdaVars& vars) const {
+	real calcLambdaMax(CalcLambdaVars const & vars) const {
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
 		return std::max(std::max(divPsiWavespeed, divPhiWavespeed), v_p);
 	}
 
-	WaveVec applyEigL(const Cons& x, const Eigen& vars, const real3x3& n) const {
+	WaveVec applyEigL(Cons const & x, Eigen const & vars, real3x3 const & n) const {
 		real sqrt_eps = 1. / vars.sqrt_1_eps;
 		real sqrt_mu = 1. / vars.sqrt_1_mu;
 		real v_p = vars.sqrt_1_eps * vars.sqrt_1_mu;
@@ -211,7 +211,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 		return y;
 	}
 
-	Cons applyEigR(const WaveVec& x, const Eigen& vars, const real3x3& n) const {
+	Cons applyEigR(WaveVec const & x, Eigen const & vars, real3x3 const & n) const {
 		real sqrt_eps = 1. / vars.sqrt_1_eps;
 		real sqrt_mu = 1. / vars.sqrt_1_mu;
 
@@ -227,7 +227,7 @@ struct GLMMaxwell : public Equation<GLMMaxwell<real, dim_>, real, Cons_<real>, P
 		return y;
 	}
 
-	Cons calcFluxFromCons(const Cons& U, const real3x3& n) const {
+	Cons calcFluxFromCons(Cons const & U, real3x3 const & n) const {
 		real3 E = calc_E(U);
 		real3 H = calc_H(U);
 		Cons F;

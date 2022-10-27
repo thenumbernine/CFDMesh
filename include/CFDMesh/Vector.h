@@ -26,7 +26,7 @@ using double4 = Tensor::double4;
 //until then...
 
 #define ADD_VECTOR_OP(classname, op)\
-	classname operator op(const classname& b) const {\
+	classname operator op(classname const & b) const {\
 		classname c;\
 		for (int i = 0; i < size; ++i) {\
 			c.ptr[i] = ptr[i] op b.ptr[i];\
@@ -43,7 +43,7 @@ using double4 = Tensor::double4;
 		return c;\
 	}
 #define ADD_VECTOR_OP_EQ(classname, op)\
-	classname& operator op(const classname& b) {\
+	classname& operator op(classname const & b) {\
 		for (int i = 0; i < size; ++i) {\
 			ptr[i] op b.ptr[i];\
 		}\
@@ -61,8 +61,8 @@ using double4 = Tensor::double4;
 	}
 
 #define ADD_OPS(classname)\
-	real& operator()(int i) { return ptr[i]; }\
-	const real& operator()(int i) const { return ptr[i]; }\
+	real & operator()(int i) { return ptr[i]; }\
+	real const & operator()(int i) const { return ptr[i]; }\
 \
 	ADD_VECTOR_OP(classname, +)\
 	ADD_VECTOR_OP(classname, -)\
@@ -73,7 +73,7 @@ using double4 = Tensor::double4;
 	ADD_CAST_OP(classname)
 
 #if 0	//hmm, this isn't working when it is run
-	classname& operator=(const classname& o) {\
+	classname& operator=(classname const & o) {\
 		for (int i = 0; i < size; ++i) {\
 			ptr[i] = o.ptr[i];\
 		}\
