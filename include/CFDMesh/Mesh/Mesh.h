@@ -162,15 +162,13 @@ std::cout << "removed too many vtxs, bailing on face" << std::endl;
 
 		//TODO calc these for n=3
 		if constexpr (dim == 2) {
-			auto& a = vtxs[vs[0]];
-			auto& b = vtxs[vs[1]];
+			auto & a = vtxs[vs[0]];
+			auto & b = vtxs[vs[1]];
 			f.pos = (a.pos + b.pos) * .5;
 			real3 delta = a.pos - b.pos;
 			f.area = delta.length();
 			real3 normal = real3(delta(1), -delta(0), 0).normalize();
-			f.normal(0,0) = normal(0);
-			f.normal(0,1) = normal(1);
-			f.normal(0,2) = normal(2);
+			f.normal(0) = normal;
 		} else if constexpr (dim == 3) {
 			std::vector<real3> polyVtxs(n);
 			for (int i = 0; i < n; ++i) {
@@ -456,7 +454,7 @@ if (f.cells(0) == -1 && f.cells(1) == -1) {
 			int a = f.cells(0);
 			int b = f.cells(1);
 			if (a != -1 && b != -1) {
-				if ((cells[a].pos - cells[b].pos).dot(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2))) < 0) {
+				if ((cells[a].pos - cells[b].pos).dot(f.normal(0)) < 0) {
 #if 0
 std::cout << "swapping cells so normal points to b" << std::endl;					
 #endif					
@@ -468,7 +466,7 @@ std::cout << "swapping cells so normal points to b" << std::endl;
 				//distance between cell centers
 				//f.cellDist = (cells[b].pos - cells[a].pos).length();
 				//distance projected to edge normal
-				f.cellDist = fabs(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2)).dot(cells[b].pos - cells[a].pos));
+				f.cellDist = fabs(f.normal(0).dot(cells[b].pos - cells[a].pos));
 			} else if (a != -1) {
 				f.cellDist = (cells[a].pos - f.pos).length() * 2.;
 			} else {
@@ -515,7 +513,7 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 	
 		//build basis from normal
 		for (auto& f : faces) {
-			auto [n2, n3] = getPerpendicularBasis(real3(f.normal(0,0), f.normal(0,1), f.normal(0,2)));
+			auto [n2, n3] = getPerpendicularBasis(f.normal(0));
 			for (int i = 0; i < 3; ++i) {
 				f.normal(1,i) = n2(i);
 				f.normal(2,i) = n3(i);
