@@ -663,7 +663,7 @@ struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {
 	std::vector<char const *> viewNames = {"ortho", "frustum"};
 
 
-	virtual char const * getTitle() { return "CFD Mesh"; }
+	virtual std::string getTitle() { return "CFD Mesh"; }
 
 	virtual void init(Init const & args) {
 		Super::init(args);
