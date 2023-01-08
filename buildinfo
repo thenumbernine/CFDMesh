@@ -5,7 +5,6 @@ depends:append{
 	'../Tensor',
 	'../Parallel',
 	'../GLApp',
-	'../SDLApp',
 	'../GLCxx',
 	'../ImGuiCommon',
 	'../Image',
