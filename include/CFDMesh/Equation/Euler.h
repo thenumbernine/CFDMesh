@@ -18,7 +18,7 @@ enum { numCons = 5 };
 template<typename real>
 union Cons_ {
 	using This = Cons_;
-	using real3 = Tensor::_vec<real, 3>;
+	using real3 = Tensor::vec<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
 	struct {
@@ -48,7 +48,7 @@ union Cons_ {
 template<typename real>
 union Prim_ {
 	using This = Prim_;
-	using real3 = Tensor::_vec<real, 3>;
+	using real3 = Tensor::vec<real, 3>;
 	enum { size = numCons };
 	real ptr[size];
 	struct {
@@ -90,9 +90,9 @@ struct Euler : public Equation<Euler<real, dim_>, real, Cons_<real>, Prim_<real>
 	using InitCond = typename Super::InitCond;
 	using DisplayMethod = typename Super::DisplayMethod;
 	
-	using real2 = Tensor::_vec<real, 2>;
-	using real3 = Tensor::_vec<real, 3>;
-	using real3x3 = Tensor::_mat<real, 3, 3>;
+	using real2 = Tensor::vec<real, 2>;
+	using real3 = Tensor::vec<real, 3>;
+	using real3x3 = Tensor::mat<real, 3, 3>;
 
 	float heatCapacityRatio = 1.4;
 

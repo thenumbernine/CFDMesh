@@ -29,9 +29,9 @@ namespace CFDMesh {
 using real = double;
 //using real = float;
 
-using real2 = Tensor::_vec<real, 2>;
-using real3 = Tensor::_vec<real, 3>;
-using real3x3 = Tensor::_mat<real, 3, 3>;
+using real2 = Tensor::vec<real, 2>;
+using real3 = Tensor::vec<real, 3>;
+using real3x3 = Tensor::mat<real, 3, 3>;
 
 static Parallel::Parallel parallel;//(1);
 

@@ -9,7 +9,7 @@ namespace Mesh {
 template<typename real>
 struct Vertex {	//not required by finite volume algorithm
 	using This = Vertex;
-	using real3 = Tensor::_vec<real, 3>;
+	using real3 = Tensor::vec<real, 3>;
 	
 	real3 pos;
 	

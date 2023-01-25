@@ -48,8 +48,8 @@ namespace Mesh {
 //dim is the dimension of the manifold, not of the vectors (which are all 3D atm)
 template<typename real, int dim, typename Cons>
 struct Mesh {
-	using real2 = Tensor::_vec<real, 2>;
-	using real3 = Tensor::_vec<real, 3>;
+	using real2 = Tensor::vec<real, 2>;
+	using real3 = Tensor::vec<real, 3>;
 		
 	using Vertex = CFDMesh::Mesh::Vertex<real>;
 	using Face = CFDMesh::Mesh::Face<real, Cons>;
@@ -730,9 +730,9 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 		//epsilon_ij a^i b^j
 		// this is giving me link errors ... 
 		// even tho it's forward-declared and the body is provided
-		//return Tensor::_tensorr<real, 2, 2>(a, b).determinant();
+		//return Tensor::tensorr<real, 2, 2>(a, b).determinant();
 		// so you can't use it, gotta clll the original:
-		return Tensor::determinant(Tensor::_tensorr<real, 2, 2>(a, b));
+		return Tensor::determinant(Tensor::tensorr<real, 2, 2>(a, b));
 	}
 
 
@@ -794,9 +794,9 @@ if (f.cellDist <= 1e-7) throw Common::Exception() << "got non-positive cell dist
 	static real parallelepipedVolume(real3 a, real3 b, real3 c) {
 		//epsilon_ijk a^i b^j c^k
 		// link errors
-		//return Tensor::_tensorr<real, 3, 2>(a, b, c).determinant();
+		//return Tensor::tensorr<real, 3, 2>(a, b, c).determinant();
 		// so until then
-		return Tensor::determinant(Tensor::_tensorr<real, 3, 2>(a, b, c));
+		return Tensor::determinant(Tensor::tensorr<real, 3, 2>(a, b, c));
 	}
 
 

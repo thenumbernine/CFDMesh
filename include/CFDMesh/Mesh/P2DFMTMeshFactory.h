@@ -31,13 +31,13 @@ struct P2DFMTMeshFactory : public MeshFactory<real, dim, Cons> {
 		ls.pop_front();
 		int m = std::stoi(m_n[0]);
 		int n = std::stoi(m_n[1]);
-		std::list<std::string> _x = Common::split<std::list<std::string>>(Common::concat<std::list<std::string>>(ls, " "), "\\s+");
-		if (_x.front() == "") _x.pop_front();
-		if (_x.back() == "") _x.pop_back();
+		std::list<std::string> x2 = Common::split<std::list<std::string>>(Common::concat<std::list<std::string>>(ls, " "), "\\s+");
+		if (x2.front() == "") x2.pop_front();
+		if (x2.back() == "") x2.pop_back();
 		std::vector<real> x = Common::mapElems<
-			decltype(_x),
+			decltype(x2),
 			std::vector<real>
-		>(_x, [](std::string const & s) -> real { return std::stod(s); });
+		>(x2, [](std::string const & s) -> real { return std::stod(s); });
 		assert(x.size() == (size_t)(2 * m * n));
 	
 		auto us = std::vector(x.begin(), x.begin() + m*n);

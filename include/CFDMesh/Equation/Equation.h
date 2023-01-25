@@ -27,7 +27,7 @@ struct FloatTypeForType<T> {
 
 template<typename T>
 requires (std::is_floating_point_v<T>)
-struct FloatTypeForType<Tensor::_vec<T, 3>> {
+struct FloatTypeForType<Tensor::vec<T, 3>> {
 	using Type = float3;
 };
 
@@ -39,9 +39,9 @@ template<
 	typename Prim_
 >
 struct Equation {
-	using real2 = Tensor::_vec<real, 2>;
-	using real3 = Tensor::_vec<real, 3>;
-	using real3x3 = Tensor::_mat<real, 3, 3>;
+	using real2 = Tensor::vec<real, 2>;
+	using real3 = Tensor::vec<real, 3>;
+	using real3x3 = Tensor::mat<real, 3, 3>;
 	
 	using Cons = Cons_;
 	using Prim = Prim_;
