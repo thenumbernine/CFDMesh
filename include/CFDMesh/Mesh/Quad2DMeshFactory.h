@@ -71,7 +71,7 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 		int2 n = size + 1;
 		int2 step(1, n(0));
 		
-		int vtxsize = n.volume();
+		int vtxsize = n.product();
 		if (capmin(0)) vtxsize++;
 		
 		mesh->vtxs.resize(vtxsize);
@@ -95,7 +95,7 @@ struct Quad2DMeshFactory : public MeshFactory<real, dim, Cons> {
 			}
 		}
 		
-		int capindex = n.volume();
+		int capindex = n.product();
 		if (capmin(0)) {
 			real3 sum;
 			for (int j = 0; j < n(1); ++j) {

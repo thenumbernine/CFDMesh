@@ -42,7 +42,7 @@ struct Cube3DMeshFactory : public MeshFactory<real, dim, Cons> {
 		int3 n = size + 1;
 		int3 step(1, n(0), n(0) * n(1));
 		
-		int vtxsize = n.volume();
+		int vtxsize = n.product();
 		mesh->vtxs.resize(vtxsize);
 
 		int3 vtxmax = size;
