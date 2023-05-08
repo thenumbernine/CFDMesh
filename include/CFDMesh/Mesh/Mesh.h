@@ -247,11 +247,10 @@ std::cout << "adding cell " << vis << std::endl;
 					cellFaceIndexes.push_back(fi);
 				}
 			}
-			std::vector<real2> polyVtxs = Common::mapElems<
-				decltype(vis),
-				std::vector<real2>
-			>(vis, [this](int vi) -> real2 {
-				return real2([this, vi](int i) -> real { return vtxs[vi].pos(i); });
+			auto polyVtxs = Common::mapElems<std::vector<real2>>(vis, [this](int vi) {
+				return real2([this, vi](int i) {
+					return vtxs[vi].pos(i);
+				});
 			});
 			
 			c.volume = polygonVolume(polyVtxs);
@@ -286,10 +285,7 @@ std::cout << "adding cell " << vis << std::endl;
 
 			for (auto const & side : identityCubeSides) {
 				
-				std::vector<int> thisFaceVtxIndexes = Common::mapElems<
-					std::vector<int>,
-					std::vector<int>
-				>(side, [&vis](int side_i) -> int {
+				auto thisFaceVtxIndexes = Common::mapElems<std::vector<int>>(side, [&vis](int side_i) {
 					return vis[side_i];
 				});
 				
@@ -307,10 +303,7 @@ std::cout << "disregarding face with area " << f.area << std::endl;
 					} else {
 						cellFaceIndexes.push_back(fi);
 
-						cubeVtxs.push_back(Common::mapElems<
-							decltype(thisFaceVtxIndexes),
-							std::vector<real3>
-						>(
+						cubeVtxs.push_back(Common::mapElems<std::vector<real3>>(
 							thisFaceVtxIndexes,
 							[this](int i) -> real3 { return vtxs[i].pos; }
 						));

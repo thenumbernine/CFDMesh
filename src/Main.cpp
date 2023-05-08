@@ -236,26 +236,19 @@ exit(0);
 		));
 
 		//last update the names
-		displayMethodNames = Common::mapElems<
-			decltype(displayMethods),
-			std::vector<char const *>
-		>(
+		displayMethodNames = Common::mapElems<std::vector<char const *>>(
 			displayMethods,
-			[](std::shared_ptr<DisplayMethod> const & m) -> char const * {
+			[](auto const & m) {
 				return m->name.c_str();
 			}
 		);
 
 
-
 		meshGenerators = Mesh::getGens();
 		
-		meshGenerationNames = Common::mapElems<
-			decltype(meshGenerators),
-			std::vector<char const *>
-		>(
+		meshGenerationNames = Common::mapElems<std::vector<char const *>>(
 			meshGenerators,
-			[](std::shared_ptr<MeshFactory> const & m) -> char const * { return m->name; }
+			[](auto const & m) { return m->name; }
 		);
 	
 
@@ -640,11 +633,10 @@ std::vector<std::pair<char const *, std::function<std::shared_ptr<ISimulation>(C
 };
 
 std::vector<char const *> simGenNames = Common::mapElems<
-	decltype(simGens),
 	std::vector<char const *>
 >(
 	simGens,
-	[](decltype(simGens)::value_type p) -> char const * { return p.first; }
+	[](auto p) { return p.first; }
 );
 
 struct CFDMeshApp : public ::GLApp::ViewBehavior<::GLApp::GLApp> {

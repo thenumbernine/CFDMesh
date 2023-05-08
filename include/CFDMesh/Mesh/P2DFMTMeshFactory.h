@@ -34,10 +34,7 @@ struct P2DFMTMeshFactory : public MeshFactory<real, dim, Cons> {
 		std::list<std::string> x2 = Common::split<std::list<std::string>>(Common::concat<std::list<std::string>>(ls, " "), "\\s+");
 		if (x2.front() == "") x2.pop_front();
 		if (x2.back() == "") x2.pop_back();
-		std::vector<real> x = Common::mapElems<
-			decltype(x2),
-			std::vector<real>
-		>(x2, [](std::string const & s) -> real { return std::stod(s); });
+		auto x = Common::mapElems<std::vector<real>>(x2, [](std::string const & s) -> real { return std::stod(s); });
 		assert(x.size() == (size_t)(2 * m * n));
 	
 		auto us = std::vector(x.begin(), x.begin() + m*n);

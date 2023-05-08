@@ -106,12 +106,9 @@ struct Equation {
 			});	
 		}
 
-		initCondNames = Common::mapElems<
-			decltype(initConds),
-			std::vector<char const *>
-		>(
+		initCondNames = Common::mapElems<std::vector<char const *>>(
 			initConds,
-			[](std::shared_ptr<InitCond> ic) -> char const * { return ic->name(); }
+			[](auto ic) { return ic->name(); }
 		);
 	}
 
